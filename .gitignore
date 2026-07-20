@@ -1,0 +1,14 @@
+*.blend
+*.blend1
+*.glb
+*.fbx
+*.obj
+*.png
+*.jpg
+*.tga
+*.exr
+__pycache__/
+*.pyc
+v5_run/
+v4_run/
+v3_run/
