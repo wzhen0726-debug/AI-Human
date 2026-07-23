@@ -1,0 +1,182 @@
+这份调研报告梳理得非常详尽且精准，直接切中了 **QuadRemesher (QR) 均匀拓扑网格** 在全自动化管线中的最大痛点：**几何特征（曲率/法线夹角）丧失导致常规自动化接缝算法（Smart Project / SharpEdges / Auto.Skeleton）全面失效，进而产生上千个单面碎片岛**。
+
+针对你当前 **“Blender 5.1 / Python MCP 控制 / 后台 --background 模式 / 90K 均匀 Quad 低模”** 的严苛条件，基于这份报告的数据，为你提供 4 个突破性的解决思路与代码级落地方案：
+
+---
+
+### 方案一：接缝传递突破 —— Blender Seam 转换为 UV 边界并通过 FBX 传递至 RizomUV (推荐 🏆)
+
+#### 1. 根因攻克
+
+报告中指出 RizomUV Unfold 失败的核心原因在于 **“FBX 导出后 Edge ID 重排导致 RizomUV 找不到正确的 Cut 缝合线”**。
+FBX 格式虽然**不保存 Edge Seam（缝合线标记）**，但它**绝对保存 UV 坐标**！
+
+#### 2. 解决思路（“以 UV 为媒介传递 Seam”）
+
+1. 在 Blender 中用脚本快速对网格打好 5 条主体 Seam（背中线/脖子/肢体内侧）。
+2. 在 Blender 内运行一次极简的 `bpy.ops.uv.unwrap()`（**哪怕拉伸极其严重也没关系**，这一步的目的仅仅是**让 Mark Seam 的边变成 UV 岛的边界 Edge**）。
+3. 导出 FBX 导入 RizomUV。
+4. 在 RizomUV LUA 中，**放弃传入 Edge ID**，改用 `ZomSelect({PrimType="Edge", WorkingSet="UVBorders"})` 直接选中 UV 边界边并执行 `ZomCut`！
+5. 此时 RizomUV 就能 100% 准确获取你在 Blender 里画好的 5 条 Seam，随后执行其强大的 `ZomUnfold` 和 `ZomPack`。
+
+#### 3. 自动化 LUA 脚本实现：
+
+```lua
+-- rizom_uv_border_pipeline.lua
+ZomLoad({File={Path="in_with_uv_borders.fbx", ImportGroups=true, XYZ=true}})
+
+-- 1. 关键：直接选择从 Blender 继承过来的 UV 边界（即 Mark Seam 处）
+ZomSelect({PrimType="Edge", WorkingSet="UVBorders", ResetBefore=true})
+
+-- 2. 将 UV 边界转化为真正的 3D 缝合线切割
+ZomCut({PrimType="Edge", WorkingSet="Selected"})
+
+-- 3. 执行真正的强力 Unfold 与 Optimize (解决拉伸)
+ZomUnfold({PrimType="Polygon", WorkingSet="All", Iterations=20, Roomspace=0.005})
+ZomOptimize({Iterations=20, Method="Mosaic"})
+
+-- 4. 工业级 Packing
+ZomPack({ProcessTile=0, MarginVisible=true, MarginPS=0.002, Rotate={Mode=1}})
+
+ZomSave({File={Path="out_rizom_perfect.fbx"}})
+ZomQuit()
+
+```
+
+> **优势**：完美规避了 FBX Edge ID 不匹配的问题，让 RizomUV 的解算能力得到 100% 释放，彻底解决拉伸和碎片问题。
+
+---
+
+### 方案二：拓扑拓扑层面的解法 —— 引入 Ministry of Flat (MoF) CLI
+
+如果你希望彻底放弃手动/脚本计算 Seam，追求“零参数一键静默处理”：
+
+1. **为什么 MoF 能胜任**：
+传统算法依赖法线夹角（QR 网格夹角仅 1-2°，故失效）。而 Ministry of Flat 使用的是**全局谐波/谱分析（Spectral Analysis）与拓扑切片算法**，它不依赖法线突变，而是直接分析模型的**几何拓扑体（Body Segmentation）**，因此对 QR 网格有着极强的抗性。
+2. **MCP 集成代码**：
+```python
+import subprocess
+
+# 导出无 UV 的 03_remesh.fbx
+mof_cmd = [
+    "C:/Program Files/Ministry of Flat/Flat.exe",
+    "-i", "v5_run/03_remesh.fbx",
+    "-o", "v5_run/04_uv_mof.fbx",
+    "-margin", "0.002",
+    "-maxdistortion", "0.1"
+]
+subprocess.run(mof_cmd, check=True)
+
+```
+
+
+
+> **优势**：专门为游戏 CLI 管线设计，无 UI 依赖，处理 90K 面网格仅需数秒，岛屿数量通常能控制在 20 个以内。
+
+---
+
+### 方案三：纯 Blender 内部解法 —— 拓扑最短路径自动生成 5 条关键 Seam + UVPackmaster 3
+
+如果你不想引入外部独立软件（如 Rizom），在 Blender 内部消灭 2000 个碎片岛的核心是：**不要依赖角度算法（Smart UV/Auto Mark），改用拓扑 Dijkstra 最短路径来自动标记缝合线**。
+
+#### 1. 自动缝合线算法（纯 Python 实现）：
+
+利用 3D 人体拓扑的极点（头顶、双手尖、双脚尖、裆部），用 Python 计算这几个顶点沿网格表面的最短路径（`Edge Dijkstra`），自动生成背中线与四肢内侧的 Mark Seam。
+
+```python
+import bpy
+import bmesh
+import heapq
+
+def mark_seam_dijkstra(obj, start_idx, end_idx):
+    """基于拓扑最短路径自动 Mark Seam，绝不依赖法线夹角"""
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    bm.verts.ensure_lookup_table()
+    bm.edges.ensure_lookup_table()
+    
+    start_v = bm.verts[start_idx]
+    end_v = bm.verts[end_idx]
+    
+    distances = {v: float('inf') for v in bm.verts}
+    distances[start_v] = 0
+    previous = {}
+    pq = [(0, start_v.index)]
+    
+    while pq:
+        current_dist, current_idx = heapq.heappop(pq)
+        current_v = bm.verts[current_idx]
+        
+        if current_v == end_v:
+            break
+            
+        if current_dist > distances[current_v]:
+            continue
+            
+        for edge in current_v.link_edges:
+            neighbor = edge.other_vert(current_v)
+            weight = edge.calc_length()
+            distance = current_dist + weight
+            
+            if distance < distances[neighbor]:
+                distances[neighbor] = distance
+                previous[neighbor] = current_v
+                heapq.heappush(pq, (distance, neighbor.index))
+                
+    # 沿着路径标记 seam
+    curr = end_v
+    while curr in previous:
+        prev = previous[curr]
+        for edge in curr.link_edges:
+            if edge.other_vert(curr) == prev:
+                edge.seam = True
+                break
+        curr = prev
+        
+    bm.to_mesh(obj.data)
+    bm.free()
+
+# 示例：通过极点 Index 自动连接背中线，然后运行普通的 bpy.ops.uv.unwrap(method='ANGLE_BASED')
+
+```
+
+#### 2. 配套 Packing：
+
+展开后直接调用 **UVPackmaster 3 的 Python API**（UVPM3 提供了 C++ 级的多线程/GPU 打包引擎）：
+
+```python
+# UVPackmaster 3 后台静默调用
+bpy.ops.uvp3.pack(
+    pack_to_others=False,
+    fixed_scale=False,
+    heuristic_search_time=5 # 搜索 5 秒寻找最高利用率
+)
+
+```
+
+---
+
+### 方案四：管线级终极方案 —— 标准模板拟合 (Template Wrap / BlendShape)
+
+既然你的目标是 **“高模数字人 -> 游戏低模全自动化”**，**拓扑重构 + 展 UV** 本质上都在为“获得一个带好 UV 的低模”服务。
+
+1. **思路转换**：
+放弃对每一次生成的 AI 高模都运行 QuadRemesher + 重新展 UV 的做法。
+2. **标准管线设计**：
+* 准备一份 **带有完美手工 UV / 骨改命名 / 口型 Blendshape 的标准人体拓扑基础网格（Base Mesh）**（如 3-5 万面）。
+* 脚本收到 193 万面 Tripo 高模后，使用 Blender 的 `Surface Deform`（表面变形修改器）或 **Shrinkwrap + Geonodes**，将标准 Base Mesh 像雨衣一样“包裹/缩放”贴合到新高模的轮廓上。
+
+
+3. **结果**：
+* 获得的新低模**拓扑结构固定、UV 100% 完美（继承模板）、动画绑定参数直接复用**。
+* 烘焙法线时，低模到高模的贴合度极高，完全跳过了“自动展 UV”这个最不稳定的随机变量。
+
+
+
+---
+
+### 💡 总结与推荐行动路径
+
+1. **立竿见影（验证成本最低）**：采用 **方案一（Blender 极简 Unwrap 导出 UV 边界 -> RizomUV LUA 抓取 UVBorders 进行 Cut & Unfold）**。这能立刻解决你当前 RizomUV 脚本拉伸严重与 ID 错位的问题。
+2. **极简独立 CLI 管线**：测试 **Ministry of Flat**，在命令行中一步到位替换现有的 UV 环节。
+3. **管线终极架构**：长远来看，在全自动数字人管线中，**方案四（标准模板低模 Wrap 拟合）** 是行业内（如 Metahuman、游戏角色生成）保证 UV 和动画拓扑 100% 不崩溃的黄金标准。

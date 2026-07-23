@@ -1,0 +1,56 @@
+{
+  "mesh_name": "tripo_node_89f96507-4268-42bd-8c27-bf6892366069",
+  "vert_count": 964761,
+  "face_count": 1929579,
+  "non_manifold_edges": {
+    "value": 27,
+    "max": 50,
+    "pass": true
+  },
+  "boundary_edges": {
+    "value": 24,
+    "max": 50,
+    "pass": true
+  },
+  "loose_verts": {
+    "value": 0,
+    "max": 0,
+    "pass": true
+  },
+  "degenerate_faces": {
+    "value": 0,
+    "max": 0,
+    "pass": true
+  },
+  "oriented_arms_along_x": {
+    "value": true,
+    "pass": true
+  },
+  "centered_x": {
+    "value": -0.006327,
+    "max": 0.01,
+    "pass": true
+  },
+  "centered_y": {
+    "value": -0.033555,
+    "max": 0.05,
+    "pass": true
+  },
+  "grounded_z": {
+    "value": true,
+    "pass": true
+  },
+  "face_count_min": {
+    "value": 1929579,
+    "min": 100000,
+    "pass": true,
+    "note": "高模应保留10万面以上"
+  },
+  "height_range": {
+    "value": 0.976,
+    "min": 0.8,
+    "max": 2.5,
+    "pass": true
+  },
+  "OVERALL": "PASS"
+}

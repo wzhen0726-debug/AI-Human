@@ -119,9 +119,9 @@ class Pipeline:
         """Build CLI args from config dict."""
         arg_map = {
             "repair": [
-                f"--voxel_size={cfg.get('voxel_size', 0.005)}",
-                f"--smooth_iter={cfg.get('smooth_iterations', 5)}",
-                f"--smooth_factor={cfg.get('smooth_factor', 0.5)}",
+                f"--voxel_size={cfg.get('voxel_size', 0.0)}",
+                f"--smooth_iter={cfg.get('smooth_iterations', 3)}",
+                f"--smooth_factor={cfg.get('smooth_factor', 0.3)}",
             ],
             "adhesion": [
                 f"--threshold={cfg.get('threshold_mm', 5.0)}",

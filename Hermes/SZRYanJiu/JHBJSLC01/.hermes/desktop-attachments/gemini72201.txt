@@ -1,0 +1,114 @@
+要实现**从高模到全自动化游戏角色管线**，低模展 UV 和打包（UV Unwrapping & Packing）是其中最容易因“人工打缝合线”而卡壳的环节。
+
+在 **Blender + AI (MCP)** 的自动化架构下，核心思路是：**摒弃传统的手动标记缝合线（Mark Seam），转而采用“基质分割/角度分割 + 自动化烘焙/缝合线消除”或“外部专用自动化引擎 + Python API”**。
+
+以下为你梳理几种最适合集成到 Python / MCP 脚本中的**自动化 UV 展开与打包方案**，按推荐度从高到低排列：
+
+---
+
+### 1. 方案一：RizomUV 命令行后台自动化 (工业级首选 🏆)
+
+如果你追求**极高的 UV 利用率、无重叠、扭曲度极低**，且希望一键后台搞定，RizomUV 是目前 3D 行业全自动化管线的绝对首选。
+
+* **实现原理**：利用 RizomUV 的 C++/Lua 脚本接口或命令行（CLI），通过 Blender Python 脚本导出 OBJ/FBX，后台静默调用 RizomUV 处理后重新导入。
+* **自动化特征**：
+* **Auto-Seam（自动裁切）**：基于有机体/角色（Organic）算法自动识别接缝。
+* **Auto-Unwrap & Pack**：极速展开，自带行业顶级的 UV Packing 算法（支持倾斜对齐、岛屿填充）。
+
+
+* **MCP / Blender 集成脚本思路**：
+```python
+import subprocess
+
+# 1. 导出低模
+bpy.ops.wm.obj_export(filepath="C:/temp/lowpoly.obj", export_selected_objects=True)
+
+# 2. 调用 RizomUV 静默脚本 (无需打开 GUI)
+# 示例 RizomUV Lua 命令：ZomSetMode("Organic") -> ZomAutoSeam() -> ZomUnwrap() -> ZomPack()
+rizom_path = "C:/Program Files/RizomLab/RizomUV/rizomuv.exe"
+lua_script = "C:/scripts/auto_unwrap.lua"
+subprocess.run([rizom_path, "-s", lua_script, "C:/temp/lowpoly.obj"])
+
+# 3. 重新导入低模（此时已带完美 UV）
+
+```
+
+
+* **优势**：质量最高，绝对稳定，完全可以封进后台作为 API 节点使用。
+
+---
+
+### 2. 方案二：Blender 原生 Python API 全自动组合拳 (纯内部实现 ⚡)
+
+如果不希望引入付费外部软件，完全基于 Blender 内置功能，可以通过 Python 构建一套“智能角度分割 + 展开 + UVPackmaster 自动化”流程。
+
+#### 核心步骤：
+
+1. **按角度/材质自动缝合线**：对 QuadRemesher 生成的网格使用 `Smart UV Project`（智能 UV 投影）或按角度标记缝合线。
+2. **自动展开 (Unwrap)**：基于 Angle / Conformal 算法展开。
+3. **插件级 Pack**：调用 **UVPackmaster 3** 的 Python API（强烈推荐，Blender 内最强的排版插件，提供非常友好的 Python API）。
+
+#### MCP 风格代码段：
+
+```python
+import bpy
+
+def auto_uv_unwrap_and_pack(obj):
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.select_all(action='SELECT')
+    
+    # 1. 根据锐角和几何连续性自动生成缝合线 (也可尝试 smart_project)
+    bpy.ops.uv.smart_project(
+        angle_limit=66.0, 
+        island_margin=0.01, 
+        correct_aspect=True
+    )
+    
+    # 2. 如果已安装 UVPackmaster 3，调用其 API 自动化排版
+    try:
+        bpy.ops.uvp3.pack() # 调用 UVPackmaster 后台打包引擎
+    except:
+        # 退回内置打包算法
+        bpy.ops.uv.pack_islands(margin=0.005)
+
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+# 对当前选中的低模运行
+auto_uv_unwrap_and_pack(bpy.context.active_object)
+
+```
+
+* **优势**：环境完全在 Blender 内部，没有任何依赖导出/导入的损耗。
+* **缺点**：Smart Project 产生的 UV 碎块较多，依赖烘焙时的 **Padding（膨胀边距）** 保护，烘焙法线需要开够 8px~16px 的 Margin。
+
+---
+
+### 3. 方案三：Ministry of Flat 后台静默处理 (纯自动化神器 🤖)
+
+**Ministry of Flat** 是专门为了“游戏管道自动化”而生的命令行 Tool（很多 AAA 工作室如 EA、Ubi 在 Pipeline 中使用）。
+
+* **实现原理**：它只有一个功能——输入一个无 UV 的 3D 模型，通过 CLI 输出一个已经分好 Cut、Unwrap 并 Pack 好的 3D 模型。
+* **自动化特征**：
+* 零参数或者极少参数即可运行，专门优化过高模转低模（Organic / Hard Surface）的切割逻辑。
+* 非常契合 MCP / AI 系统的命令行调用逻辑。
+
+
+* **调用方式**：
+`moflat.exe input_lowpoly.fbx output_uv_lowpoly.fbx -margin 0.005`
+* **优势**：算法极其强悍，基本上是“傻瓜式一键”，极度适合无人工干预的自动化 Pipeline。
+
+---
+
+### 💡 面向“AI MCP 全自动化管线”的架构建议
+
+既然你的目标是 **“高模数字人 -> 游戏低模全自动化”**，UV 环节的脚本封装建议采用以下架构设计：
+
+| 模块 | 推荐选择 | MCP 控制逻辑 |
+| --- | --- | --- |
+| **拓扑 (Remesh)** | QuadRemesher (Python API) | 根据高模顶点数，自动计算目标 Target Quad Count。 |
+| **展开 (Unwrap)** | **RizomUV CLI** 或 **Blender Smart UV** | 自动设置缝合限制角度，无需人为介入放置 Seam。 |
+| **排版 (Packing)** | **UVPackmaster 3** (Blender 插件) | 脚本传入 Resolution (如 2048/4048) 自动计算 Margin，利用 GPU 加速打包。 |
+| **法线烘焙** | Blender Cycles / Marmoset CLI | 低模导入后，自动开启 `Ray Distance` 匹配烘焙，或自动创建 Cage 模型。 |
+
+> **提示**：对于角色高模（Organic），`Smart UV Project` 产生的缝合线可能会落在脸部等关键部位。如果你希望角色面部 UV 保持完整，**最稳定且无缝的自动化方案是：**
+> 在管道前端建立一个**标准的低模拓扑/UV Template**，通过 **Morph/Deform（如 Surface Deform 绑定或 BlendShape 拟合）** 变形到新高模的轮廓上，这样不仅省去了自动展 UV 的麻烦，还保留了人工优化的标准 UV 布局！

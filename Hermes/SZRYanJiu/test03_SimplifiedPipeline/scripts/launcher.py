@@ -25,15 +25,21 @@ sys.path.insert(0, SCRIPTS)
 print(f"LAUNCHER: stage={STAGE}, cwd={RD}")
 
 if STAGE == "repair":
-    # Import GLB first
+    # Import GLB first — repair = mesh repair + adhesion fix (one stage)
     bpy.ops.import_scene.gltf(filepath=GLB)
-    import repair
+    import repair, adhesion
     obj = repair.get_main_mesh()
     if not obj:
         print("ERROR: No mesh after GLB import")
         sys.exit(1)
-    result = repair.repair_pipeline(obj, 0.005, 3, 0.3)
+    # 1. Mesh repair (no Voxel Remesh — preserves high face count)
+    result = repair.repair_pipeline(obj, smooth_iter=2, smooth_factor=0.3)
     print(f"REPAIR: {result}")
+    # 2. Adhesion detect + fix
+    adh_result = adhesion.adhesion_pipeline(
+        obj, threshold_mm=5.0, push_step_mm=0.3,
+        smooth_iter=3, smooth_factor=0.15, max_pairs=2000)
+    print(f"ADHESION: {adh_result}")
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(RD, "01_repair.blend"))
 
 elif STAGE == "adhesion":
