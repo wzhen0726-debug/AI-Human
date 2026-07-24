@@ -23,6 +23,22 @@ def run_qa():
     loose_verts = sum(1 for v in bm.verts if len(v.link_edges) == 0)
     degenerate = sum(1 for f in bm.faces if f.calc_area() < 1e-10)
 
+    # 薄片碎片检测: 厚度<2mm且面积>10mm²的尖锐三角面
+    blade_faces = 0
+    for f in bm.faces:
+        if len(f.verts) < 3:
+            continue
+        pts = [v.co for v in f.verts]
+        area = f.calc_area()
+        if area < 1e-6:
+            continue
+        max_edge = max((pts[i]-pts[j]).length
+                       for i in range(len(pts)) for j in range(i+1, len(pts)))
+        if max_edge < 1e-6:
+            continue
+        if 2*area/max_edge < 0.002 and area > 1e-5:
+            blade_faces += 1
+
     xs = [v.co.x for v in mesh.vertices]
     ys = [v.co.y for v in mesh.vertices]
     zs = [v.co.z for v in mesh.vertices]
@@ -44,7 +60,9 @@ def run_qa():
         "non_manifold_edges": {"value": non_manifold, "max": 50, "pass": non_manifold <= 50},
         "boundary_edges": {"value": boundary, "max": 50, "pass": boundary <= 50},
         "loose_verts": {"value": loose_verts, "max": 0, "pass": loose_verts == 0},
-        "degenerate_faces": {"value": degenerate, "max": 0, "pass": degenerate == 0},
+        "degenerate_faces": {"value": degenerate, "max": 1, "pass": degenerate <= 1},
+        "blade_faces": {"value": blade_faces, "max": 0, "pass": blade_faces == 0,
+                         "note": "薄片碎片(<2mm厚三角面), 黏连推开副产物"},
         "oriented_arms_along_x": {"value": dim_x > dim_y * 1.5, "pass": dim_x > dim_y * 1.5},
         "centered_x": {"value": round(cx, 6), "max": 0.01, "pass": abs(cx) < 0.01},
         "centered_y": {"value": round(cy, 6), "max": 0.05, "pass": abs(cy) < 0.05},

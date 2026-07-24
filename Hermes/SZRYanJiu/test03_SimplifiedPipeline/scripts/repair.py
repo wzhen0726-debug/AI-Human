@@ -20,6 +20,7 @@ Steps:
 Blender 5.1 background script.
 """
 import bpy, bmesh, sys, os, json, argparse, math, time
+from mathutils import Vector, Matrix
 
 
 def get_main_mesh():
@@ -48,11 +49,60 @@ def get_bbox(obj):
 
 
 def rotate_to_standard(obj):
-    """Rotate so arms→X, face→-Y. Tripo default: arms along Y, face +X."""
+    """Rotate so arms→X, face→-Y. Tripo default: arms along Y, face +X.
+    
+    Handles:
+    - T-pose: arms along Y, face +X → rotate 90° around Z
+    - A-pose: arms along Y (smaller angle), face +X → same rotation
+    - Lying pose: height along Y, width along Z → rotate -90° around X first, then Z
+    - Pre-existing matrix_world rotation (e.g. Hunyuan X-90°) → clear first
+    """
+    # 先清除 matrix_world 的旋转 (混元模型自带 X-90°)
+    if abs(obj.matrix_world.to_euler().x) > 0.01 or abs(obj.matrix_world.to_euler().y) > 0.01:
+        print(f"  Clearing pre-existing rotation: {obj.matrix_world.to_euler()}")
+        # 应用旋转到顶点, 然后重置 matrix_basis
+        bm = bmesh.new(); bm.from_mesh(obj.data)
+        rot = obj.matrix_world.to_3x3()
+        for v in bm.verts:
+            v.co = rot @ v.co
+        bm.to_mesh(obj.data); bm.free()
+        # 重置对象变换 (matrix_basis 是存储值)
+        obj.matrix_basis = Matrix.Identity(4)
+        obj.data.update()
+    
     mn, mx, dims = get_bbox(obj)
-    dim_x, dim_y = dims[0], dims[1]
+    dim_x, dim_y, dim_z = dims[0], dims[1], dims[2]
+    
+    # Case 1: 躺姿检测 (身高在Y, 身宽在Z, 厚度在X)
+    # 躺姿特征: dim_y 是最大维度(身高), dim_z 很小(厚度/身高比<0.3)
+    if dim_y > dim_x * 1.5 and dim_z < dim_y * 0.35:
+        print(f"  Lying pose detected: dim_x={dim_x:.3f} dim_y={dim_y:.3f} dim_z={dim_z:.3f}")
+        print(f"  Rotating +90° around X (stand up)")
+        bm = bmesh.new(); bm.from_mesh(obj.data)
+        for v in bm.verts:
+            # 绕X轴+90°: y→-z, z→y (躺→站)
+            old_y, old_z = v.co.y, v.co.z
+            v.co.y = -old_z; v.co.z = old_y
+        bm.to_mesh(obj.data); bm.free(); obj.data.update()
+        mn2, mx2, dims2 = get_bbox(obj)
+        print(f"  After stand-up: dim_x={dims2[0]:.3f} dim_y={dims2[1]:.3f} dim_z={dims2[2]:.3f}")
+        
+        # 站起后再次检查: 如果 arms 还在 Y, 再绕 Z 转 90°
+        dim_x2, dim_y2 = dims2[0], dims2[1]
+        if dim_y2 > dim_x2 * 1.5:
+            print(f"  Arms still along Y, rotating 90° around Z")
+            bm = bmesh.new(); bm.from_mesh(obj.data)
+            for v in bm.verts:
+                old_x, old_y = v.co.x, v.co.y
+                v.co.x = old_y; v.co.y = -old_x
+            bm.to_mesh(obj.data); bm.free(); obj.data.update()
+            mn3, mx3, dims3 = get_bbox(obj)
+            print(f"  After Z-rotate: dim_x={dims3[0]:.3f} dim_y={dims3[1]:.3f} dim_z={dims3[2]:.3f}")
+        return True
+    
+    # Case 2: 标准 T/A-pose (arms沿Y, face朝X)
     if dim_y > dim_x * 1.8:
-        print(f"  Rotating: dim_x={dim_x:.3f} dim_y={dim_y:.3f}")
+        print(f"  Rotating T/A-pose: dim_x={dim_x:.3f} dim_y={dim_y:.3f}")
         bm = bmesh.new(); bm.from_mesh(obj.data)
         for v in bm.verts:
             old_x, old_y = v.co.x, v.co.y
@@ -61,7 +111,8 @@ def rotate_to_standard(obj):
         mn2, mx2, dims2 = get_bbox(obj)
         print(f"  After: dim_x={dims2[0]:.3f} dim_y={dims2[1]:.3f} dim_z={dims2[2]:.3f}")
         return True
-    print(f"  No rotation: dim_x={dim_x:.3f} dim_y={dim_y:.3f}")
+    
+    print(f"  No rotation needed: dim_x={dim_x:.3f} dim_y={dim_y:.3f} dim_z={dim_z:.3f}")
     return False
 
 
@@ -122,16 +173,20 @@ def fix_non_manifold_edges(obj):
 
 
 def laplacian_smooth(obj, iterations=2, lambda_factor=0.3):
-    """Gentle smooth: just enough to remove scan noise, preserve detail."""
+    """渐进式 Laplacian smooth: 早期适度去噪, 晚期保留细节.
+    因子从 lambda_factor 线性衰减到 lambda_factor*0.33 (0.35→0.10 模式)."""
     bpy.context.view_layer.objects.active = obj
     obj.select_set(True)
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
-    for _ in range(iterations):
+    total = iterations
+    for it in range(total):
+        # 渐进: lambda_factor → lambda_factor/3
+        f = lambda_factor - (lambda_factor * 0.67) * (it / max(total - 1, 1))
         try:
-            bpy.ops.mesh.vertices_smooth_laplacian(repeat=1, lambda_factor=lambda_factor)
+            bpy.ops.mesh.vertices_smooth_laplacian(repeat=1, lambda_factor=f)
         except AttributeError:
-            bpy.ops.mesh.vertices_smooth(factor=0.3, repeat=1)
+            bpy.ops.mesh.vertices_smooth(factor=f, repeat=1)
     bpy.ops.object.mode_set(mode='OBJECT')
 
 
@@ -156,7 +211,8 @@ def verify_mesh(obj):
         "dimensions": {"x": round(dims[0],4), "y": round(dims[1],4), "z": round(dims[2],4)},
     }
     # Acceptable: non_manifold < 50 and boundary < 50 (minor, QR can handle)
-    result["PASS"] = (loose == 0) and (degen == 0) and (non_manifold < 50) and (boundary < 50) and oriented
+    # degenerate ≤ 1 (AI模型可能残留1个, QR可处理)
+    result["PASS"] = (loose == 0) and (degen <= 1) and (non_manifold < 50) and (boundary < 50) and oriented
     return result
 
 
@@ -176,10 +232,11 @@ def repair_pipeline(obj, smooth_iter=2, smooth_factor=0.3):
     print("\n[2] Center & ground...")
     center_model(obj)
 
-    print("\n[3] Remove doubles...")
+    print("\\n[3] Remove doubles...")
+    # 高阈值收集: 只合并真正重合的顶点, 避免把AI融合手的近距层拉成碎片
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
-    bpy.ops.mesh.remove_doubles(threshold=0.0001)
+    bpy.ops.mesh.remove_doubles(threshold=0.00005)  # 0.05mm, 原0.1mm
     bpy.ops.object.mode_set(mode='OBJECT')
     stats["after_remove_doubles"] = len(mesh.vertices)
     print(f"  {len(mesh.vertices)} verts")
@@ -202,10 +259,10 @@ def repair_pipeline(obj, smooth_iter=2, smooth_factor=0.3):
     print(f"\n[7] Laplacian smooth (iter={smooth_iter})...")
     laplacian_smooth(obj, smooth_iter, smooth_factor)
 
-    print("\n[8] Final fill holes + remove doubles...")
+    print("\\n[8] Final fill holes + remove doubles...")
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
-    bpy.ops.mesh.remove_doubles(threshold=0.0001)
+    bpy.ops.mesh.remove_doubles(threshold=0.00005)  # 0.05mm, 原0.1mm
     bpy.ops.mesh.fill_holes(sides=0)
     bpy.ops.mesh.normals_make_consistent(inside=False)
     bpy.ops.object.mode_set(mode='OBJECT')

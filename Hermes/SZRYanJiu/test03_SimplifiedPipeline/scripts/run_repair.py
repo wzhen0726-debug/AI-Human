@@ -31,12 +31,18 @@ if not obj:
     sys.exit(1)
 
 # 3. 网格修复
+print("\n[0] 开始网格修复...")
+t0 = __import__('time').time()
 repair_result = repair.repair_pipeline(obj, smooth_iter=2, smooth_factor=0.3)
+print(f"[0] 网格修复完成 ({__import__('time').time()-t0:.1f}s)")
 
 # 4. 黏连修复
+print("\n[0] 开始黏连修复...")
+t0 = __import__('time').time()
 adhesion_result = adhesion.adhesion_pipeline(
     obj, threshold_mm=5.0, push_step_mm=0.5,
     smooth_iter=5, smooth_factor=0.2, max_pairs=5000)
+print(f"[0] 黏连修复完成 ({__import__('time').time()-t0:.1f}s)")
 
 # 5. 最终质量检查
 final_check = repair.verify_mesh(obj)
