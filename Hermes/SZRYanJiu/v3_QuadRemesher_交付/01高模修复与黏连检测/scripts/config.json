@@ -1,0 +1,49 @@
+{
+    "_comment": "简化版Quad Remesher全自动管线 v3 配置文件",
+    "pipeline": {
+        "input_model": "input/raw_model.glb",
+        "output_dir": "output",
+        "blender_path": "D:/Program Files/Blender Foundation/Blender 5.1/blender.exe",
+        "stages": ["repair", "adhesion", "remesh", "uv", "bake", "rig", "export_glb"]
+    },
+    "repair": {
+        "smooth_iterations": 2,
+        "smooth_factor": 0.3,
+        "remove_doubles_distance": 0.0001
+    },
+    "adhesion": {
+        "threshold_mm": 5.0,
+        "push_step_mm": 0.3,
+        "smooth_iterations": 3,
+        "smooth_factor": 0.15,
+        "max_pairs": 2000
+    },
+    "remesh": {
+        "target_count": 100000,
+        "use_symmetry_y": false,
+        "detect_hard_edges": true,
+        "adaptive_size": true
+    },
+    "uv": {
+        "angle_threshold_deg": 55.0,
+        "island_margin": 0.005,
+        "symmetry_axis": "Y",
+        "symmetry_threshold": 0.001
+    },
+    "bake": {
+        "image_size": 2048,
+        "bake_distance": 0.02,
+        "cage_extrusion": 0.01,
+        "bake_diffuse": true,
+        "bake_normal": true
+    },
+    "rig": {
+        "method": "mixamo",
+        "fallback": "auto_rig_pro"
+    },
+    "export_glb": {
+        "export_animations": false,
+        "apply_modifiers": true,
+        "texture_format": "JPEG"
+    }
+}
