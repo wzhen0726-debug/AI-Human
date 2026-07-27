@@ -160,19 +160,63 @@ def fix_adhesion(obj, adhesion_pairs, push_step_mm=0.3, smooth_iter=3,
                 affected[v.index] = Vector((0, 0, 0))
             affected[v.index] += n_j * push_step
 
-    # 应用位移+clamp
+    # 推开前: 保存受影响面的原始法线
+    face_normals_before = {}
+    for (fi, fj, dist) in adhesion_pairs:
+        if fi not in face_normals_before:
+            face_normals_before[fi] = bm.faces[fi].normal.normalized().copy()
+        if fj not in face_normals_before:
+            face_normals_before[fj] = bm.faces[fj].normal.normalized().copy()
+
+    # 应用位移+clamp, 同时记录每个面的总位移
     clamped = 0
+    face_displacement = {}  # fi -> 总位移向量
     for vi, push_vec in affected.items():
         if push_vec.length > max_displacement:
             push_vec = push_vec.normalized() * max_displacement
             clamped += 1
         bm.verts[vi].co += push_vec
+    
+    # 计算每个受影响面的平均位移
+    for (fi, fj, dist) in adhesion_pairs:
+        for f in [fi, fj]:
+            if f not in face_displacement:
+                face_displacement[f] = Vector((0, 0, 0))
+            # 面的位移 = 其所有顶点位移的平均
+            verts = [v for v in bm.faces[f].verts]
+            disp = sum((affected[v.index] for v in verts if v.index in affected), Vector((0,0,0)))
+            count = sum(1 for v in verts if v.index in affected)
+            if count > 0:
+                face_displacement[f] = disp / count
+
     if clamped:
         print(f"  Clamped {clamped} vertices to max_displacement={max_displacement*1000:.2f}mm")
 
     bm.to_mesh(mesh)
     bm.free()
 
+    # 推开后: 根据位移方向修正法线
+    # 如果面被推开了, 新法线应该与位移方向一致 (朝外)
+    print("  Correcting normals by displacement direction...")
+    bm2 = bmesh.new()
+    bm2.from_mesh(mesh)
+    bm2.faces.ensure_lookup_table()
+    corrected = 0
+    for fi, disp in face_displacement.items():
+        if fi < len(bm2.faces) and disp.length > 0.0001:
+            f = bm2.faces[fi]
+            curr_n = f.normal.normalized()
+            disp_dir = disp.normalized()
+            # 如果当前法线与位移方向相反, 翻转
+            # 位移方向 = 推开方向 = 应该朝外
+            if curr_n.dot(disp_dir) < 0:
+                f.normal_flip()
+                corrected += 1
+    bm2.to_mesh(mesh)
+    bm2.free()
+    mesh.update()
+    print(f"  Corrected {corrected} face normals")
+    
     # 渐进式平滑: 0.35→0.10, 保护推开后的几何
     bpy.context.view_layer.objects.active = obj
     obj.select_set(True)

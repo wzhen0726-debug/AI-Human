@@ -1,15 +1,21 @@
 """
 高模修复一键运行脚本（网格修复 + 黏连修复）
 用法:
-  cd test03_SimplifiedPipeline
-  blender --background --factory-startup --python scripts/run_repair.py
+  blender --background --factory-startup --python scripts/run_repair.py [-- <input.glb> <output.blend>]
+默认: input/raw_model.glb → v6_run/01_repair.blend
 """
 import bpy, sys, os, json
 
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(SCRIPTS_DIR)
-GLB_PATH = os.path.join(PROJECT_DIR, "input", "raw_model.glb")
-OUTPUT_PATH = os.path.join(PROJECT_DIR, "v6_run", "01_repair.blend")
+
+if '--' in sys.argv:
+    argv = sys.argv[sys.argv.index('--') + 1:]
+    GLB_PATH = argv[0]
+    OUTPUT_PATH = argv[1]
+else:
+    GLB_PATH = os.path.join(PROJECT_DIR, "input", "raw_model.glb")
+    OUTPUT_PATH = os.path.join(PROJECT_DIR, "v6_run", "01_repair.blend")
 
 print("=" * 60)
 print("高模修复（网格修复 + 黏连修复）")

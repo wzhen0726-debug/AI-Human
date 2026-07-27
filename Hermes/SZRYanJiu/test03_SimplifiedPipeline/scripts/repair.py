@@ -249,14 +249,14 @@ def repair_pipeline(obj, smooth_iter=2, smooth_factor=0.3):
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
     bpy.ops.mesh.fill_holes(sides=0)
-    bpy.ops.mesh.normals_make_consistent(inside=False)
+    # 不做 normals_make_consistent: 在193万面上会翻转正确面
     bpy.ops.object.mode_set(mode='OBJECT')
     print(f"  Done ({time.time()-t0:.1f}s)")
 
     print("\n[6] Fix non-manifold edges...")
     stats["non_manifold_fixed"] = fix_non_manifold_edges(obj)
 
-    print(f"\n[7] Laplacian smooth (iter={smooth_iter})...")
+    print(f"\\n[7] Laplacian smooth (iter={smooth_iter})...")
     laplacian_smooth(obj, smooth_iter, smooth_factor)
 
     print("\\n[8] Final fill holes + remove doubles...")
@@ -264,7 +264,7 @@ def repair_pipeline(obj, smooth_iter=2, smooth_factor=0.3):
     bpy.ops.mesh.select_all(action='SELECT')
     bpy.ops.mesh.remove_doubles(threshold=0.00005)  # 0.05mm, 原0.1mm
     bpy.ops.mesh.fill_holes(sides=0)
-    bpy.ops.mesh.normals_make_consistent(inside=False)
+    # 不做 normals_make_consistent: 193万面上会把正确面翻转 (已验证是法线翻转元凶)
     bpy.ops.object.mode_set(mode='OBJECT')
 
     print("\n[9] Re-ground...")

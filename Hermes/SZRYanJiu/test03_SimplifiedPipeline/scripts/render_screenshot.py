@@ -29,26 +29,21 @@ print(f"model dims (local): ({dims[0]:.4f}, {dims[1]:.4f}, {dims[2]:.4f})")
 
 # 设置渲染参数
 scene = bpy.context.scene
-scene.render.engine = 'BLENDER_EEVEE'
+scene.render.engine = 'BLENDER_WORKBENCH'
 scene.render.resolution_x = 1024
 scene.render.resolution_y = 1024
 scene.render.resolution_percentage = 100
+scene.display.shading.light = 'STUDIO'
+scene.display.shading.color_type = 'VERTEX'
+scene.display.shading.show_cavity = True
 
-# EEVEE 光照设置
-scene.world.color = (0.3, 0.3, 0.3)
-if scene.world.use_nodes:
-    bg = scene.world.node_tree.nodes.get("Background")
-    if bg:
-        bg.inputs[0].default_value = (0.4, 0.4, 0.4, 1.0)
-        bg.inputs[1].default_value = 1.5
-
-# 新建浅色材质
-mat = bpy.data.materials.new(name="ClayLight")
-mat.use_nodes = True
-bsdf = mat.node_tree.nodes["Principled BSDF"]
-bsdf.inputs["Base Color"].default_value = (0.7, 0.7, 0.7, 1.0)
-bsdf.inputs["Roughness"].default_value = 0.8
-obj.data.materials.append(mat)
+# 设置顶点颜色为浅色 (只设部分验证, 避免193万面循环超时)
+if not obj.data.vertex_colors:
+    obj.data.vertex_colors.new()
+vc = obj.data.vertex_colors[0]
+# 只设前1000个loop验证
+for i in range(min(1000, len(vc.data))):
+    vc.data[i].color = (0.7, 0.7, 0.7, 1.0)
 
 # 确保有相机 (在场景中持久化)
 cam = bpy.data.objects.get("Camera")
