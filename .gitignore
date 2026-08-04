@@ -1,14 +1,26 @@
+# === 二进制模型资产(体积大,不入git) ===
 *.blend
 *.blend1
 *.glb
+*.gltf.bin
 *.fbx
 *.obj
+*.zpr
 *.png
 *.jpg
 *.tga
 *.exr
+*.bmp
+*.bin
+
+# === Python ===
 __pycache__/
 *.pyc
+
+# === 中间运行产物 ===
 v5_run/
 v4_run/
 v3_run/
+
+# === 本地工具状态 ===
+.hermes/
