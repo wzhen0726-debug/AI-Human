@@ -1,0 +1,5 @@
+# wrap_archive
+
+Wrap 实验归档目录。二进制产物不入git。
+
+> 本文件为目录占位符：GitHub 不跟踪空文件夹，此 README 保证目录结构在仓库中可见。
