@@ -22,6 +22,25 @@ for obj in data_to.objects:
     bpy.context.collection.objects.link(obj)
 high_poly = [o for o in bpy.data.objects if o.type == 'MESH' and o != low_poly][0]
 
+# 对齐安全检查 (08-05新增): 低模经FBX往返可能带变换, 与高模错位会导致烘焙整体偏移
+# 判定: 世界bbox中心偏差>5mm 或 尺寸偏差>1% → 立即报错, 不静默产出废贴图
+def _wbbox(o):
+    cs = [o.matrix_world @ v.co for v in o.data.vertices]
+    mn = [min(c[i] for c in cs) for i in range(3)]
+    mx = [max(c[i] for c in cs) for i in range(3)]
+    return mn, mx
+mn_l, mx_l = _wbbox(low_poly)
+mn_h, mx_h = _wbbox(high_poly)
+ctr_l = [(mn_l[i]+mx_l[i])/2 for i in range(3)]
+ctr_h = [(mn_h[i]+mx_h[i])/2 for i in range(3)]
+size_l = [mx_l[i]-mn_l[i] for i in range(3)]
+size_h = [mx_h[i]-mn_h[i] for i in range(3)]
+ctr_dev = max(abs(ctr_l[i]-ctr_h[i]) for i in range(3))
+size_dev = max(abs(size_l[i]-size_h[i])/max(size_h[i], 1e-9) for i in range(3))
+print(f"对齐检查: 中心偏差={ctr_dev*1000:.2f}mm, 尺寸偏差={size_dev*100:.2f}%")
+if ctr_dev > 0.005 or size_dev > 0.01:
+    raise SystemExit(f"ERROR: 低模/高模未对齐 (中心偏差{ctr_dev*1000:.2f}mm, 尺寸偏差{size_dev*100:.2f}%), 烘焙将错位, 中止")
+
 # 高模贴图检查（blend里已内嵌贴图，无需外部替换）
 # 如果存在修复贴图则替换，否则直接使用高模自带贴图
 tex_replaced = 0

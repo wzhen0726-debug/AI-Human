@@ -22,9 +22,10 @@
 NN步骤名/
 ├── README.md            # 方案说明、参数、输入输出、验证结果
 ├── scripts/             # ★ 可交付的 py 脚本（可独立复跑）
-├── *.blend / *.fbx      # 产物（二进制，本地保留，不入 git）
-└── docs/                # （01 特有）操作手册
+└── *.blend / *.fbx      # 产物（二进制，本地保留，不入 git）
 ```
+
+> 失败记录/问题分析/操作手册类文档不放在交付内，统一存放于 `..\方案md记录\v3_QuadRemesher\`。
 
 ## 各步骤脚本一览
 
@@ -46,7 +47,6 @@ NN步骤名/
 | `models/` | 修复后高模 blend（tripoTpose / tripoApose / hunyuanApose）+ 当前主管线 `01_highpoly_repair.blend` |
 | `screenshots/` | 三视角截图与历次问题排查截图 |
 | `scripts/` | 完整可运行的修复管线代码 |
-| `docs/` | 高模修复操作手册 v16/v20（含 12 个难题的根因与解法） |
 
 ### 快速验证
 
@@ -68,15 +68,31 @@ set B="D:\Program Files\Blender Foundation\Blender 5.1\blender.exe"
 
 ## 02QuadRemesher 拓扑
 
-QR 引擎（xremesh.exe）全自动重拓扑：193万三角面 → 14.9万四边面（100% quad）。详见目录内 README（含 SymAxis 关闭决策：纹理不对称导致烘焙错位，改用自然拓扑）。
+QR 引擎（xremesh.exe）全自动重拓扑。详见目录内 README（含 SymAxis 关闭决策：纹理不对称导致烘焙错位，改用自然拓扑）。
+
+**08-05 全流程重跑验证**（输入 = 01 主管线 `01_highpoly_repair.blend`，58 秒完成）：
+
+| 指标 | 结果 |
+|---|---|
+| 面数 | 142,602（quad 142,574 = 100.0%，三角 28） |
+| 非流形边 | 0 |
+| 三角面合计 | 285,176 ≤ 300,000 ✓ |
 
 ## 03自动UV
 
 Smart UV Project：`angle_limit=66°`, `island_margin=0.01`, `correct_aspect=True`。边缘角度>55°的接缝方案在高面数上产生碎岛，已弃用。
 
+**08-05 重跑结果**：UV 范围 U/V ∈ [0.006, 0.993]，360 个 UV 岛（最大岛 15,391 面，无碎岛）。脚本已修复 UV 岛统计（旧版 BFS 走几何邻接忽略 UV 接缝，连通网格恒报 1 岛，指标失真）。
+
 ## 04纹理烘焙
 
 Cycles Selected-to-Active：Diffuse + Normal 双 4K，`cage_extrusion=0.01`, `max_ray_distance=0.05`（防衣服穿透见皮肤）。产物：`04_diffuse_4k.png` / `04_normal_4k.png` / `05_for_mixamo.fbx`。
+
+**08-05 重跑结果**：
+- 低模/高模对齐检查通过（中心偏差 0.37mm，尺寸偏差 0.12%）
+- Diffuse 4K：UV 覆盖 45.8%，非黑区暖色调（R/G=1.38，肤色特征），四象限色彩分布正常
+- Normal 4K：无黑区，蓝通道均值 0.994
+- 视觉验证（正/背面渲染）：肤色/衣物真实、无黑斑、无 UV 接缝错位，合格
 
 ## 参考
 
