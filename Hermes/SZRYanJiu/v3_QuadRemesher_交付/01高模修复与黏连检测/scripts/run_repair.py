@@ -53,6 +53,9 @@ print(f"[0] 黏连修复完成 ({__import__('time').time()-t0:.1f}s)")
 # 5. 最终质量检查
 final_check = repair.verify_mesh(obj)
 
+# 5.5 最终焊接 (v17): 保证 QR-ready, 解决 xremesh 卡 21%
+weld_result = repair.final_weld_for_qr(obj)
+
 # 6. 保存
 os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
 bpy.ops.wm.save_as_mainfile(filepath=OUTPUT_PATH)
@@ -61,4 +64,6 @@ print(f"\n最终模型: {final_check['verts']} verts, {final_check['faces']} fac
 print(f"水密: {final_check['watertight']}, 流形: {final_check['manifold']}")
 print(f"非流形边: {final_check['non_manifold_edges']}, 边界边: {final_check['boundary_edges']}")
 print(f"尺寸: {final_check['dimensions']}")
+print(f"最终焊接: 焊掉 {weld_result['welded']} 顶点, 补 {weld_result['filled']} 孔面, "
+      f"焊后非流形={weld_result['non_manifold']} 边界={weld_result['boundary']}")
 print("=" * 60)
