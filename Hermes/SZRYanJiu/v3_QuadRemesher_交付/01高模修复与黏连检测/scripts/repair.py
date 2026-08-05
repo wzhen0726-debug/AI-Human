@@ -90,9 +90,10 @@ def _foot_score_for_axis(coords, axis):
     n = max(1, len(idx) // 100)
     lo, hi = coords[idx[:n]], coords[idx[-n:]]
     others = [a for a in range(3) if a != axis]
-    lo_area = lo[:, others[0]].ptp() * lo[:, others[1]].ptp()
-    hi_area = hi[:, others[0]].ptp() * hi[:, others[1]].ptp()
-    total = coords[:, others[0]].ptp() * coords[:, others[1]].ptp()
+    # np.ptp() 兼容 numpy 1.x/2.x (2.0 移除了 ndarray.ptp 方法)
+    lo_area = np.ptp(lo[:, others[0]]) * np.ptp(lo[:, others[1]])
+    hi_area = np.ptp(hi[:, others[0]]) * np.ptp(hi[:, others[1]])
+    total = np.ptp(coords[:, others[0]]) * np.ptp(coords[:, others[1]])
     if total <= 1e-12:
         return 0.0, lo_area, hi_area
     return (lo_area - hi_area) / total, lo_area, hi_area
@@ -106,7 +107,8 @@ def _rotate_verts(obj, mode):
     'z180'  绕Z180° (x,y)→(-x,-y)
     """
     arr = _get_coords(obj)
-    x, y, z = arr[:, 0], arr[:, 1], arr[:, 2]
+    # 必须 copy: numpy 视图别名会导致元组赋值读到已被覆盖的列 (x+90/y-90/z+90)
+    x, y, z = arr[:, 0].copy(), arr[:, 1].copy(), arr[:, 2].copy()
     if mode == 'x+90':      # y→z, z→-y
         arr[:, 1], arr[:, 2] = -z, y
     elif mode == 'y-90':    # x→z, z→-x
