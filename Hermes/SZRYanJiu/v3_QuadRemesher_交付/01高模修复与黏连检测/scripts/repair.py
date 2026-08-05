@@ -246,10 +246,14 @@ def dissolve_floating_faces(obj, max_area=1e-8):
     removed = 0
     for f in tiny:
         try:
-            if all(lf.calc_area() < max_area * 10 for lf in f.link_faces if lf != f) or len(f.link_faces) == 0:
+            # BMFace 无 link_faces 属性: 邻接面 = 各边 link_faces 的并集(除自身)
+            neighbors = set()
+            for e in f.edges:
+                neighbors.update(lf for lf in e.link_faces if lf != f)
+            if not neighbors or all(nf.calc_area() < max_area * 10 for nf in neighbors):
                 bm.faces.remove(f)
                 removed += 1
-        except ReferenceError:
+        except (ValueError, ReferenceError):
             pass
     loose = [v for v in bm.verts if len(v.link_edges) == 0]
     for v in loose:
