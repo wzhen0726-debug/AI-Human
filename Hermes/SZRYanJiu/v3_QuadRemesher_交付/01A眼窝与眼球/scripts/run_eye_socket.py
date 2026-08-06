@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from eye_socket_config import *
 from iris_detect import detect_iris_centers
-from socket_ops import make_eye_socket
+from socket_ops import make_eye_socket, seal_socket_bottom
 
 def render_shots(filepath_prefix):
     """渲染正面特写+侧面截图到screenshots目录"""
@@ -55,8 +55,10 @@ def main():
     
     # 左眼
     make_eye_socket(obj, cL, "L")
+    seal_socket_bottom(obj, cL, "L")
     # 右眼
     make_eye_socket(obj, cR, "R")
+    seal_socket_bottom(obj, cR, "R")
     
     # 保存
     bpy.ops.wm.save_as_mainfile(filepath=OUT_BLEND)

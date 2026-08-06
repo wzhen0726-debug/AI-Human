@@ -89,10 +89,78 @@ def make_eye_socket(obj, center, side):
     mesh.update()
     print(f"make_eye_socket {side}: pushed {mask.sum()} verts, max_depth={SOCKET_DEPTH*1000:.1f}mm")
     
-    # ---- 3. 清理 ----
+    # ---- 3. 局部清理（禁止全局Shift+N） ----
+    # 历史教训: bpy.ops.mesh.normals_make_consistent(inside=False) 在删面后的非封闭网格上
+    # 是非确定性传播(等效Shift+N), 会翻过洞边缘把下半身大片法线搞反(2026-08-06实测).
+    # 01_highpoly_repair.blend 法线本来就正确, 绝不能全局重算.
+    # 删面+压凹只动顶点位置, 不改面绕序(winding), 法线方向保持原样即可.
+    # 只做局部焊接: 合并洞口边缘的重复顶点(压凹可能让边界顶点重叠)
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
     bpy.ops.mesh.remove_doubles(threshold=0.0001)
-    bpy.ops.mesh.normals_make_consistent(inside=False)
     bpy.ops.object.mode_set(mode='OBJECT')
-    print(f"make_eye_socket {side}: cleanup done")
+    print(f"make_eye_socket {side}: cleanup done (local weld only, no global recalc)")
+
+
+def seal_socket_bottom(obj, center, side):
+    """封碗底: 在眼窝开口后方生成一个凹陷的封闭碗状曲面, 防止从洞口看穿到后脑内部.
+    
+    原理: 找到开口边界环(开放边), 在碗底中心加一个点, 用三角扇把边界环连到碗底.
+    碗底深度 = SOCKET_DEPTH * CUP_DEPTH_RATIO, 保证眼球放进去后有封闭背景.
+    """
+    mesh = obj.data
+    center = Vector(center)
+    cup_depth = SOCKET_DEPTH * CUP_DEPTH_RATIO   # 碗底比压凹更深一点
+    rim_y = center.y                              # 开口平面的 y (脸表面)
+    bottom_y = rim_y + cup_depth                  # +Y 朝头内
+    
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.mode_set(mode='EDIT')
+    bm = bmesh.from_edit_mesh(mesh)
+    bm.verts.ensure_lookup_table()
+    bm.edges.ensure_lookup_table()
+    
+    # 找开口边界环: 只有1个面相邻的边(开放边), 且靠近眼窝中心
+    boundary_verts = set()
+    for e in bm.edges:
+        if len(e.link_faces) == 1:
+            mx = (e.verts[0].co.x + e.verts[1].co.x) / 2
+            mz = (e.verts[0].co.z + e.verts[1].co.z) / 2
+            # 边界边中点要在椭圆附近(1.0~1.6倍半径), 才是眼窝的洞边
+            dx = (mx - center.x) / HOLE_RX
+            dz = (mz - center.z) / HOLE_RZ
+            r2 = dx*dx + dz*dz
+            if 0.6 < r2 < 2.6 and abs((e.verts[0].co.y + e.verts[1].co.y)/2 - rim_y) < 0.03:
+                boundary_verts.add(e.verts[0])
+                boundary_verts.add(e.verts[1])
+    
+    if len(boundary_verts) < 3:
+        bpy.ops.object.mode_set(mode='OBJECT')
+        print(f"seal_socket_bottom {side}: WARNING only {len(boundary_verts)} boundary verts, skip")
+        return
+    
+    # 把边界顶点按绕中心的角度排序, 形成有序环
+    import math
+    def ang(v):
+        return math.atan2(v.co.z - center.z, v.co.x - center.x)
+    ring = sorted(boundary_verts, key=ang)
+    
+    # 碗底中心点
+    bottom_vert = bm.verts.new((center.x, bottom_y, center.z))
+    
+    # 三角扇连接: 环上相邻两点 + 碗底中心
+    # 法线方向: 要让碗内壁朝外(朝眼球/朝-Y), 绕序需与开口面一致
+    new_faces = []
+    n = len(ring)
+    for i in range(n):
+        v1 = ring[i]
+        v2 = ring[(i+1) % n]
+        try:
+            f = bm.faces.new((v1, v2, bottom_vert))
+            new_faces.append(f)
+        except ValueError:
+            pass  # 面已存在
+    
+    bmesh.update_edit_mesh(mesh)
+    bpy.ops.object.mode_set(mode='OBJECT')
+    print(f"seal_socket_bottom {side}: ring={n} verts, created {len(new_faces)} fan faces, bottom_y={bottom_y:.4f}")

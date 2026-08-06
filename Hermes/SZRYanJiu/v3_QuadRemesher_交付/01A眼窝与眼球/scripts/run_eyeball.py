@@ -36,9 +36,14 @@ def place_eyeball(eye, opening_center, side):
     # 2. 缩放
     eye.scale = (EYE_SCALE, EYE_SCALE, EYE_SCALE)
     
-    # 3. 位置: 开口中心沿-Y内缩
-    # 注意: GLB眼球局部中心y=-0.0021(-2.1mm偏移), 需要补偿
-    target = Vector(opening_center) + Vector((0, -EYE_PUSH_IN + 0.0021, 0))
+    # 3. 位置: 几何定参. 模型面朝-Y(前方=y减小), 头内=+Y(y增大).
+    # 角膜要探出唇缘 CORNEA_PROTRUDE, 唇缘在最前(y最小).
+    # 角膜最前极 = 球心y - 半径. 要求: 球心y - 半径 = 唇缘y - 探出量
+    # => 球心y = 唇缘y + 半径 - 探出量  (+Y往头内退)
+    # GLB眼球局部中心y=-0.0021(-2.1mm偏移), 需补偿+0.0021
+    opening = Vector(opening_center)
+    ball_center_y = opening.y + (EYE_RADIUS * EYE_SCALE - CORNEA_PROTRUDE)
+    target = Vector((opening.x, ball_center_y + 0.0021, opening.z))
     eye.location = target
     
     # 4. 朝向: 瞳孔+Z对准全局-Y

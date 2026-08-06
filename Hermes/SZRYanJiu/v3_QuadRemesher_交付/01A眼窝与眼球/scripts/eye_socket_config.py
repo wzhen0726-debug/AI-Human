@@ -21,6 +21,7 @@ HOLE_RZ = 0.009   # 半高 (上下眼睑方向)
 # 压凹范围与深度
 SOCKET_RADIUS = 0.015   # 压凹影响半径 15mm
 SOCKET_DEPTH = 0.010    # 最深 10mm
+CUP_DEPTH_RATIO = 1.5   # 封碗底深度 = SOCKET_DEPTH * 此值 (15mm, 保证眼球后有封闭背景)
 
 # 检测参数
 BAND_MIN = 0.008   # 眼带内半径
