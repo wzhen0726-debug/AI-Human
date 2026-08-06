@@ -76,15 +76,69 @@ curl -sL --noproxy '*' -C - --retry 5 --retry-delay 2 \
 
 优势：3DDFA 是语义识别（懂"哪里是眼睛"），不靠"最暗=瞳孔"的赌运气，鲁棒性强、可泛化到素模/闭眼/不同妆容。
 
+## 五点五、眼部数据提取方法（子代理实测验证，2026-08-06）
+
+**8 部件分割顺序**（recon.py 第121行注释确认）：
+`[right_eye, left_eye, right_eyebrow, left_eyebrow, nose, up_lip, down_lip, skin]`
+
+demo 输出 `<name>.npy`（dict，allow_pickle）含：
+
+| 键 | 内容 | 眼部提取 |
+|---|---|---|
+| `seg_visible` | H×W×1，原图坐标 | **值1=右眼、2=左眼**（3=右眉 4=左眉 5=鼻 6=上唇 7=下唇 8=皮肤 0=背景）。眼部mask = `(seg==1)|(seg==2)` |
+| `seg` | H×W×8 | 第0、1通道=右/左眼独立mask（255=该区域） |
+| `ldm68` | 68关键点像素坐标 | **右眼=索引36–41，左眼=索引42–47** |
+| `ldm106`/`ldm134` | 更密关键点 | 右眼约66–75，左眼约76–85（精确索引待跑通后画编号图确认） |
+
+**3D 网格级**：`face_model.npy` 的 `model['annotation'][0]`/`[1]` = 右/左眼各 440 个 BFM 顶点索引（可用于 Blender 侧选中眼部顶点）。
+
+**提取代码**：
+```python
+import numpy as np
+d = np.load('results/1/1.npy', allow_pickle=True).item()
+right_eye = d['ldm68'][36:42]          # 右眼关键点(像素坐标)
+left_eye  = d['ldm68'][42:48]          # 左眼关键点
+eye_mask  = (d['seg_visible'][:,:,0]==1) | (d['seg_visible'][:,:,0]==2)  # 眼部mask
+```
+
+## 六、torch 安装卡点与解法
+
+- **问题**: torch cu121（CUDA 版 2.3GB）经代理/直连 download.pytorch.org 多次 300-600s 超时。
+- **解法**: 用**国内镜像**装。阿里云 cu121 有 CUDA 版 win 包，但 `--index-url` 目录结构 uv 解析不了 → **直接用完整 whl URL**：
+  ```bash
+  uv pip install --python .venv/Scripts/python.exe \
+    "https://mirrors.aliyun.com/pytorch-wheels/cu121/torch-2.5.1%2Bcu121-cp311-cp311-win_amd64.whl" \
+    "https://mirrors.aliyun.com/pytorch-wheels/cu121/torchvision-0.20.1%2Bcu121-cp311-cp311-win_amd64.whl"
+  ```
+  备选：CPU 版（190MB，单图推理够用，但不利用 GPU）。
+- **渲染器**: 机器无 gcc/cl 在 PATH，但有 **VS2022 BuildTools**（`C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools`）→ 可编译 `util/cython_renderer`（CPU 渲染器）。nvdiffrast 因 nvcc 不在 PATH 不死磕，用 `--device cpu` + cython 渲染器即可出全部输出（含分割）。
+
 ## 六、状态
 
 - [x] 仓库克隆
 - [x] 输出格式摸清（npy 键 + 分割/mask）
 - [x] 网络坑定位与解法（镜像直连）
-- [ ] torch + 依赖装完（下载中）
-- [ ] 权重全部下完（net_recon 已下，其余续传中）
-- [ ] demo 跑通（示例图→BFM+关键点+分割）
-- [ ] 高模正脸→眼部关键点提取验证
-- [ ] 反投影回 3D 定位眼部
+- [x] torch + 依赖装完（阿里云镜像 whl 直链装 cu121，见"六"）
+- [x] 权重全部下完（5/5，镜像直连+断点续传）
+- [x] **demo 跑通**（2026-08-06，CPU device + cython 渲染器，rc=0 处理 examples/1.jpg + 2.png）
+- [x] 眼部关键点/分割提取验证（ldm68 右眼36-41/左眼42-47 像素坐标精确，seg_visible 值0-8 齐全）
 
-（后续步骤完成后补实测结果）
+### demo 跑通的最终配置（实测有效）
+
+**环境坑记录**（关键，避免重踩）：
+1. **PYTHONPATH 污染**：从 Hermes 的 execute_code 起子进程会继承 Hermes 的 PYTHONPATH，导致 .venv 加载到 hermes-agent 的 numpy2.x → 起子进程前必须 `{k:v for k,v in os.environ.items() if k.upper()!="PYTHONPATH"}`。
+2. **numpy**：必须 `<2`（3DDFA 用了 numpy2 移除的 `np.VisibleDeprecationWarning`）→ 装 `numpy<2`（实测 1.26.4）。
+3. **opencv**：必须 `==4.9.0.80`（5.0 有 gapi/GStreamer 循环 import bug）→ 强制 `--reinstall-package opencv-python`。
+4. **mtcnn 懒加载**：`face_box/__init__.py` 顶层 `from mtcnn import MTCNN` 硬依赖 tensorflow → 改成 `mtcnnface.__init__` 内懒加载（我们用 retinaface，不需要 tensorflow）。
+5. **渲染器**：GPU 分支要 nvdiffrast（需 nvcc，装不上）→ 用 **CPU device + cython CPU 渲染器**（`util/cython_renderer`，VS2022 BuildTools 的 vcvars64 环境编译出 `mesh_core_cython.cp311-win_amd64.pyd`）。
+
+**最终跑通命令**：
+```bash
+# 先编译CPU渲染器(一次性): cmd里 call vcvars64.bat 后 python setup.py build_ext -i
+cd "E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\3DDFA-V3"
+.venv/Scripts/python.exe demo.py -i examples/ -s examples/results --device cpu --backbone resnet50
+# 输出: results/<name>/<name>.npy (含 ldm68/106/134 + seg_visible/seg) + .obj + .png
+```
+> 注：虽然 torch 装了 cu121（CUDA 版），但 demo 实际用 `--device cpu` 跑（因 nvdiffrast 缺 nvcc）。重建网络推理在 CPU 上单图 ~10s 可接受；分割渲染走 cython CPU 渲染器。
+
+- [ ] 高模正脸→3DDFA→反投影定位眼部（下一步）
