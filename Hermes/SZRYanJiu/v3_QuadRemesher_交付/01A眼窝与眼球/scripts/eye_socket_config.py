@@ -23,6 +23,11 @@ SOCKET_RADIUS = 0.015   # 压凹影响半径 15mm
 SOCKET_DEPTH = 0.010    # 最深 10mm
 CUP_DEPTH_RATIO = 1.5   # 封碗底深度 = SOCKET_DEPTH * 此值 (15mm, 保证眼球后有封闭背景)
 
+# 平滑半椭圆碗 (make_eye_cup)
+CUP_SEGMENTS = 32       # 经线段数(绕碗口, 越大越平滑)
+CUP_RINGS = 8           # 纬线圈数(口沿->碗底, 深度方向平滑度)
+CUP_DEPTH = 0.012       # 碗最深 12mm (比压凹10mm略深, 容纳眼球后极)
+
 # 检测参数 (v2: 全脸眼带+K-means外簇+最暗核心, 不再靠种子点)
 EYE_BAND_Z_MIN = 1.60   # 眼带z下限(米)
 EYE_BAND_Z_MAX = 1.70   # 眼带z上限

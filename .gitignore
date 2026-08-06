@@ -29,3 +29,6 @@ v3_run/
 # === 脚本运行日志 ===
 *_out.txt
 *个人使用AI别看*
+
+# 外部依赖仓库(3DDFA-V3含预训练权重, 不入库)
+Hermes/SZRYanJiu/3DDFA-V3/

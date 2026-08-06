@@ -164,3 +164,76 @@ def seal_socket_bottom(obj, center, side):
     bmesh.update_edit_mesh(mesh)
     bpy.ops.object.mode_set(mode='OBJECT')
     print(f"seal_socket_bottom {side}: ring={n} verts, created {len(new_faces)} fan faces, bottom_y={bottom_y:.4f}")
+
+
+def make_eye_cup(obj, center, side):
+    """平滑半椭圆碗眼窝 (取代 seal_socket_bottom 的圆锥版).
+    
+    生成参数化半椭圆旋转面(lathe): 口沿贴开口椭圆, 向内(+Y)按椭圆弧逐圈收缩凹陷,
+    剖面是1/4椭圆弧(cos收缩)而非直线, 碗底是半球极点(曲率连续不尖).
+    得到平滑连续凹碗, 无圆锥尖底/瓦楞平直问题.
+    """
+    import math
+    mesh = obj.data
+    center = Vector(center)
+    rim_y = center.y
+    rx, rz = HOLE_RX, HOLE_RZ
+    M = CUP_SEGMENTS      # 经线(绕碗口)
+    N = CUP_RINGS         # 纬线(口沿->碗底)
+    max_depth = CUP_DEPTH
+    
+    # 生成网格顶点: rings[j][i], j=0口沿..j=N碗底极点
+    verts = []
+    for j in range(N + 1):
+        t = j / N
+        scale = math.cos(t * math.pi / 2)      # 1->0, 椭圆弧收缩
+        y = rim_y + max_depth * math.sin(t * math.pi / 2)  # 0->max_depth, 圆弧深度
+        ring_verts = []
+        for i in range(M):
+            th = 2 * math.pi * i / M
+            x = center.x + rx * scale * math.cos(th)
+            z = center.z + rz * scale * math.sin(th)
+            ring_verts.append((x, y, z))
+        verts.append(ring_verts)
+    # 碗底极点(j=N, scale=0, 所有点重合于中心)只保留一个
+    pole = (center.x, rim_y + max_depth, center.z)
+    
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.mode_set(mode='EDIT')
+    bm = bmesh.from_edit_mesh(mesh)
+    bm.verts.ensure_lookup_table()
+    
+    # 创建顶点
+    vgrid = []
+    for j in range(N):
+        row = [bm.verts.new(co) for co in verts[j]]
+        vgrid.append(row)
+    vpole = bm.verts.new(pole)
+    
+    # 创建面: 相邻圈(j,j+1)x相邻段(i,i+1)成quad; 最后一圈到极点成三角扇
+    # 绕序: 让内壁法线朝眼球(-Y). 经线i增方向为逆时针(俯视), 纬线j增方向朝内.
+    new_faces = []
+    for j in range(N - 1):
+        for i in range(M):
+            i2 = (i + 1) % M
+            a = vgrid[j][i]
+            b = vgrid[j][i2]
+            c = vgrid[j + 1][i2]
+            d = vgrid[j + 1][i]
+            try:
+                new_faces.append(bm.faces.new((a, b, c, d)))
+            except ValueError:
+                pass
+    # 碗底三角扇(最后一圈 -> 极点)
+    last = vgrid[N - 1]
+    for i in range(M):
+        i2 = (i + 1) % M
+        try:
+            new_faces.append(bm.faces.new((last[i], last[i2], vpole)))
+        except ValueError:
+            pass
+    
+    bmesh.update_edit_mesh(mesh)
+    bpy.ops.object.mode_set(mode='OBJECT')
+    print(f"make_eye_cup {side}: M={M} N={N} quad+fan faces={len(new_faces)}, depth={max_depth*1000:.1f}mm, pole_y={pole[1]:.4f}")
+    return vgrid[0]  # 返回口沿顶点供缝合
