@@ -13,14 +13,14 @@ SHOT_DIR = os.path.join(DELIVERY, "01A眼窝与眼球", "screenshots")
 # 眼球GLB路径
 EYE_GLB = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\原始模型\Metahuman低模\眼睛模型001\eye_01.glb"
 
-# 虹膜中心 (鲁棒质心, 剔除z向离群噪点后实测, 作为眼球x/z基准)
-# 2026-08-06: 虹膜质心=真实瞳孔位置, 比删面后的离散环中心更准
-IRIS_L = (-0.0228, -0.1058, 1.6662)
-IRIS_R = (0.0216, -0.1073, 1.6642)
+# 虹膜中心 (v2算法: 全脸眼带+K-means外簇+最暗30%核心, 作为眼球x/z基准)
+# 2026-08-06: 旧算法偏鼻梁(眼间距测小42%), v2实测间距71.7mm与vision标定一致
+IRIS_L = (-0.0369, -0.1121, 1.6762)
+IRIS_R = (0.0348, -0.1126, 1.6761)
 
 # 眼窝唇缘前缘y (环前缘实测, 用于计算眼球深度)
-RIM_FRONT_Y_L = -0.1172
-RIM_FRONT_Y_R = -0.1203
+RIM_FRONT_Y_L = -0.1256
+RIM_FRONT_Y_R = -0.1251
 
 # 眼球摆入参数 (几何定参)
 EYE_SCALE = 1.0            # 眼球缩放

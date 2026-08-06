@@ -23,7 +23,14 @@ SOCKET_RADIUS = 0.015   # 压凹影响半径 15mm
 SOCKET_DEPTH = 0.010    # 最深 10mm
 CUP_DEPTH_RATIO = 1.5   # 封碗底深度 = SOCKET_DEPTH * 此值 (15mm, 保证眼球后有封闭背景)
 
-# 检测参数
-BAND_MIN = 0.008   # 眼带内半径
-BAND_MAX = 0.020   # 眼带外半径
-DARK_PCT = 8       # 贴图暗像素百分位 (8%保证足够样本)
+# 检测参数 (v2: 全脸眼带+K-means外簇+最暗核心, 不再靠种子点)
+EYE_BAND_Z_MIN = 1.60   # 眼带z下限(米)
+EYE_BAND_Z_MAX = 1.70   # 眼带z上限
+EYE_BAND_Y_MAX = -0.08  # 眼带前侧(y小于此=朝脸前)
+EYE_BAND_X_MAX = 0.08   # 眼带|x|上限(避开耳/鼻两侧)
+DARK_PCT = 10           # 该侧最暗像素百分位(取瞳孔候选)
+PUPIL_CORE_PCT = 30     # 外侧簇里最暗核心百分位(瞳孔比眼睑阴影更暗)
+
+# 旧参数(仅存档, v2不再使用)
+BAND_MIN = 0.008
+BAND_MAX = 0.020
