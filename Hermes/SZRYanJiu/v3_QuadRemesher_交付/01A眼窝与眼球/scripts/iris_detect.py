@@ -53,8 +53,16 @@ def detect_iris_centers():
         if len(dark_idx) < 10:
             raise RuntimeError(f"{side}: too few dark pixels ({len(dark_idx)})")
         
-        center = V[dark_idx].mean(axis=0)
+        pts = V[dark_idx]
+        # 鲁棒质心: 剔除z向离群噪点(睫毛阴影/卧蚕暗斑会把mean拉偏, 2026-08-06实测
+        # 右眼暗像素混入z=1.632低处噪点致mean比左眼低2.8mm, 眼球跟着偏低).
+        # 按z排序砍首尾各10%离群点, 再求mean.
+        order = np.argsort(pts[:, 2])
+        trim = max(1, int(len(pts) * 0.20))  # 20%: 右眼噪点重(zrange下限1.632), 需更狠剔除
+        kept = pts[order[trim:len(pts)-trim]]
+        center = kept.mean(axis=0)
         centers[side] = center
-        print(f"detect_iris {side}: n_dark={len(dark_idx)} center=({center[0]:.4f},{center[1]:.4f},{center[2]:.4f})")
+        zrange = f"[{pts[:,2].min():.4f},{pts[:,2].max():.4f}]"
+        print(f"detect_iris {side}: n_dark={len(dark_idx)} raw_mean_z={pts[:,2].mean():.4f} zrange={zrange} -> trimmed center=({center[0]:.4f},{center[1]:.4f},{center[2]:.4f})")
     
     return centers["L"], centers["R"]

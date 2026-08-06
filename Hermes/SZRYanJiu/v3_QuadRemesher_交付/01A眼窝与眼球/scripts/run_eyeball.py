@@ -25,8 +25,8 @@ def import_eyeball():
     print(f"  assigned: eyeL={eyeL.name} at x={eyeL.location.x:.4f}, eyeR={eyeR.name} at x={eyeR.location.x:.4f}")
     return eyeL, eyeR
 
-def place_eyeball(eye, opening_center, side):
-    """摆入单个眼球"""
+def place_eyeball(eye, iris_center, rim_front_y, side):
+    """摆入单个眼球. iris_center=虹膜质心(x/z基准), rim_front_y=眼窝唇缘前缘y(深度基准)"""
     # 1. 先重置到原点(消除GLB原始偏移)
     eye.location = (0, 0, 0)
     eye.rotation_euler = (0, 0, 0)
@@ -37,13 +37,14 @@ def place_eyeball(eye, opening_center, side):
     eye.scale = (EYE_SCALE, EYE_SCALE, EYE_SCALE)
     
     # 3. 位置: 几何定参. 模型面朝-Y(前方=y减小), 头内=+Y(y增大).
-    # 角膜最前极 = 球心y - 半径 = 唇缘y - 探出量
-    # => 球心y = 唇缘y + 半径 - 探出量 + PUSH_BACK(额外内推)
-    # 眼间距: 左眼x减WIDEN, 右眼x加WIDEN (沿X外移加宽)
-    opening = Vector(opening_center)
-    ball_center_y = opening.y + (EYE_RADIUS * EYE_SCALE - CORNEA_PROTRUDE) + EYE_PUSH_BACK
+    # x/z = 虹膜质心(真实瞳孔位置, 比离散环中心准)
+    # y: 角膜最前极 = 球心y - 半径 = 唇缘前缘y - 探出量
+    # => 球心y = 唇缘前缘y + 半径 - 探出量 + PUSH_BACK
+    # 眼间距: 眼球跟虹膜质心走(默认不强行加宽), EYE_WIDEN仅作GUI微调旋钮
+    iris = Vector(iris_center)
+    ball_center_y = rim_front_y + (EYE_RADIUS * EYE_SCALE - CORNEA_PROTRUDE) + EYE_PUSH_BACK
     widen = -EYE_WIDEN if side == "L" else EYE_WIDEN
-    target = Vector((opening.x + widen, ball_center_y + 0.0021, opening.z))
+    target = Vector((iris.x + widen, ball_center_y + 0.0021, iris.z))
     eye.location = target
     
     # 4. 朝向: 瞳孔(PUPIL_LOCAL_DIR)对准全局-Y(正前方平视)
@@ -122,10 +123,10 @@ def main():
     # 导入眼球
     eyeL, eyeR = import_eyeball()
     
-    # 摆入左眼 (用开口中心)
-    place_eyeball(eyeL, OPENING_L, "L")
-    # 摆入右眼 (用开口中心)
-    place_eyeball(eyeR, OPENING_R, "R")
+    # 摆入左眼 (x/z=虹膜质心, y=唇缘前缘)
+    place_eyeball(eyeL, IRIS_L, RIM_FRONT_Y_L, "L")
+    # 摆入右眼
+    place_eyeball(eyeR, IRIS_R, RIM_FRONT_Y_R, "R")
     
     # 保存
     bpy.ops.wm.save_as_mainfile(filepath=OUT_BLEND)
