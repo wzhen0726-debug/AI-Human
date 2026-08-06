@@ -7,8 +7,8 @@ import os
 
 DELIVERY = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付"
 IN_BLEND = os.path.join(DELIVERY, "01高模修复与黏连检测", "models", "01_highpoly_repair.blend")
-OUT_BLEND = os.path.join(DELIVERY, "01_1眼窝制作", "models", "01_1_eye_socket.blend")
-SHOT_DIR = os.path.join(DELIVERY, "01_1眼窝制作", "screenshots")
+OUT_BLEND = os.path.join(DELIVERY, "01A眼窝与眼球", "models", "01_1_eye_socket.blend")
+SHOT_DIR = os.path.join(DELIVERY, "01A眼窝与眼球", "screenshots")
 
 # 虹膜中心 (实测, 脚本会重新自动检测校正)
 IRIS_L = (-0.0241, -0.1163, 1.6517)

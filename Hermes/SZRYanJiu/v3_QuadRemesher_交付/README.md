@@ -8,8 +8,7 @@
 
 ```
 01高模修复与黏连检测/   ← ✅ 已交付（修复管线：repair + adhesion + QA + 渲染）
-01_1眼窝制作/           ← ✅ 已交付（虹膜检测 + 开孔 + 压凹；含3DDFA调研结论）
-01_2眼球摆入/           ← ⚠️ 脚本就位，摆放参数未定案（见方案md记录/08/问题分析_眼球摆入.md）
+01A眼窝与眼球/          ← 眼窝✅已交付 / 眼球⚠️参数未定案（含3DDFA调研结论）
 02QuadRemesher拓扑/     ← ✅ 已交付（QR 自动重拓扑）
 03自动UV/               ← ✅ 已交付（Smart UV Project）
 04纹理烘焙/             ← ✅ 已交付（Diffuse + Normal 4K）
@@ -38,6 +37,8 @@ NN步骤名/
 | 01 | `01高模修复与黏连检测/scripts/adhesion.py` | 黏连检测与推开（衣物-身体嵌套分离） |
 | 01 | `01高模修复与黏连检测/scripts/repair_qa.py` | 质检（非流形/边界/碎面/刀片面等） |
 | 01 | `01高模修复与黏连检测/scripts/render_screenshot.py` | 三视角截图渲染 |
+| 01A眼窝 | `01A眼窝与眼球/scripts/run_eye_socket.py` | 虹膜检测 + 开孔 + 压凹（眼窝） |
+| 01A眼窝 | `01A眼窝与眼球/scripts/run_eyeball.py` | 眼球导入/摆入/渲染验证 |
 | 02 | `02QuadRemesher拓扑/scripts/02_qr_auto.py` | subprocess 直调 xremesh.exe（绕过 modal 算子） |
 | 03 | `03自动UV/scripts/03_auto_uv.py` | Smart UV Project（66°/margin 0.01） |
 | 04 | `04纹理烘焙/scripts/04_bake.py` | Cycles Selected-to-Active 烘焙 Diffuse+Normal 4K |

@@ -6,9 +6,9 @@
 import os
 
 DELIVERY = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付"
-IN_BLEND = os.path.join(DELIVERY, "01_1眼窝制作", "models", "01_1_eye_socket.blend")
-OUT_BLEND = os.path.join(DELIVERY, "01_2眼球摆入", "models", "01_2_eyeball_placed.blend")
-SHOT_DIR = os.path.join(DELIVERY, "01_2眼球摆入", "screenshots")
+IN_BLEND = os.path.join(DELIVERY, "01A眼窝与眼球", "models", "01_1_eye_socket.blend")
+OUT_BLEND = os.path.join(DELIVERY, "01A眼窝与眼球", "models", "01_2_eyeball_placed.blend")
+SHOT_DIR = os.path.join(DELIVERY, "01A眼窝与眼球", "screenshots")
 
 # 眼球GLB路径
 EYE_GLB = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\原始模型\Metahuman低模\眼睛模型001\eye_01.glb"
