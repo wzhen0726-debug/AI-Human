@@ -13,8 +13,20 @@ from eye_socket_config import *
 from iris_detect import detect_iris_centers
 from socket_ops import make_eye_socket, make_eye_cup
 
-def render_shots(filepath_prefix):
-    """渲染正面特写+侧面截图到screenshots目录"""
+def load_3ddfa_centers():
+    """从3DDFA反投影结果读眼中心 (语义定位, 比暗像素准).
+    返回(left_center, right_center) numpy数组, 坐标=角膜表面交点."""
+    import json, numpy as np
+    with open(DDFA_JSON, encoding="utf-8") as f:
+        d = json.load(f)
+    cL = np.array(d["L"]["center_3d"], dtype=np.float32)
+    cR = np.array(d["R"]["center_3d"], dtype=np.float32)
+    print(f"load_3ddfa_centers: L={cL} R={cR}")
+    print(f"  眼间距={np.linalg.norm(cL-cR)*1000:.1f}mm")
+    return cL, cR
+
+def render_shots(filepath_prefix, cL=None, cR=None):
+    """渲染头部特写截图到screenshots目录. 有眼中心时对准眼部, 否则对全身中心."""
     os.makedirs(SHOT_DIR, exist_ok=True)
     scene = bpy.context.scene
     scene.render.engine = 'BLENDER_WORKBENCH'
@@ -26,8 +38,15 @@ def render_shots(filepath_prefix):
     obj = [o for o in bpy.data.objects if o.type=='MESH'][0]
     local_verts = [v.co for v in obj.data.vertices]
     xs, ys, zs = zip(*[(v.x, v.y, v.z) for v in local_verts])
-    center = Vector(((min(xs)+max(xs))/2, (min(ys)+max(ys))/2, (min(zs)+max(zs))/2))
-    dims = max(max(xs)-min(xs), max(ys)-min(ys), max(zs)-min(zs))
+    
+    if cL is not None and cR is not None:
+        # 头部特写: 对准两眼中心, 视距0.35m
+        face_center = Vector(((cL[0]+cR[0])/2, min(cL[1], cR[1]), (cL[2]+cR[2])/2))
+        center = face_center
+        dims = 0.40
+    else:
+        center = Vector(((min(xs)+max(xs))/2, (min(ys)+max(ys))/2, (min(zs)+max(zs))/2))
+        dims = max(max(xs)-min(xs), max(ys)-min(ys), max(zs)-min(zs))
     
     cam = bpy.data.objects.get("Camera") or bpy.data.objects.new("Camera", bpy.data.cameras.new("Camera"))
     scene.collection.objects.link(cam) if not cam.users_scene else None
@@ -50,8 +69,13 @@ def main():
     bpy.ops.wm.open_mainfile(filepath=IN_BLEND)
     obj = [o for o in bpy.data.objects if o.type=='MESH'][0]
     
-    # 自动检测虹膜中心
-    cL, cR = detect_iris_centers()
+    # 眼中心来源: 3DDFA语义定位(首选) 或 暗像素法(回退, 已暂停)
+    if USE_3DDFA:
+        print("Using 3DDFA semantic centers")
+        cL, cR = load_3ddfa_centers()
+    else:
+        print("Using dark-pixel detection (fallback)")
+        cL, cR = detect_iris_centers()
     
     # 左眼
     make_eye_socket(obj, cL, "L")
@@ -64,8 +88,8 @@ def main():
     bpy.ops.wm.save_as_mainfile(filepath=OUT_BLEND)
     print(f"Saved: {OUT_BLEND}")
     
-    # 截图
-    render_shots("01_1_eye_socket")
+    # 截图 (头部特写, 对准眼中心)
+    render_shots("01_1_eye_socket", cL, cR)
     print("=== Done ===")
 
 if __name__ == "__main__":

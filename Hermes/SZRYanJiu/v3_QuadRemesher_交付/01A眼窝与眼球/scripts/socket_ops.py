@@ -33,9 +33,13 @@ def make_eye_socket(obj, center, side):
     # 椭圆: ((x-cx)/rx)^2 + ((z-cz)/rz)^2 <= 1
     dx = (V[:,0] - cx) / rx
     dz = (V[:,2] - cz) / rz
-    in_ellipse = (dx*dx + dz*dz <= 1.0) & (np.abs(V[:,1] - cy) < 0.020)
+    in_ellipse = (dx*dx + dz*dz <= 1.0) & (V[:,1] < cy + 0.005)
     
     # 用bmesh直接删除面中心在椭圆内的面
+    # 2026-08-06修复: 不再限制y窗口(abs(fc.y-cy)<0.020漏删了最凸的眼睑皮肤).
+    # 原始网格眼睛是画出来的鼓包, 眼睑表面比3DDFA角膜点更靠前(-Y)达20mm.
+    # 改为: 删椭圆内所有比角膜点更靠前的面(fc.y < cy + 5mm容差), 保证鼓包区开透.
+    y_cut = cy + 0.005  # 角膜点后5mm以内的面都删(覆盖眼睑前凸)
     bm = bmesh.from_edit_mesh(mesh)
     bm.faces.ensure_lookup_table()
     to_delete = []
@@ -43,7 +47,7 @@ def make_eye_socket(obj, center, side):
         fc = f.calc_center_median()
         dx = (fc.x - cx) / rx
         dz = (fc.z - cz) / rz
-        if dx*dx + dz*dz <= 1.0 and abs(fc.y - cy) < 0.020:
+        if dx*dx + dz*dz <= 1.0 and fc.y < y_cut:
             to_delete.append(f)
     bmesh.ops.delete(bm, geom=to_delete, context='FACES')
     bmesh.update_edit_mesh(mesh)
@@ -77,9 +81,10 @@ def make_eye_socket(obj, center, side):
     
     # 只压凹开口周围, 排除开口内(椭圆内的顶点不压)
     # 删面后顶点索引已变, 需重新计算 in_ellipse
+    # 2026-08-06修复: y窗口与删面一致(椭圆内+比角膜点靠前)
     dx2 = (V[:,0] - cx) / rx
     dz2 = (V[:,2] - cz) / rz
-    in_ellipse_new = (dx2*dx2 + dz2*dz2 <= 1.0) & (np.abs(V[:,1] - cy) < 0.020)
+    in_ellipse_new = (dx2*dx2 + dz2*dz2 <= 1.0) & (V[:,1] < cy + 0.005)
     
     # 压凹范围: 椭圆外 且 dist < R
     mask = (dist < R) & (~in_ellipse_new)

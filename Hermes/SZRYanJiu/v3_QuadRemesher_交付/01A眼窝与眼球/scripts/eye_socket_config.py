@@ -10,6 +10,10 @@ IN_BLEND = os.path.join(DELIVERY, "01高模修复与黏连检测", "models", "01
 OUT_BLEND = os.path.join(DELIVERY, "01A眼窝与眼球", "models", "01_1_eye_socket.blend")
 SHOT_DIR = os.path.join(DELIVERY, "01A眼窝与眼球", "screenshots")
 
+# 3DDFA反投影结果 (精确定位眼部, 替代暗像素法)
+DDFA_JSON = os.path.join(DELIVERY, "01A眼窝与眼球", "screenshots", "3ddfa", "iris_3ddfa.json")
+USE_3DDFA = True   # True=用3DDFA语义定位, False=回退暗像素法(已暂停)
+
 # 虹膜中心 (实测, 脚本会重新自动检测校正)
 IRIS_L = (-0.0241, -0.1163, 1.6517)
 IRIS_R = (0.0229, -0.1168, 1.6507)
@@ -26,7 +30,7 @@ CUP_DEPTH_RATIO = 1.5   # 封碗底深度 = SOCKET_DEPTH * 此值 (15mm, 保证�
 # 平滑半椭圆碗 (make_eye_cup)
 CUP_SEGMENTS = 32       # 经线段数(绕碗口, 越大越平滑)
 CUP_RINGS = 8           # 纬线圈数(口沿->碗底, 深度方向平滑度)
-CUP_DEPTH = 0.012       # 碗最深 12mm (比压凹10mm略深, 容纳眼球后极)
+CUP_DEPTH = 0.020       # 碗最深 20mm (2026-08-06: 12mm不够, 眼球r14.5mm后极需~17mm深, 20mm留余量防穿透)
 
 # 检测参数 (v2: 全脸眼带+K-means外簇+最暗核心, 不再靠种子点)
 EYE_BAND_Z_MIN = 1.60   # 眼带z下限(米)
