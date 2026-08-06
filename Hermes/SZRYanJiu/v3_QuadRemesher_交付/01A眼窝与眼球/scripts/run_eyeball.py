@@ -37,16 +37,16 @@ def place_eyeball(eye, opening_center, side):
     eye.scale = (EYE_SCALE, EYE_SCALE, EYE_SCALE)
     
     # 3. 位置: 几何定参. 模型面朝-Y(前方=y减小), 头内=+Y(y增大).
-    # 角膜要探出唇缘 CORNEA_PROTRUDE, 唇缘在最前(y最小).
-    # 角膜最前极 = 球心y - 半径. 要求: 球心y - 半径 = 唇缘y - 探出量
-    # => 球心y = 唇缘y + 半径 - 探出量  (+Y往头内退)
-    # GLB眼球局部中心y=-0.0021(-2.1mm偏移), 需补偿+0.0021
+    # 角膜最前极 = 球心y - 半径 = 唇缘y - 探出量
+    # => 球心y = 唇缘y + 半径 - 探出量 + PUSH_BACK(额外内推)
+    # 眼间距: 左眼x减WIDEN, 右眼x加WIDEN (沿X外移加宽)
     opening = Vector(opening_center)
-    ball_center_y = opening.y + (EYE_RADIUS * EYE_SCALE - CORNEA_PROTRUDE)
-    target = Vector((opening.x, ball_center_y + 0.0021, opening.z))
+    ball_center_y = opening.y + (EYE_RADIUS * EYE_SCALE - CORNEA_PROTRUDE) + EYE_PUSH_BACK
+    widen = -EYE_WIDEN if side == "L" else EYE_WIDEN
+    target = Vector((opening.x + widen, ball_center_y + 0.0021, opening.z))
     eye.location = target
     
-    # 4. 朝向: 瞳孔+Z对准全局-Y
+    # 4. 朝向: 瞳孔(PUPIL_LOCAL_DIR)对准全局-Y(正前方平视)
     pupil_local = Vector(PUPIL_LOCAL_DIR).normalized()
     target_dir = Vector((0, -1, 0))
     rot = pupil_local.rotation_difference(target_dir)
