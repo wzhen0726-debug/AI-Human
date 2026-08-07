@@ -22,6 +22,11 @@ IRIS_R = (0.0229, -0.1168, 1.6507)
 HOLE_RX = 0.013   # 半宽 (内外眼角方向)
 HOLE_RZ = 0.009   # 半高 (上下眼睑方向)
 
+# 2026-08-07: 真实眼形=3DDFA眼睑轮廓(杏仁形26.8x9.7mm, 宽高比2.75, 两头尖).
+# 之前的对称椭圆(rz=9mm)太圆太高, 宽高比仅1.44, 开出来像"球"不像杏仁.
+EYELID_CONTOUR_JSON = os.path.join(DELIVERY, "01A眼窝与眼球", "screenshots", "3ddfa", "eyelid_contour.json")
+USE_EYELID_CONTOUR = True   # True=用3DDFA眼睑轮廓开孔(杏仁), False=回退对称椭圆
+
 # 压凹范围与深度
 SOCKET_RADIUS = 0.015   # 压凹影响半径 15mm
 SOCKET_DEPTH = 0.010    # 最深 10mm

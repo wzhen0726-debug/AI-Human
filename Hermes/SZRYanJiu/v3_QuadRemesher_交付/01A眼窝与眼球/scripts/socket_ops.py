@@ -11,6 +11,28 @@ import numpy as np
 from mathutils import Vector
 from eye_socket_config import *
 
+def load_eyelid_contour(side):
+    """读3DDFA眼睑轮廓(杏仁形), 返回(x,z)多边形顶点列表(顺时针/逆时针均可).
+    用6点: 外眦-上睑x2-内眦-下睑x2 围成真实眼形."""
+    import json
+    d = json.load(open(EYELID_CONTOUR_JSON, encoding="utf-8"))
+    rim = [r for r in d[side]["rim_3d"] if r is not None]
+    # 投影到x-z平面(开孔在面朝前的平面上)
+    poly = [(r[0], r[2]) for r in rim]
+    return poly
+
+def point_in_polygon(x, z, poly):
+    """射线法判断点(x,z)是否在多边形poly内. poly=[(x,z),...]"""
+    n = len(poly)
+    inside = False
+    j = n - 1
+    for i in range(n):
+        xi, zi = poly[i]; xj, zj = poly[j]
+        if ((zi > z) != (zj > z)) and (x < (xj - xi) * (z - zi) / (zj - zi) + xi):
+            inside = not inside
+        j = i
+    return inside
+
 def make_eye_socket(obj, center, side):
     """对单侧眼睛做开孔+压凹. center为局部坐标"""
     mesh = obj.data
@@ -35,19 +57,22 @@ def make_eye_socket(obj, center, side):
     dz = (V[:,2] - cz) / rz
     in_ellipse = (dx*dx + dz*dz <= 1.0) & (V[:,1] < cy + 0.005)
     
-    # 用bmesh直接删除面中心在椭圆内的面
-    # 2026-08-06修复: 不再限制y窗口(abs(fc.y-cy)<0.020漏删了最凸的眼睑皮肤).
-    # 原始网格眼睛是画出来的鼓包, 眼睑表面比3DDFA角膜点更靠前(-Y)达20mm.
-    # 改为: 删椭圆内所有比角膜点更靠前的面(fc.y < cy + 5mm容差), 保证鼓包区开透.
+    # 2026-08-07: 用3DDFA真实眼睑轮廓(杏仁多边形)开孔, 不用对称椭圆.
+    # 真实眼形26.8x9.7mm宽高比2.75两头尖; 对称椭圆rz=9太圆(宽高比1.44).
+    poly = load_eyelid_contour(side) if USE_EYELID_CONTOUR else None
     y_cut = cy + 0.005  # 角膜点后5mm以内的面都删(覆盖眼睑前凸)
     bm = bmesh.from_edit_mesh(mesh)
     bm.faces.ensure_lookup_table()
     to_delete = []
     for f in bm.faces:
         fc = f.calc_center_median()
-        dx = (fc.x - cx) / rx
-        dz = (fc.z - cz) / rz
-        if dx*dx + dz*dz <= 1.0 and fc.y < y_cut:
+        if poly is not None:
+            inside = point_in_polygon(fc.x, fc.z, poly)
+        else:
+            dx = (fc.x - cx) / rx
+            dz = (fc.z - cz) / rz
+            inside = (dx*dx + dz*dz <= 1.0)
+        if inside and fc.y < y_cut:
             to_delete.append(f)
     bmesh.ops.delete(bm, geom=to_delete, context='FACES')
     bmesh.update_edit_mesh(mesh)
@@ -257,6 +282,17 @@ def make_eye_cup(obj, center, side):
             pass
     
     bmesh.update_edit_mesh(mesh)
+    
+    # ---- 4. 局部法线校正: 碗内面必须朝-Y(朝眼球/朝外). 2026-08-07用户报面朝向反 ----
+    # ring0排序绕向不定(atan2顺/逆), 导致生成面法线可能朝内(+Y). 逐个检查翻转.
+    # 只动刚生成的碗面(new_faces), 不全局重算(历史教训: 全局Shift+N会翻过洞边缘).
+    bm.faces.ensure_lookup_table()
+    flipped = 0
+    for f in new_faces:
+        if f.is_valid and f.normal.y > 0:  # 法线朝+Y=朝头内=反了
+            f.normal_flip()
+            flipped += 1
+    bmesh.update_edit_mesh(mesh)
     bpy.ops.object.mode_set(mode='OBJECT')
-    print(f"make_eye_cup {side}: ring0={M} N={N} quad+fan={len(new_faces)} depth={max_depth*1000:.1f}mm pole_y={pole[1]:.4f}")
+    print(f"make_eye_cup {side}: ring0={M} N={N} quad+fan={len(new_faces)} depth={max_depth*1000:.1f}mm pole_y={pole[1]:.4f} normal_flipped={flipped}")
     return ring0

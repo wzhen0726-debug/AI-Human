@@ -25,6 +25,26 @@ def load_3ddfa_centers():
     print(f"  眼间距={np.linalg.norm(cL-cR)*1000:.1f}mm")
     return cL, cR
 
+def fix_socket_normals(obj, side):
+    """翻转眼窝开口(眼睑轮廓多边形)内所有朝内的面, 统一朝-Y(朝外/朝眼球).
+    压凹把眼睑顶点往+Y推, 面片翻折法线朝内. 只动眼窝内的面, 不全局重算."""
+    import bmesh
+    from socket_ops import load_eyelid_contour, point_in_polygon
+    poly = load_eyelid_contour(side)
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.mode_set(mode='EDIT')
+    bm = bmesh.from_edit_mesh(obj.data)
+    bm.faces.ensure_lookup_table()
+    flipped = 0
+    for f in bm.faces:
+        fc = f.calc_center_median()
+        if point_in_polygon(fc.x, fc.z, poly) and f.normal.y > 0:
+            f.normal_flip()
+            flipped += 1
+    bmesh.update_edit_mesh(obj.data)
+    bpy.ops.object.mode_set(mode='OBJECT')
+    print(f"fix_socket_normals {side}: flipped {flipped} faces to face -Y")
+
 def render_shots(filepath_prefix, cL=None, cR=None):
     """渲染头部特写截图到screenshots目录. 有眼中心时对准眼部, 否则对全身中心."""
     os.makedirs(SHOT_DIR, exist_ok=True)
@@ -83,6 +103,10 @@ def main():
     # 右眼
     make_eye_socket(obj, cR, "R")
     make_eye_cup(obj, cR, "R")
+    
+    # 法线校正: 眼窝内所有面朝-Y(朝眼球), 修复压凹翻折+碗面绕向不定
+    fix_socket_normals(obj, "L")
+    fix_socket_normals(obj, "R")
     
     # 保存
     bpy.ops.wm.save_as_mainfile(filepath=OUT_BLEND)
