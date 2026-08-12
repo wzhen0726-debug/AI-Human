@@ -263,22 +263,26 @@ def make_eye_cup(obj, center, side):
     rim_y = sum(v.co.y for v in ring0) / M
     print(f"make_eye_cup {side}: boundary ring M={M} (of {len(rings)} rings)")
     
-    # ---- 2. 同序收缩3圈 + 极点扇封底 ----
-    # 内圈=ring0[i]径向收缩(同一顶点同一顺序) -> quad必共享边界边, 零悬空边.
+    # ---- 2. 球面碗剖面 + 共享极点三角扇封底(构造上保证流形) ----
+    # 2026-08-07 v11根因总结: ngon封口(三角化碎片)/pointmerge(碗底重复面)都留非流形边.
+    # 唯一构造上零碎片的方式=单个共享极点顶点+三角扇(经典UV球极点拓扑, 每条边恰好2面).
+    # 8圈球面收缩让极点扇只在碗底最小一圈, smooth shading消棱. 碗内有眼球挡, 不讲究.
     vgrid = [list(ring0)]
-    NR = 3
-    for j in range(1, NR+1):
-        t = j / (NR+1)
-        scale = 1.0 - t*0.60
+    NR = 8  # 8圈平滑过渡
+    for j in range(1, NR):     # 环1..NR-1(不到底)
+        t = j / NR
+        ang = t * math.pi / 2
+        scale = math.cos(ang)
+        depth_frac = math.sin(ang)
         row = []
         for i in range(M):
             base = ring0[i].co
             x = center.x + (base.x-center.x)*scale
             z = center.z + (base.z-center.z)*scale
-            y = base.y + (rim_y + max_depth - base.y)*(t*0.7)
+            y = base.y + (rim_y + max_depth - base.y)*depth_frac
             row.append(bm.verts.new((x,y,z)))
         vgrid.append(row)
-    pole = bm.verts.new((center.x, rim_y+max_depth, center.z))
+    pole = bm.verts.new((center.x, rim_y+max_depth, center.z))  # 单个共享极点
     
     new_faces = []
     # 相邻环quad
@@ -288,7 +292,7 @@ def make_eye_cup(obj, center, side):
             a=vgrid[j][i]; b=vgrid[j][i2]; c=vgrid[j+1][i2]; d=vgrid[j+1][i]
             try: new_faces.append(bm.faces.new((a,d,c,b)))
             except ValueError: pass
-    # 极点扇封底(不用ngon, 防翘曲条纹)
+    # 极点三角扇(共享pole顶点, 每条边恰2面, 构造上流形)
     last = vgrid[-1]
     for i in range(M):
         try: new_faces.append(bm.faces.new((last[i], last[(i+1)%M], pole)))
