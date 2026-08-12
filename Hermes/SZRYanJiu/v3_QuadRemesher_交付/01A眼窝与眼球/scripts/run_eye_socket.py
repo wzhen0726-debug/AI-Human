@@ -25,7 +25,7 @@ def load_3ddfa_centers():
     print(f"  眼间距={np.linalg.norm(cL-cR)*1000:.1f}mm")
     return cL, cR
 
-def fix_socket_normals(obj, side):
+def fix_socket_normals(obj, side, center=None):
     """翻转眼窝开口(眼睑轮廓多边形)内所有朝内的面, 统一朝-Y(朝外/朝眼球).
     压凹把眼睑顶点往+Y推, 面片翻折法线朝内. 只动眼窝内的面, 不全局重算."""
     import bmesh
@@ -34,11 +34,20 @@ def fix_socket_normals(obj, side):
     bpy.context.view_layer.objects.active = obj
     bpy.ops.object.mode_set(mode='EDIT')
     bm = bmesh.from_edit_mesh(obj.data)
+    # 2026-08-07 v15: 必须先normal_update()! 删面/封碗后法线是旧值,
+    # 3个反向sliver靠旧法线逃过 f.normal.y>0 检查没被翻(ad-hoc验证抓到).
+    bm.normal_update()
     bm.faces.ensure_lookup_table()
+    # 2026-08-07 v16: 3个反向sliver在眼窝zone内但在眼睑polygon外 -> 补zone判据.
+    # zone=眼中心22mm xz半径且y∈[-0.116,-0.080](碗的深度带). 只翻朝内面.
+    c = Vector(center) if center is not None else None
+    def in_zone(fc):
+        if c is None: return False
+        return (fc.x-c.x)**2+(fc.z-c.z)**2 < 0.022**2 and -0.116 < fc.y < -0.080
     flipped = 0
     for f in bm.faces:
         fc = f.calc_center_median()
-        if point_in_polygon(fc.x, fc.z, poly) and f.normal.y > 0:
+        if f.normal.y > 0 and (point_in_polygon(fc.x, fc.z, poly) or in_zone(fc)):
             f.normal_flip()
             flipped += 1
     bmesh.update_edit_mesh(obj.data)
@@ -105,8 +114,8 @@ def main():
     make_eye_cup(obj, cR, "R")
     
     # 法线校正: 眼窝内所有面朝-Y(朝眼球), 修复压凹翻折+碗面绕向不定
-    fix_socket_normals(obj, "L")
-    fix_socket_normals(obj, "R")
+    fix_socket_normals(obj, "L", cL)
+    fix_socket_normals(obj, "R", cR)
     
     # 保存
     bpy.ops.wm.save_as_mainfile(filepath=OUT_BLEND)

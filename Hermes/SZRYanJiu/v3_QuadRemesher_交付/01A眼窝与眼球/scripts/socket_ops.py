@@ -114,6 +114,21 @@ def make_eye_socket(obj, center, side):
     bpy.ops.mesh.remove_doubles(threshold=0.0001)
     bpy.ops.object.mode_set(mode='OBJECT')
     print(f"make_eye_socket {side}: cleanup done (local weld only, no global recalc)")
+    
+    # 2026-08-07 v13: 溶解口沿碎片面(<0.5mm²的sliver, 原有皮肤碎片, 法线乱->锯齿尖刺根因).
+    # 只溶解严格内部面(所有边恰2面), 绝不碰边界环上的面(防开洞). ad-hoc验证抓到此缺陷.
+    bpy.ops.object.mode_set(mode='EDIT')
+    bm = bmesh.from_edit_mesh(mesh)
+    bm.faces.ensure_lookup_table()
+    slivers = [f for f in bm.faces
+               if f.calc_area() < 0.5e-6
+               and (f.calc_center_median()-center).xz.length < 0.020
+               and all(len(e.link_faces)==2 for e in f.edges)]
+    if slivers:
+        bmesh.ops.dissolve_faces(bm, faces=slivers)
+        bmesh.update_edit_mesh(mesh)
+    bpy.ops.object.mode_set(mode='OBJECT')
+    print(f"make_eye_socket {side}: dissolved {len(slivers)} sliver faces")
 
 
 def seal_socket_bottom(obj, center, side):
@@ -314,6 +329,20 @@ def make_eye_cup(obj, center, side):
     for f in new_faces:
         f.smooth = True
     bmesh.update_edit_mesh(mesh)
+    
+    # 2026-08-07 v14: 溶解封碗后才变内部的反向sliver(口沿皮肤碎片, 删面时在边界上没敢溶).
+    # 封碗后它们变内部, 0.1um²且法线朝+Y(反), 是锯齿尖刺根因. 只溶严格内部面.
+    # v15: 必须先normal_update()! update_edit_mesh后法线是旧值, 3个sliver靠旧法线逃过过滤.
+    bm.normal_update()
+    bm.faces.ensure_lookup_table()
+    flipped_slivers = [f for f in bm.faces
+                       if f.calc_area() < 0.5e-6 and f.normal.y > 0.3
+                       and (f.calc_center_median()-center).xz.length < 0.020
+                       and all(len(e.link_faces)==2 for e in f.edges)]
+    if flipped_slivers:
+        bmesh.ops.dissolve_faces(bm, faces=flipped_slivers)
+        bmesh.update_edit_mesh(mesh)
+    print(f"make_eye_cup {side}: dissolved {len(flipped_slivers)} flipped rim slivers")
     
     # ---- 3. 法线校正: 碗面朝-Y(朝眼球) ----
     bm.faces.ensure_lookup_table()
