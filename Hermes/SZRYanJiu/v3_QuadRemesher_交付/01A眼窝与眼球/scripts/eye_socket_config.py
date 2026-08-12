@@ -31,6 +31,7 @@ USE_EYELID_CONTOUR = True   # True=用3DDFA眼睑轮廓开孔(杏仁), False=回
 SOCKET_RADIUS = 0.015   # 压凹影响半径 15mm
 SOCKET_DEPTH = 0.010    # 最深 10mm
 CUP_DEPTH_RATIO = 1.5   # 封碗底深度 = SOCKET_DEPTH * 此值 (15mm, 保证眼球后有封闭背景)
+ENABLE_PUSH_IN = False  # 2026-08-07: 压凹是星爆源头(杏仁尖角顶点压得最深->锯齿). 关掉,凹陷由碗负责
 
 # 平滑半椭圆碗 (make_eye_cup)
 CUP_SEGMENTS = 32       # 经线段数(绕碗口, 越大越平滑)

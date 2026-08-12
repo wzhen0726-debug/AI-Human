@@ -80,65 +80,10 @@ def make_eye_socket(obj, center, side):
     print(f"make_eye_socket {side}: deleted {len(to_delete)} faces by center, n_verts_in={in_ellipse.sum()}")
     
     # ---- 2. 压凹 ----
-    # 用numpy批量处理顶点
-    nv = len(mesh.vertices)
-    V = np.empty(nv*3, dtype=np.float32)
-    mesh.vertices.foreach_get("co", V)
-    V = V.reshape(nv,3)
-    
-    # 压凹方向: 全局前向(-Y)的反向, 即+Y? 不对, 眼窝是往头内压, 即-Y方向
-    # 模型面朝-Y, 头内是+Y? 实测: 虹膜中心y=-0.116, 头表面y更小, 头内y更大
-    # 所以压凹方向是 +Y (往头内)
-    push_dir = np.array([0, 1, 0], dtype=np.float32)  # +Y往头内
-    
-    # 计算每个顶点到虹膜中心的距离(在x-z平面)
-    dx = V[:,0] - center.x
-    dz = V[:,2] - center.z
-    dist = np.sqrt(dx*dx + dz*dz)
-    
-    # 压凹权重: 中心1.0, 边缘0.0, 平滑衰减 (cosine falloff)
-    R = SOCKET_RADIUS
-    w = np.clip(1.0 - dist / R, 0, 1)
-    w = 0.5 * (1 + np.cos(np.pi * (1 - w)))  # smooth cosine
-    
-    # 深度: 中心最深 SOCKET_DEPTH, 边缘0
-    depth = w * SOCKET_DEPTH
-    
-    # 只压凹开口周围, 排除开口内(椭圆内的顶点不压)
-    # 删面后顶点索引已变, 需重新计算 in_ellipse
-    # 2026-08-06修复: y窗口与删面一致(椭圆内+比角膜点靠前)
-    dx2 = (V[:,0] - cx) / rx
-    dz2 = (V[:,2] - cz) / rz
-    in_ellipse_new = (dx2*dx2 + dz2*dz2 <= 1.0) & (V[:,1] < cy + 0.005)
-    
-    # 2026-08-07: 排除边界环顶点(它们要和碗缝合, 压凹推高-low不一导致碗侧壁扭曲星爆).
-    # 边界环=开口边缘的顶点. 压凹只作用在环外的脸面过渡区, 环顶点保持脸面原位(平滑).
-    # 用"到轮廓距离"判断: 边界环顶点距杏仁轮廓很近(<2mm), 不压.
-    poly = load_eyelid_contour(side) if USE_EYELID_CONTOUR else None
-    def dist_to_poly_arr(px, pz):
-        if poly is None: return 999.0
-        best=1e9
-        n=len(poly)
-        for i in range(n):
-            x1,z1=poly[i]; x2,z2=poly[(i+1)%n]
-            ex,ez=x2-x1,z2-z1; L2=ex*ex+ez*ez
-            t=0 if L2<1e-12 else max(0,min(1,((px-x1)*ex+(pz-z1)*ez)/L2))
-            qx,qz=x1+t*ex,z1+t*ez
-            best=min(best,((px-qx)**2+(pz-qz)**2)**0.5)
-        return best
-    # 向量化太贵, 逐顶点只在mask候选内算
-    # 压凹范围: 椭圆外 且 dist < R 且 不在边界环上(距轮廓>2mm)
-    mask = (dist < R) & (~in_ellipse_new)
-    if poly is not None:
-        cand = np.where(mask)[0]
-        for vi in cand:
-            if dist_to_poly_arr(V[vi,0], V[vi,2]) < 0.002:  # 边界环顶点, 不压
-                mask[vi] = False
-    V[mask] += push_dir * depth[mask, np.newaxis]
-    
-    mesh.vertices.foreach_set("co", V.ravel())
-    mesh.update()
-    print(f"make_eye_socket {side}: pushed {mask.sum()} verts, max_depth={SOCKET_DEPTH*1000:.1f}mm")
+    # ---- 2. 压凹 (2026-08-07: 默认关闭, 是星爆源头) ----
+    # ---- 2. 压凹已移除 (2026-08-07: 压凹是星爆源头, 杏仁尖角顶点压得最深->锯齿/碎面) ----
+    # 凹陷由make_eye_cup的碗负责, 删面后的洞边缘保持脸面原平滑曲面, 不做压凹.
+    print(f"make_eye_socket {side}: push-in removed (凹陷由碗负责)")
     
     # ---- 3. 局部清理（禁止全局Shift+N） ----
     # 历史教训: bpy.ops.mesh.normals_make_consistent(inside=False) 在删面后的非封闭网格上
@@ -267,33 +212,47 @@ def make_eye_cup(obj, center, side):
         print(f"make_eye_cup {side}: WARNING only {len(boundary_verts)} boundary verts, skip")
         return
     
-    # ring0已是拓扑有序闭环(行走顺序), 直接用, 不再按角度重排(杏仁轮廓角度排序会乱拓扑顺序)
+    # ring0已是拓扑有序闭环(行走顺序), 直接用
     M = len(ring0)
     rim_y = sum(v.co.y for v in ring0) / M   # 用环的实际平均深度作基准
     
-    # ---- 2/3. 碗底封口: ring0先压平到统一深度, 再桥接碗底环+ngon封口 ----
-    # 2026-08-07定量确诊: ring0顶点y极差11.6mm(压凹推高-low不一), 直连bottom_ring导致
-    # 侧壁quad四顶点不共面->扭曲穿插星爆. 修复: ring0先统一到rim_y(环变平), 再桥接.
+    # ---- 2/3. 球面碗: 多环从ring0向中心收缩, 剖面是球面弧(底部圆,坡度连续) ----
+    # 2026-08-07用户明确: 要球面碗(底部圆、坡度连续), 不要直筒/平底.
+    # 关键: 每个顶点沿"指向中心"的方向, 按球面公式 depth=f(r) 内凹, 坡度连续无锐利边缘.
+    # 环顶点沿用ring0拓扑顺序(一一对应不穿插), 逐环向质心收缩+按球面加深.
     import math
-    for v in ring0:
-        v.co.y = rim_y   # 环顶点统一压到平均深度(环变平, 侧壁quad共面)
-    bmesh.update_edit_mesh(mesh)
-    inset = 0.90   # 碗底环=ring0的90%(略收缩, 形成浅斜坡侧壁)
-    bottom_y = rim_y + max_depth
-    bottom_ring = []
-    for v in ring0:
-        x = center.x + (v.co.x - center.x) * inset
-        z = center.z + (v.co.z - center.z) * inset
-        bottom_ring.append(bm.verts.new((x, bottom_y, z)))
+    N = CUP_RINGS  # 8环
+    # 每个ring0顶点到中心的水平距离(杏仁是扁椭圆, 各方向距离不同)
+    vgrid = [ring0]
+    for j in range(1, N):
+        t = j / N   # 0..1, 0=口沿 1=碗底
+        row = []
+        for i in range(M):
+            rv = ring0[i].co
+            # 该顶点的水平偏移向量(相对中心)
+            ox, oz = rv.x - center.x, rv.z - center.z
+            r0 = math.hypot(ox, oz)  # 该方向口沿半径
+            # 球面剖面: 收缩量scale=cos(t*π/2), 深度=sin(t*π/2) —— 剖面是1/4圆弧, 底部圆
+            scale = math.cos(t * math.pi / 2)
+            depth_frac = math.sin(t * math.pi / 2)
+            x = center.x + ox * scale
+            z = center.z + oz * scale
+            # y: 从该顶点实际y按球面弧度加深到 rim_y+max_depth
+            y = rv.y + (rim_y + max_depth - rv.y) * depth_frac
+            row.append(bm.verts.new((x, y, z)))
+        vgrid.append(row)
+    # 碗底用最后一环ngon封口, 不需要极点顶点
+    # 创建面: 相邻环quad
     new_faces = []
-    # 侧壁: ring0 -> bottom_ring
-    for i in range(M):
-        i2 = (i+1) % M
-        a=ring0[i]; b=ring0[i2]; c=bottom_ring[i2]; d=bottom_ring[i]
-        try: new_faces.append(bm.faces.new((a,d,c,b)))
-        except ValueError: pass
-    # 碗底ngon封口
-    try: new_faces.append(bm.faces.new(tuple(bottom_ring)))
+    for j in range(N - 1):
+        for i in range(M):
+            i2 = (i+1) % M
+            a=vgrid[j][i]; b=vgrid[j][i2]; c=vgrid[j+1][i2]; d=vgrid[j+1][i]
+            try: new_faces.append(bm.faces.new((a,d,c,b)))
+            except ValueError: pass
+    # 碗底: 最后一环已是小环(scale=cos(7π/16)≈0.2), 用ngon封平(不用单极点防星爆)
+    last = vgrid[N-1]
+    try: new_faces.append(bm.faces.new(tuple(last)))
     except ValueError: pass
     bmesh.update_edit_mesh(mesh)
     
