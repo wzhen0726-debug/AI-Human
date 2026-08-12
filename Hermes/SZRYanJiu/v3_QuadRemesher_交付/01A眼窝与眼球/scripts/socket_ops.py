@@ -111,8 +111,29 @@ def make_eye_socket(obj, center, side):
     dz2 = (V[:,2] - cz) / rz
     in_ellipse_new = (dx2*dx2 + dz2*dz2 <= 1.0) & (V[:,1] < cy + 0.005)
     
-    # 压凹范围: 椭圆外 且 dist < R
+    # 2026-08-07: 排除边界环顶点(它们要和碗缝合, 压凹推高-low不一导致碗侧壁扭曲星爆).
+    # 边界环=开口边缘的顶点. 压凹只作用在环外的脸面过渡区, 环顶点保持脸面原位(平滑).
+    # 用"到轮廓距离"判断: 边界环顶点距杏仁轮廓很近(<2mm), 不压.
+    poly = load_eyelid_contour(side) if USE_EYELID_CONTOUR else None
+    def dist_to_poly_arr(px, pz):
+        if poly is None: return 999.0
+        best=1e9
+        n=len(poly)
+        for i in range(n):
+            x1,z1=poly[i]; x2,z2=poly[(i+1)%n]
+            ex,ez=x2-x1,z2-z1; L2=ex*ex+ez*ez
+            t=0 if L2<1e-12 else max(0,min(1,((px-x1)*ex+(pz-z1)*ez)/L2))
+            qx,qz=x1+t*ex,z1+t*ez
+            best=min(best,((px-qx)**2+(pz-qz)**2)**0.5)
+        return best
+    # 向量化太贵, 逐顶点只在mask候选内算
+    # 压凹范围: 椭圆外 且 dist < R 且 不在边界环上(距轮廓>2mm)
     mask = (dist < R) & (~in_ellipse_new)
+    if poly is not None:
+        cand = np.where(mask)[0]
+        for vi in cand:
+            if dist_to_poly_arr(V[vi,0], V[vi,2]) < 0.002:  # 边界环顶点, 不压
+                mask[vi] = False
     V[mask] += push_dir * depth[mask, np.newaxis]
     
     mesh.vertices.foreach_set("co", V.ravel())
@@ -197,17 +218,14 @@ def seal_socket_bottom(obj, center, side):
 
 
 def make_eye_cup(obj, center, side):
-    """平滑半椭圆碗眼窝 (取代 seal_socket_bottom 的圆锥版).
+    """眼窝碗底封口: 边界环(拓扑闭环)垂直内移 + ngon平底封口.
     
-    解剖学缝合: 第0圈直接复用开口边界环顶点(共享,无缝), 从环按椭圆弧向内凹陷成碗.
-    剖面是1/4椭圆弧(cos收缩), 碗底半球极点(曲率连续不尖). 无圆锥/瓦楞/缝隙问题.
+    用户明确: 眼窝内部是个坑就行(有眼球挡着). 直筒平底坑, 零穿插.
+    2026-08-07: 历经多环收缩星爆/独立网格脱开等坑, 最终用最简可靠方案.
     """
     import math
     mesh = obj.data
     center = Vector(center)
-    rim_y = center.y
-    rx, rz = HOLE_RX, HOLE_RZ
-    N = CUP_RINGS
     max_depth = CUP_DEPTH
     
     bpy.context.view_layer.objects.active = obj
@@ -216,71 +234,67 @@ def make_eye_cup(obj, center, side):
     bm.verts.ensure_lookup_table()
     bm.edges.ensure_lookup_table()
     
-    # ---- 1. 找开口边界环(开放边), 按绕中心角度排序成有序环 ----
-    boundary_verts = set()
-    for e in bm.edges:
-        if len(e.link_faces) == 1:
-            mx = (e.verts[0].co.x + e.verts[1].co.x) / 2
-            mz = (e.verts[0].co.z + e.verts[1].co.z) / 2
-            dx = (mx - center.x) / rx
-            dz = (mz - center.z) / rz
-            r2 = dx*dx + dz*dz
-            if 0.5 < r2 < 2.8:
-                boundary_verts.add(e.verts[0])
-                boundary_verts.add(e.verts[1])
+    # ---- 1. 拓扑法找开口边界环: 从开放边出发沿闭环走一圈(精确, 不用距离阈值) ----
+    # 2026-08-07: 距离阈值法误识别(70 vs 真实38). 改用拓扑: 开放边首尾相连成闭环=真边界.
+    from collections import defaultdict
+    def is_open(e): return len(e.link_faces) == 1
+    open_edges = [e for e in bm.edges if is_open(e)]
+    v2e = defaultdict(list)
+    for e in open_edges:
+        v2e[e.verts[0].index].append(e)
+        v2e[e.verts[1].index].append(e)
+    def near(v): return (v.co.x-center.x)**2 + (v.co.z-center.z)**2 < 0.020**2
+    starts = [e for e in open_edges if near(e.verts[0])]
+    ring0 = []
+    if starts:
+        e0 = starts[0]; first_v = e0.verts[0]; v = first_v; prev_idx = -1
+        for _ in range(2000):
+            ring0.append(v)
+            nxt_v = None
+            for x in v2e[v.index]:
+                if not is_open(x): continue
+                ov = x.verts[1] if x.verts[0].index == v.index else x.verts[0]
+                if ov.index == first_v.index and len(ring0) > 2:
+                    nxt_v = ov; break
+                if ov.index != prev_idx:
+                    nxt_v = ov; break
+            if nxt_v is None or nxt_v.index == first_v.index: break
+            prev_idx = v.index; v = nxt_v
+    boundary_verts = ring0
     
     if len(boundary_verts) < 3:
         bpy.ops.object.mode_set(mode='OBJECT')
         print(f"make_eye_cup {side}: WARNING only {len(boundary_verts)} boundary verts, skip")
         return
     
-    def ang(v):
-        return math.atan2(v.co.z - center.z, v.co.x - center.x)
-    ring0 = sorted(boundary_verts, key=ang)  # 第0圈=开口边界环(共享顶点,无缝)
+    # ring0已是拓扑有序闭环(行走顺序), 直接用, 不再按角度重排(杏仁轮廓角度排序会乱拓扑顺序)
     M = len(ring0)
     rim_y = sum(v.co.y for v in ring0) / M   # 用环的实际平均深度作基准
     
-    # ---- 2. 生成内部圈(j=1..N-1)顶点: 从ring0按椭圆弧收缩 ----
-    # 每个内部圈j的第i个顶点, 角度与ring0[i]一致, 半径按比例scale收缩, y按sin加深
-    pole = (center.x, rim_y + max_depth, center.z)
-    vgrid = [ring0]  # 第0圈=边界环(共享)
-    for j in range(1, N):
-        t = j / N
-        scale = math.cos(t * math.pi / 2)
-        y = rim_y + max_depth * math.sin(t * math.pi / 2)
-        row = []
-        for i in range(M):
-            rv = ring0[i].co
-            # 该顶点相对中心的角度保持, 半径按scale收缩, 但x/z以椭圆参数重算保证平滑
-            th = ang(ring0[i])
-            x = center.x + rx * scale * math.cos(th)
-            z = center.z + rz * scale * math.sin(th)
-            row.append(bm.verts.new((x, y, z)))
-        vgrid.append(row)
-    vpole = bm.verts.new(pole)
-    
-    # ---- 3. 创建面: 相邻圈x相邻段成quad; 末圈到极点成三角扇 ----
+    # ---- 2/3. 碗底封口: ring0先压平到统一深度, 再桥接碗底环+ngon封口 ----
+    # 2026-08-07定量确诊: ring0顶点y极差11.6mm(压凹推高-low不一), 直连bottom_ring导致
+    # 侧壁quad四顶点不共面->扭曲穿插星爆. 修复: ring0先统一到rim_y(环变平), 再桥接.
+    import math
+    for v in ring0:
+        v.co.y = rim_y   # 环顶点统一压到平均深度(环变平, 侧壁quad共面)
+    bmesh.update_edit_mesh(mesh)
+    inset = 0.90   # 碗底环=ring0的90%(略收缩, 形成浅斜坡侧壁)
+    bottom_y = rim_y + max_depth
+    bottom_ring = []
+    for v in ring0:
+        x = center.x + (v.co.x - center.x) * inset
+        z = center.z + (v.co.z - center.z) * inset
+        bottom_ring.append(bm.verts.new((x, bottom_y, z)))
     new_faces = []
-    for j in range(N - 1):
-        for i in range(M):
-            i2 = (i + 1) % M
-            a = vgrid[j][i]
-            b = vgrid[j][i2]
-            c = vgrid[j + 1][i2]
-            d = vgrid[j + 1][i]
-            try:
-                new_faces.append(bm.faces.new((a, d, c, b)))  # 绕序使内壁朝眼球(-Y)
-            except ValueError:
-                pass
-    # 碗底三角扇
-    last = vgrid[N - 1]
+    # 侧壁: ring0 -> bottom_ring
     for i in range(M):
-        i2 = (i + 1) % M
-        try:
-            new_faces.append(bm.faces.new((last[i], vpole, last[i2])))
-        except ValueError:
-            pass
-    
+        i2 = (i+1) % M
+        a=ring0[i]; b=ring0[i2]; c=bottom_ring[i2]; d=bottom_ring[i]
+        try: new_faces.append(bm.faces.new((a,d,c,b)))
+        except ValueError: pass
+    # 碗底ngon封口
+    try: new_faces.append(bm.faces.new(tuple(bottom_ring)))
+    except ValueError: pass
     bmesh.update_edit_mesh(mesh)
     
     # ---- 4. 局部法线校正: 碗内面必须朝-Y(朝眼球/朝外). 2026-08-07用户报面朝向反 ----
@@ -294,5 +308,5 @@ def make_eye_cup(obj, center, side):
             flipped += 1
     bmesh.update_edit_mesh(mesh)
     bpy.ops.object.mode_set(mode='OBJECT')
-    print(f"make_eye_cup {side}: ring0={M} N={N} quad+fan={len(new_faces)} depth={max_depth*1000:.1f}mm pole_y={pole[1]:.4f} normal_flipped={flipped}")
+    print(f"make_eye_cup {side}: ring0={M} faces={len(new_faces)} depth={max_depth*1000:.1f}mm normal_flipped={flipped}")
     return ring0

@@ -35,7 +35,7 @@ CUP_DEPTH_RATIO = 1.5   # 封碗底深度 = SOCKET_DEPTH * 此值 (15mm, 保证�
 # 平滑半椭圆碗 (make_eye_cup)
 CUP_SEGMENTS = 32       # 经线段数(绕碗口, 越大越平滑)
 CUP_RINGS = 8           # 纬线圈数(口沿->碗底, 深度方向平滑度)
-CUP_DEPTH = 0.020       # 碗最深 20mm (2026-08-06: 12mm不够, 眼球r14.5mm后极需~17mm深, 20mm留余量防穿透)
+CUP_DEPTH = 0.015       # 碗最深 15mm (2026-08-07: 20mm碗底y到+0.10穿进后脑壳, 减到15mm)
 
 # 检测参数 (v2: 全脸眼带+K-means外簇+最暗核心, 不再靠种子点)
 EYE_BAND_Z_MIN = 1.60   # 眼带z下限(米)
