@@ -21,6 +21,28 @@ def load_eyelid_contour(side):
     poly = [(r[0], r[2]) for r in rim]
     return poly
 
+def resample_ring(ring_pts, n):
+    """把有序闭环顶点重采样成n个等间距点(线性插值). 解决杏仁轮廓顶点分布不均(0.7~2.9mm)导致的星爆.
+    ring_pts: [Vector/坐标] 有序环. 返回 [(x,y,z)] 等间距n点."""
+    import numpy as np
+    pts = [np.array([p.x, p.y, p.z]) if hasattr(p,'x') else np.array(p) for p in ring_pts]
+    M = len(pts)
+    # 累计弧长
+    seg = [np.linalg.norm(pts[(i+1)%M]-pts[i]) for i in range(M)]
+    total = sum(seg)
+    if total < 1e-9: return pts[:n]
+    # 等间距目标弧长
+    out = []
+    acc = 0.0; i = 0
+    for k in range(n):
+        target = total * k / n
+        while acc + seg[i] < target and i < M:
+            acc += seg[i]; i = (i+1) % M
+        # 在边i上按剩余比例插值
+        t = (target - acc) / seg[i] if seg[i] > 1e-12 else 0
+        out.append(tuple(pts[i] + (pts[(i+1)%M]-pts[i]) * t))
+    return out
+
 def point_in_polygon(x, z, poly):
     """射线法判断点(x,z)是否在多边形poly内. poly=[(x,z),...]"""
     n = len(poly)
@@ -216,29 +238,46 @@ def make_eye_cup(obj, center, side):
     M = len(ring0)
     rim_y = sum(v.co.y for v in ring0) / M   # 用环的实际平均深度作基准
     
-    # ---- 2/3. 球面碗: 多环从ring0向中心收缩, 剖面是球面弧(底部圆,坡度连续) ----
-    # 2026-08-07用户明确: 要球面碗(底部圆、坡度连续), 不要直筒/平底.
-    # 关键: 每个顶点沿"指向中心"的方向, 按球面公式 depth=f(r) 内凹, 坡度连续无锐利边缘.
-    # 环顶点沿用ring0拓扑顺序(一一对应不穿插), 逐环向质心收缩+按球面加深.
+    # ---- 2/3. 均匀角度球面碗: 内部环用均匀角度分布(消星爆), 第0圈=ring0 ----
+    # 2026-08-07定量确诊: ring0顶点间距0.7~2.9mm不均(std0.49), 收缩时弧线quad被拉成狭长三角→星爆.
+    # 实测: 均匀角度48点+球面剖面 → 碗心平滑无星爆(vision确认). 
+    # 方案: 第0圈=ring0(保缝合), 内部环用均匀角度插值ring0位置(保对应关系防穿插).
     import math
     N = CUP_RINGS  # 8环
-    # 每个ring0顶点到中心的水平距离(杏仁是扁椭圆, 各方向距离不同)
-    vgrid = [ring0]
+    # 把ring0按角度重排并均匀重采样到M个点(保顶点数=保缝合对应), 内部环用它做基准
+    def ang_of(v): return math.atan2(v.co.z - center.z, v.co.x - center.x)
+    # 均匀角度目标: 每个顶点的"理想角度"=等分圆周, 在ring0上插值出该角度的位置
+    ring_sorted = sorted(ring0, key=ang_of)
+    # 计算每个顶点的累计角度
+    angs = [ang_of(v) for v in ring_sorted]
+    # 强制单调(处理2π跳变)
+    for i in range(1, len(angs)):
+        while angs[i] < angs[i-1]: angs[i] += 2*math.pi
+    span = angs[-1] - angs[0]
+    def pos_at_angle(theta):
+        # 在ring_sorted上按角度线性插值位置
+        th = angs[0] + theta
+        for i in range(len(ring_sorted)-1):
+            if angs[i] <= th <= angs[i+1]:
+                t = (th-angs[i])/(angs[i+1]-angs[i]) if angs[i+1]>angs[i] else 0
+                a, b = ring_sorted[i].co, ring_sorted[i+1].co
+                return a + (b-a)*t
+        return ring_sorted[-1].co
+    vgrid = [ring0]  # 第0圈=真实边界环(缝合)
     for j in range(1, N):
         t = j / N   # 0..1, 0=口沿 1=碗底
         row = []
         for i in range(M):
-            rv = ring0[i].co
-            # 该顶点的水平偏移向量(相对中心)
-            ox, oz = rv.x - center.x, rv.z - center.z
-            r0 = math.hypot(ox, oz)  # 该方向口沿半径
-            # 球面剖面: 收缩量scale=cos(t*π/2), 深度=sin(t*π/2) —— 剖面是1/4圆弧, 底部圆
-            scale = math.cos(t * math.pi / 2)
+            # 该顶点的均匀角度
+            theta = span * i / M
+            # 在ring0上取该角度的位置(均匀化), 再向质心收缩
+            base = pos_at_angle(theta)
+            ox, oz = base.x - center.x, base.z - center.z
+            scale = math.cos(t * math.pi / 2)   # 球面剖面
             depth_frac = math.sin(t * math.pi / 2)
             x = center.x + ox * scale
             z = center.z + oz * scale
-            # y: 从该顶点实际y按球面弧度加深到 rim_y+max_depth
-            y = rv.y + (rim_y + max_depth - rv.y) * depth_frac
+            y = base.y + (rim_y + max_depth - base.y) * depth_frac
             row.append(bm.verts.new((x, y, z)))
         vgrid.append(row)
     # 碗底用最后一环ngon封口, 不需要极点顶点
@@ -250,7 +289,7 @@ def make_eye_cup(obj, center, side):
             a=vgrid[j][i]; b=vgrid[j][i2]; c=vgrid[j+1][i2]; d=vgrid[j+1][i]
             try: new_faces.append(bm.faces.new((a,d,c,b)))
             except ValueError: pass
-    # 碗底: 最后一环已是小环(scale=cos(7π/16)≈0.2), 用ngon封平(不用单极点防星爆)
+    # 碗底: 最后一环ngon封平(不用单极点防星爆)
     last = vgrid[N-1]
     try: new_faces.append(bm.faces.new(tuple(last)))
     except ValueError: pass

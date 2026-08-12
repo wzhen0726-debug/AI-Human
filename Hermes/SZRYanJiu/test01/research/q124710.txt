@@ -1,0 +1,45 @@
+#  Fill hole with spherical cap
+https://blender.stackexchange.com/questions/124710/fill-hole-with-spherical-cap
+
+
+I had some artifacts at the pole of a sphere, which are the result of a Displace modifier with a slightly messy UV map:
+
+
+
+[img:https://i.sstatic.net/mzzJ7.png] (https://i.sstatic.net/mzzJ7.png)
+
+
+
+To get rid of them, I Alt-selected a loop around them and did Select > Select Loop Inner-Region:
+
+
+
+[img:https://i.sstatic.net/lWvCe.png] (https://i.sstatic.net/lWvCe.png)
+
+
+
+When I now hit Del and choose "Dissolve Vertices", I get a single flat face:
+
+
+
+[img:https://i.sstatic.net/kmixe.png] (https://i.sstatic.net/kmixe.png)
+
+
+
+Is there a way to instead fill the hole with something like the cap of a UV sphere?
+
+
+
+===== ANSWERS =====
+
+--- answer score=1 accepted=False
+
+
+Any other way will leave a flat face. The way I do it is to create the exact size UV sphere with the same amount of segments, delete the unnecessary faces, and then manually connect the vertices to the cap of the new UV Sphere.
+
+
+
+But I'm guessing since you have so many segments that would take forever. So another more inaccurate way- since it's a sphere is...
+Extrude the opening's edge 2 or 3 times. Then merge the smallest loop into a single vertice.
+From there you can adjust the height of the new vertice loops until the smooth operator or subsurface takes effect visually.
+

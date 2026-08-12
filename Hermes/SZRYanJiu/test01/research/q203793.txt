@@ -1,0 +1,63 @@
+#  How to match a separate dome mesh for an eye to an irregular eye hole perimeter?
+https://blender.stackexchange.com/questions/203793/how-to-match-a-separate-dome-mesh-for-an-eye-to-an-irregular-eye-hole-perimeter
+
+
+I've got a simple head mesh with eye holes already cut and I would like to add eyes as a separate mesh. I would like to maintain the dome-like topology of the new eye mesh while matching the existing eye hole perimeter. This is a bit of a challenge since the eye holes are bit irregular in all axes (part of the design).
+
+
+I've only got a few flight hours in blender, but so far I've tried simple deform, mesh deform and shrinkwrap modifiers to match the eye mesh to the eye perimeter. I've also tried making a grid fill of the eye perimeter and then proportional editing to grab and pull out but the shape turns out pretty bad. I also tried insetting and extruding the eye perimeter to stairstep new geometry in a dome-like fashion, but couldn't get the results to be dome-like.
+
+
+If I can utilize modifiers to get me pretty close then I can tweak vertices from there.
+
+
+Final utility: to be separate meshes for 3d printing ... therefore the number of vertices on the eyehole don't necessarily need to match the eye.
+
+
+(Next time I will probably model the eyes before making the eye holes.)
+
+
+[img:https://i.sstatic.net/x1w1R.jpg] (https://i.sstatic.net/x1w1R.jpg)
+
+
+[img:https://i.sstatic.net/Fjk1Z.jpg] (https://i.sstatic.net/Fjk1Z.jpg)
+
+
+[img:https://blend-exchange.giantcowfilms.com/embedImage.png?bid=daY5p8wO] (https://blend-exchange.giantcowfilms.com/b/daY5p8wO/)
+
+
+
+===== ANSWERS =====
+
+--- answer score=2 accepted=True
+
+
+Your shape is a bit hard to work as it is already high in polygons, you should not work with high-poly as long as you are not satisfied with the whole shape in my opinion (and even afterwards, keep it low-poly, use a Subdivision Surface modifier to smooth, and only apply it if necessary), but, starting with what you're sharing, what you could do is duplicate the outer edge loop, simplify it (header menu > Select > Checker Deselect, then X > Dissolve vertices):
+
+
+[img:https://i.sstatic.net/KFJ0R.jpg] (https://i.sstatic.net/KFJ0R.jpg)
+
+
+Then extrude inwards and fill:
+
+
+[img:https://i.sstatic.net/aArVU.jpg] (https://i.sstatic.net/aArVU.jpg)
+
+
+Put it on the head, make some adjustments:
+
+
+[img:https://i.sstatic.net/A1Fh3.jpg] (https://i.sstatic.net/A1Fh3.jpg)
+
+
+If you want to smooth it, give it a Subdivision Surface modifier (3 subdivisions) and apply:
+
+
+[img:https://i.sstatic.net/0SkJs.jpg] (https://i.sstatic.net/0SkJs.jpg)
+
+
+Here is what it gives:
+
+
+[img:https://i.sstatic.net/yTOkZ.jpg] (https://i.sstatic.net/yTOkZ.jpg)
+

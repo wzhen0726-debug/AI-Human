@@ -1,0 +1,45 @@
+#  Smoother/more regular grid fill for curved surface
+https://blender.stackexchange.com/questions/320776/smoother-more-regular-grid-fill-for-curved-surface
+
+
+I have a curved surface:
+
+
+[img:https://i.sstatic.net/9nnJ74RK.png] (https://i.sstatic.net/9nnJ74RK.png)
+
+
+Here is the top view of thesurface before I use Face -> Grid Fill:
+
+
+[img:https://i.sstatic.net/19QDZmm3.png] (https://i.sstatic.net/19QDZmm3.png)
+
+
+Here is the result of Face -> Grid Fill:
+
+
+[img:https://i.sstatic.net/517eP78H.png] (https://i.sstatic.net/517eP78H.png)
+
+
+I need to UV Unwrap this surface, and subsequently grab and deform an image texture - so I would like a regular grid to grab and deform. I am a relative beginner to Blender - can someone help me understand why the grid fill does not give me more regularly spaced vertices and regularly sized faces?
+
+
+
+===== ANSWERS =====
+
+--- answer score=1 accepted=False
+
+
+Ok - this is a classic beginner mistake I think. Performance of algorithms like grid fill depend heavily on the topology of the input. Notice the non-straight edge at the bottom (thinest) part of my surface. First, that edge was not straight, second it was not subdivided - that is - it did not contain any vertices itself. These were the key problems.
+
+
+Reading the grid fill documentation (https://docs.blender.org/manual/en/latest/modeling/meshes/editing/face/grid_fill.html) made it more clear how grid fill works when you select a single closed edge loop like I was. It has to estimate where to "cut" the loop to create two opposite edges from which to then create the grid. My input topology was causing that "cut" estimation to perform poorly.
+
+
+The specific answer is make sure your input topology is right for the algorithm. The more general answer is, read the docs for each function you are using, even if you don't think you need to. You don't know what you don't know.
+
+
+Here is my improved grid fill:
+
+
+[img:https://i.sstatic.net/2618bi4M.png] (https://i.sstatic.net/2618bi4M.png)
+
