@@ -260,8 +260,20 @@ def make_eye_cup(obj, center, side):
     ring_idx = max(rings, key=len)
     ring0 = [bm.verts[i] for i in ring_idx]  # 拓扑行走顺序(与网格边界一致, 不排序!)
     M = len(ring0)
+    
+    # ---- 1.5 松弛ring0去锯齿(3次Laplace) ----
+    # 2026-08-07 v12: 锯齿口沿(vision反复报的尖刺)+碗底非流形边(0.3mm sliver,4面共边)
+    # 同一根因=边界环局部zigzag. 收缩后zigzag的quad重叠->非流形. 松弛ring0:
+    # 顶点与皮肤共享, 移动它同时平滑了洞口边缘(正是我们要的).
+    for _ in range(3):
+        new_pos = {}
+        for i, v in enumerate(ring0):
+            a = ring0[(i-1)%M].co; b = ring0[(i+1)%M].co
+            new_pos[v.index] = v.co*0.5 + (a+b)*0.25
+        for v in ring0:
+            v.co = new_pos[v.index]
     rim_y = sum(v.co.y for v in ring0) / M
-    print(f"make_eye_cup {side}: boundary ring M={M} (of {len(rings)} rings)")
+    print(f"make_eye_cup {side}: boundary ring M={M} (of {len(rings)} rings), ring relaxed x3")
     
     # ---- 2. 球面碗剖面 + 共享极点三角扇封底(构造上保证流形) ----
     # 2026-08-07 v11根因总结: ngon封口(三角化碎片)/pointmerge(碗底重复面)都留非流形边.
