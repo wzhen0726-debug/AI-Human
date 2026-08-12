@@ -56,63 +56,59 @@ def point_in_polygon(x, z, poly):
     return inside
 
 def make_eye_socket(obj, center, side):
-    """对单侧眼睛做开孔+压凹. center为局部坐标"""
+    """开孔: 删面心在眼睑轮廓(杏仁多边形)内的所有面, 不分深度全删净.
+    2026-08-07重写: 旧y_cut条件让深部鼓包面残留成孤岛(45条开放边/5断环)→锯齿破面."""
     mesh = obj.data
     center = Vector(center)
     
-    # ---- 1. 选中开口内面片并删除 ----
     bpy.context.view_layer.objects.active = obj
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='DESELECT')
     
-    # 用numpy快速找开口内顶点
-    nv = len(mesh.vertices)
-    V = np.empty(nv*3, dtype=np.float32)
-    mesh.vertices.foreach_get("co", V)
-    V = V.reshape(nv,3)
-    
+    poly = load_eyelid_contour(side) if USE_EYELID_CONTOUR else None
     cx, cy, cz = center.x, center.y, center.z
     rx, rz = HOLE_RX, HOLE_RZ
     
-    # 椭圆: ((x-cx)/rx)^2 + ((z-cz)/rz)^2 <= 1
-    dx = (V[:,0] - cx) / rx
-    dz = (V[:,2] - cz) / rz
-    in_ellipse = (dx*dx + dz*dz <= 1.0) & (V[:,1] < cy + 0.005)
-    
-    # 2026-08-07: 用3DDFA真实眼睑轮廓(杏仁多边形)开孔, 不用对称椭圆.
-    # 真实眼形26.8x9.7mm宽高比2.75两头尖; 对称椭圆rz=9太圆(宽高比1.44).
-    poly = load_eyelid_contour(side) if USE_EYELID_CONTOUR else None
-    y_cut = cy + 0.005  # 角膜点后5mm以内的面都删(覆盖眼睑前凸)
     bm = bmesh.from_edit_mesh(mesh)
     bm.faces.ensure_lookup_table()
-    to_delete = []
+    # 2026-08-07 v4: 洪泛填充删面(替代面心判断). 面心判断让删区不连通, 留5个孤立环(锯齿破面).
+    # 从眼中心最近面生长, 只收录面心在轮廓内的邻面 -> 删区必连通成单环.
+    # y限制: cy+20mm(鼓包最深处~-0.10也要删净; 轮廓只覆盖眼区, 不会误删后脑壳)
+    y_cut = cy + 0.020
+    # 面邻接表
+    f2f = {}
     for f in bm.faces:
-        fc = f.calc_center_median()
+        f2f[f.index] = []
+    for e in bm.edges:
+        if len(e.link_faces) == 2:
+            a, b = e.link_faces[0].index, e.link_faces[1].index
+            f2f[a].append(b); f2f[b].append(a)
+    # 找离眼中心最近的面作种子(必须用3D距离: xz最近会选到后脑勺同x/z的面y=+0.09)
+    seed = min(bm.faces, key=lambda f: (f.calc_center_median()-center).length)
+    def inside_poly(fc):
+        if fc.y >= y_cut: return False
         if poly is not None:
-            inside = point_in_polygon(fc.x, fc.z, poly)
-        else:
-            dx = (fc.x - cx) / rx
-            dz = (fc.z - cz) / rz
-            inside = (dx*dx + dz*dz <= 1.0)
-        if inside and fc.y < y_cut:
-            to_delete.append(f)
-    bmesh.ops.delete(bm, geom=to_delete, context='FACES')
+            return point_in_polygon(fc.x, fc.z, poly)
+        return ((fc.x-cx)/rx)**2 + ((fc.z-cz)/rz)**2 <= 1.0
+    # BFS洪泛
+    to_delete = set([seed.index])
+    stack = [seed.index]
+    while stack:
+        fi = stack.pop()
+        for nb in f2f[fi]:
+            if nb in to_delete: continue
+            nf = bm.faces[nb]
+            if inside_poly(nf.calc_center_median()):
+                to_delete.add(nb)
+                stack.append(nb)
+    del_faces = [bm.faces[i] for i in to_delete]
+    bmesh.ops.delete(bm, geom=del_faces, context='FACES')
     bmesh.update_edit_mesh(mesh)
     bpy.ops.object.mode_set(mode='OBJECT')
-    print(f"make_eye_socket {side}: deleted {len(to_delete)} faces by center, n_verts_in={in_ellipse.sum()}")
-    
-    # ---- 2. 压凹 ----
-    # ---- 2. 压凹 (2026-08-07: 默认关闭, 是星爆源头) ----
-    # ---- 2. 压凹已移除 (2026-08-07: 压凹是星爆源头, 杏仁尖角顶点压得最深->锯齿/碎面) ----
-    # 凹陷由make_eye_cup的碗负责, 删面后的洞边缘保持脸面原平滑曲面, 不做压凹.
+    print(f"make_eye_socket {side}: flood-fill deleted {len(del_faces)} faces (single connected patch)")
     print(f"make_eye_socket {side}: push-in removed (凹陷由碗负责)")
     
-    # ---- 3. 局部清理（禁止全局Shift+N） ----
-    # 历史教训: bpy.ops.mesh.normals_make_consistent(inside=False) 在删面后的非封闭网格上
-    # 是非确定性传播(等效Shift+N), 会翻过洞边缘把下半身大片法线搞反(2026-08-06实测).
-    # 01_highpoly_repair.blend 法线本来就正确, 绝不能全局重算.
-    # 删面+压凹只动顶点位置, 不改面绕序(winding), 法线方向保持原样即可.
-    # 只做局部焊接: 合并洞口边缘的重复顶点(压凹可能让边界顶点重叠)
+    # 局部焊接重复顶点(不动法线, 历史教训: 全局Shift+N会翻过洞边缘)
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
     bpy.ops.mesh.remove_doubles(threshold=0.0001)
@@ -185,12 +181,12 @@ def seal_socket_bottom(obj, center, side):
 
 
 def make_eye_cup(obj, center, side):
-    """眼窝碗底封口: 边界环(拓扑闭环)垂直内移 + ngon平底封口.
-    
-    用户明确: 眼窝内部是个坑就行(有眼球挡着). 直筒平底坑, 零穿插.
-    2026-08-07: 历经多环收缩星爆/独立网格脱开等坑, 最终用最简可靠方案.
-    """
+    """眼窝封底: 边界环内收几圈 + 极点三角扇封底.
+    用户明确: 内部是个坑就行(眼球会挡), 重点是平滑封闭无破面.
+    2026-08-07重写: 旧版ngon封底翘曲出放射扇条纹+孤岛残留锯齿.
+    本版: ①删眼区孤岛 ②3圈内收 ③极点扇封底 ④smooth shading."""
     import math
+    from collections import defaultdict
     mesh = obj.data
     center = Vector(center)
     max_depth = CUP_DEPTH
@@ -201,111 +197,113 @@ def make_eye_cup(obj, center, side):
     bm.verts.ensure_lookup_table()
     bm.edges.ensure_lookup_table()
     
-    # ---- 1. 拓扑法找开口边界环: 从开放边出发沿闭环走一圈(精确, 不用距离阈值) ----
-    # 2026-08-07: 距离阈值法误识别(70 vs 真实38). 改用拓扑: 开放边首尾相连成闭环=真边界.
-    from collections import defaultdict
-    def is_open(e): return len(e.link_faces) == 1
-    open_edges = [e for e in bm.edges if is_open(e)]
-    v2e = defaultdict(list)
+    def in_zone(co):
+        return (co.x-center.x)**2 + (co.z-center.z)**2 < 0.022**2
+    
+    # ---- 0. 删眼区孤岛: 与主体断开的碎面片(删面残留) ----
+    # 建邻接表, 从远离眼区的顶点BFS标记主体连通分量, 眼区内不连通的面=孤岛
+    v2f = defaultdict(list)
+    for f in bm.faces:
+        for v in f.verts:
+            v2f[v.index].append(f)
+    # 种子: 眼区外、朝脸前的顶点
+    seeds = [v.index for v in bm.verts if abs(v.co.x-center.x)>0.030 and abs(v.co.z-center.z)<0.060 and v.co.y<0.02]
+    connected = set()
+    stack = list(seeds)
+    while stack:
+        vi = stack.pop()
+        if vi in connected: continue
+        connected.add(vi)
+        for f in v2f[vi]:
+            for v in f.verts:
+                if v.index not in connected:
+                    stack.append(v.index)
+    island_faces = [f for f in bm.faces if any(v.index not in connected for v in f.verts) and in_zone(f.calc_center_median())]
+    if island_faces:
+        bmesh.ops.delete(bm, geom=island_faces, context='FACES')
+        bm.verts.ensure_lookup_table()
+        bm.edges.ensure_lookup_table()
+    print(f"make_eye_cup {side}: removed {len(island_faces)} island faces")
+    
+    # ---- 1. 找所有开放边环, 取最大的 = 眼窝开口边界 ----
+    # 2026-08-07 v5根因: 角度排序(atan2)破坏拓扑顺序, quad用跨越新边不共享原边界边
+    # -> 原边界边悬空成锯齿裂口(实测封碗后冒出5个开放环). 必须用拓扑行走顺序.
+    open_edges = [e for e in bm.edges if len(e.link_faces)==1 and in_zone(e.verts[0].co)]
+    adj = defaultdict(list)
     for e in open_edges:
-        v2e[e.verts[0].index].append(e)
-        v2e[e.verts[1].index].append(e)
-    def near(v): return (v.co.x-center.x)**2 + (v.co.z-center.z)**2 < 0.020**2
-    starts = [e for e in open_edges if near(e.verts[0])]
-    ring0 = []
-    if starts:
-        e0 = starts[0]; first_v = e0.verts[0]; v = first_v; prev_idx = -1
-        for _ in range(2000):
-            ring0.append(v)
-            nxt_v = None
-            for x in v2e[v.index]:
-                if not is_open(x): continue
-                ov = x.verts[1] if x.verts[0].index == v.index else x.verts[0]
-                if ov.index == first_v.index and len(ring0) > 2:
-                    nxt_v = ov; break
-                if ov.index != prev_idx:
-                    nxt_v = ov; break
-            if nxt_v is None or nxt_v.index == first_v.index: break
-            prev_idx = v.index; v = nxt_v
-    boundary_verts = ring0
-    
-    if len(boundary_verts) < 3:
+        adj[e.verts[0].index].append(e.verts[1].index)
+        adj[e.verts[1].index].append(e.verts[0].index)
+    rings = []
+    visited_v = set()
+    for start in list(adj.keys()):
+        if start in visited_v or len(adj[start]) != 2: continue
+        ring = [start]; visited_v.add(start)
+        prev, cur = -1, start
+        closed = False
+        for _ in range(10000):
+            nxt = None
+            for n in adj[cur]:
+                if n == prev: continue
+                if n == start:
+                    closed = True; break
+                if n not in visited_v:
+                    nxt = n; break
+            if closed or nxt is None: break
+            ring.append(nxt); visited_v.add(nxt)
+            prev, cur = cur, nxt
+        if closed and len(ring) >= 3:
+            rings.append(ring)
+    if not rings:
         bpy.ops.object.mode_set(mode='OBJECT')
-        print(f"make_eye_cup {side}: WARNING only {len(boundary_verts)} boundary verts, skip")
+        print(f"make_eye_cup {side}: WARNING no closed boundary ring, skip")
         return
-    
-    # ring0已是拓扑有序闭环(行走顺序), 直接用
+    ring_idx = max(rings, key=len)
+    ring0 = [bm.verts[i] for i in ring_idx]  # 拓扑行走顺序(与网格边界一致, 不排序!)
     M = len(ring0)
-    rim_y = sum(v.co.y for v in ring0) / M   # 用环的实际平均深度作基准
+    rim_y = sum(v.co.y for v in ring0) / M
+    print(f"make_eye_cup {side}: boundary ring M={M} (of {len(rings)} rings)")
     
-    # ---- 2/3. 均匀角度球面碗: 内部环用均匀角度分布(消星爆), 第0圈=ring0 ----
-    # 2026-08-07定量确诊: ring0顶点间距0.7~2.9mm不均(std0.49), 收缩时弧线quad被拉成狭长三角→星爆.
-    # 实测: 均匀角度48点+球面剖面 → 碗心平滑无星爆(vision确认). 
-    # 方案: 第0圈=ring0(保缝合), 内部环用均匀角度插值ring0位置(保对应关系防穿插).
-    import math
-    N = CUP_RINGS  # 8环
-    # 把ring0按角度重排并均匀重采样到M个点(保顶点数=保缝合对应), 内部环用它做基准
-    def ang_of(v): return math.atan2(v.co.z - center.z, v.co.x - center.x)
-    # 均匀角度目标: 每个顶点的"理想角度"=等分圆周, 在ring0上插值出该角度的位置
-    ring_sorted = sorted(ring0, key=ang_of)
-    # 计算每个顶点的累计角度
-    angs = [ang_of(v) for v in ring_sorted]
-    # 强制单调(处理2π跳变)
-    for i in range(1, len(angs)):
-        while angs[i] < angs[i-1]: angs[i] += 2*math.pi
-    span = angs[-1] - angs[0]
-    def pos_at_angle(theta):
-        # 在ring_sorted上按角度线性插值位置
-        th = angs[0] + theta
-        for i in range(len(ring_sorted)-1):
-            if angs[i] <= th <= angs[i+1]:
-                t = (th-angs[i])/(angs[i+1]-angs[i]) if angs[i+1]>angs[i] else 0
-                a, b = ring_sorted[i].co, ring_sorted[i+1].co
-                return a + (b-a)*t
-        return ring_sorted[-1].co
-    vgrid = [ring0]  # 第0圈=真实边界环(缝合)
-    for j in range(1, N):
-        t = j / N   # 0..1, 0=口沿 1=碗底
+    # ---- 2. 同序收缩3圈 + 极点扇封底 ----
+    # 内圈=ring0[i]径向收缩(同一顶点同一顺序) -> quad必共享边界边, 零悬空边.
+    vgrid = [list(ring0)]
+    NR = 3
+    for j in range(1, NR+1):
+        t = j / (NR+1)
+        scale = 1.0 - t*0.60
         row = []
         for i in range(M):
-            # 该顶点的均匀角度
-            theta = span * i / M
-            # 在ring0上取该角度的位置(均匀化), 再向质心收缩
-            base = pos_at_angle(theta)
-            ox, oz = base.x - center.x, base.z - center.z
-            # 2026-08-07: 16环+半球面剖面. 收缩=cos²(t·π/2)口沿更缓, 加深=sin(t·π/2)连续.
-            # 口沿坡度放缓, 消除开口边缘的陡坎硬边(用户报衔接硬边).
-            ang = t * math.pi / 2
-            scale = math.cos(ang) ** 1.5      # 口沿收缩更缓(指数>1 -> 前期变化慢)
-            scale = max(scale, 0.20)          # 2026-08-07: 末环别太小(防ngon与quad重叠非流形边)
-            depth_frac = math.sin(ang)         # 深度连续
-            x = center.x + ox * scale
-            z = center.z + oz * scale
-            y = base.y + (rim_y + max_depth - base.y) * depth_frac
-            row.append(bm.verts.new((x, y, z)))
+            base = ring0[i].co
+            x = center.x + (base.x-center.x)*scale
+            z = center.z + (base.z-center.z)*scale
+            y = base.y + (rim_y + max_depth - base.y)*(t*0.7)
+            row.append(bm.verts.new((x,y,z)))
         vgrid.append(row)
-    # 碗底用最后一环ngon封口, 不需要极点顶点
-    # 创建面: 相邻环quad
+    pole = bm.verts.new((center.x, rim_y+max_depth, center.z))
+    
     new_faces = []
-    for j in range(N - 1):
+    # 相邻环quad
+    for j in range(len(vgrid)-1):
         for i in range(M):
-            i2 = (i+1) % M
+            i2=(i+1)%M
             a=vgrid[j][i]; b=vgrid[j][i2]; c=vgrid[j+1][i2]; d=vgrid[j+1][i]
             try: new_faces.append(bm.faces.new((a,d,c,b)))
             except ValueError: pass
-    # 碗底: 最后一环ngon封平(不用单极点防星爆)
-    last = vgrid[N-1]
-    try: new_faces.append(bm.faces.new(tuple(last)))
-    except ValueError: pass
+    # 极点扇封底(不用ngon, 防翘曲条纹)
+    last = vgrid[-1]
+    for i in range(M):
+        try: new_faces.append(bm.faces.new((last[i], last[(i+1)%M], pole)))
+        except ValueError: pass
+    
+    # smooth shading(与皮肤一致, 消棱面)
+    for f in new_faces:
+        f.smooth = True
     bmesh.update_edit_mesh(mesh)
     
-    # ---- 4. 局部法线校正: 碗内面必须朝-Y(朝眼球/朝外). 2026-08-07用户报面朝向反 ----
-    # ring0排序绕向不定(atan2顺/逆), 导致生成面法线可能朝内(+Y). 逐个检查翻转.
-    # 只动刚生成的碗面(new_faces), 不全局重算(历史教训: 全局Shift+N会翻过洞边缘).
+    # ---- 3. 法线校正: 碗面朝-Y(朝眼球) ----
     bm.faces.ensure_lookup_table()
     flipped = 0
     for f in new_faces:
-        if f.is_valid and f.normal.y > 0:  # 法线朝+Y=朝头内=反了
+        if f.is_valid and f.normal.y > 0:
             f.normal_flip()
             flipped += 1
     bmesh.update_edit_mesh(mesh)
