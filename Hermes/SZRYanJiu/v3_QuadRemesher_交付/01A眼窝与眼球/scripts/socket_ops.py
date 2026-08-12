@@ -277,6 +277,7 @@ def make_eye_cup(obj, center, side):
             # 口沿坡度放缓, 消除开口边缘的陡坎硬边(用户报衔接硬边).
             ang = t * math.pi / 2
             scale = math.cos(ang) ** 1.5      # 口沿收缩更缓(指数>1 -> 前期变化慢)
+            scale = max(scale, 0.20)          # 2026-08-07: 末环别太小(防ngon与quad重叠非流形边)
             depth_frac = math.sin(ang)         # 深度连续
             x = center.x + ox * scale
             z = center.z + oz * scale
