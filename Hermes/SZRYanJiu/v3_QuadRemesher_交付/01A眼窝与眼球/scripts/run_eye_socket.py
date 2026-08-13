@@ -47,7 +47,10 @@ def fix_socket_normals(obj, side, center=None):
     flipped = 0
     for f in bm.faces:
         fc = f.calc_center_median()
-        if f.normal.y > 0 and (point_in_polygon(fc.x, fc.z, poly) or in_zone(fc)):
+        # 2026-08-13 v17: 必须加Y限制! 眼睑轮廓XZ投影穿过头部中心, 后脑勺同XZ位置的面
+        # (法线朝+Y朝外)被 point_in_polygon 误判翻转 -> 后脑勺从背面"穿透".
+        # 眼窝/碗全部在前脸(Y<0), 后脑勺Y>+0.05. 加 fc.y < 0 彻底隔离.
+        if fc.y < 0 and f.normal.y > 0 and (point_in_polygon(fc.x, fc.z, poly) or in_zone(fc)):
             f.normal_flip()
             flipped += 1
     bmesh.update_edit_mesh(obj.data)

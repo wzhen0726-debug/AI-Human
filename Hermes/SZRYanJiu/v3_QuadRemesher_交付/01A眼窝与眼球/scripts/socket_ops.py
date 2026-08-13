@@ -11,15 +11,47 @@ import numpy as np
 from mathutils import Vector
 from eye_socket_config import *
 
-def load_eyelid_contour(side):
-    """读3DDFA眼睑轮廓(杏仁形), 返回(x,z)多边形顶点列表(顺时针/逆时针均可).
-    用6点: 外眦-上睑x2-内眦-下睑x2 围成真实眼形."""
-    import json
+def load_eyelid_contour(side, n_points=24, margin_mm=0.5):
+    """读3DDFA眼睑轮廓(杏仁形), 返回(x,z)多边形顶点列表.
+    加密到n_points点(样条插值消除6点折线棱角) + 向外扩展margin_mm.
+    2026-08-13 v18: 6点折线太粗糙, 加密到24点 + 0.5mm margin 贴合真实眼睑曲线."""
+    import json, math
+    import numpy as np
     d = json.load(open(EYELID_CONTOUR_JSON, encoding="utf-8"))
     rim = [r for r in d[side]["rim_3d"] if r is not None]
-    # 投影到x-z平面(开孔在面朝前的平面上)
-    poly = [(r[0], r[2]) for r in rim]
-    return poly
+    # 投影到x-z平面
+    pts = np.array([[r[0], r[2]] for r in rim], dtype=np.float64)
+    # 闭合环
+    M = len(pts)
+    # 加密: 用累积弧长+Catmull-Rom样条插值
+    # 先算每条边的弧长
+    seg_len = [np.linalg.norm(pts[(i+1)%M]-pts[i]) for i in range(M)]
+    total = sum(seg_len)
+    # 等间距采样
+    out = []
+    acc = 0.0; i = 0
+    for k in range(n_points):
+        target = total * k / n_points
+        while acc + seg_len[i] < target and i < M:
+            acc += seg_len[i]; i = (i+1) % M
+        t = (target - acc) / seg_len[i] if seg_len[i] > 1e-12 else 0
+        pt = pts[i] + (pts[(i+1)%M] - pts[i]) * t
+        out.append(tuple(pt))
+    poly = out
+    # 向外扩展 margin_mm (所有点沿径向向外推)
+    # 计算中心
+    cx = sum(p[0] for p in poly)/n_points
+    cz = sum(p[1] for p in poly)/n_points
+    margin = margin_mm / 1000.0
+    expanded = []
+    for x,z in poly:
+        dx = x - cx; dz = z - cz
+        dist = math.sqrt(dx*dx + dz*dz)
+        if dist > 1e-9:
+            expanded.append((x + dx/dist*margin, z + dz/dist*margin))
+        else:
+            expanded.append((x, z))
+    return expanded
 
 def resample_ring(ring_pts, n):
     """把有序闭环顶点重采样成n个等间距点(线性插值). 解决杏仁轮廓顶点分布不均(0.7~2.9mm)导致的星爆.
