@@ -355,6 +355,15 @@ def make_eye_cup(obj, center, side):
     # 2026-08-07 v11根因总结: ngon封口(三角化碎片)/pointmerge(碗底重复面)都留非流形边.
     # 唯一构造上零碎片的方式=单个共享极点顶点+三角扇(经典UV球极点拓扑, 每条边恰好2面).
     # 8圈球面收缩让极点扇只在碗底最小一圈, smooth shading消棱. 碗内有眼球挡, 不讲究.
+    # 2026-08-13 v26: 给碗面新顶点分配UV(径向对应ring0), 修复破面(新顶点UV=(0,0)采样贴图角落)
+    uv_layer = bm.loops.layers.uv.active or bm.loops.layers.uv.verify()
+    # ring0顶点的UV (取每个顶点第一个loop)
+    ring0_uv = {}
+    for v in ring0:
+        for loop in v.link_loops:
+            ring0_uv[v.index] = loop[uv_layer].uv.copy()
+            break
+    avg_uv = sum((uv for uv in ring0_uv.values()), Vector((0.0, 0.0))) / max(len(ring0_uv), 1)
     vgrid = [list(ring0)]
     NR = 8  # 8圈平滑过渡
     for j in range(1, NR):     # 环1..NR-1(不到底)
@@ -385,6 +394,20 @@ def make_eye_cup(obj, center, side):
     for i in range(M):
         try: new_faces.append(bm.faces.new((last[i], last[(i+1)%M], pole)))
         except ValueError: pass
+    
+    # v26: 给碗面loop分配UV. 新顶点径向对应ring0[i]的UV, pole用平均UV.
+    # 碗面内部(最终被眼球挡)颜色跟随眼周肤色, 不突兀.
+    v2uv = {}
+    for i in range(M):
+        v2uv[vgrid[0][i].index] = ring0_uv[ring0[i].index]
+        for j in range(1, NR):
+            v2uv[vgrid[j][i].index] = ring0_uv[ring0[i].index]
+    v2uv[pole.index] = avg_uv
+    for f in new_faces:
+        for loop in f.loops:
+            uvidx = loop.vert.index
+            if uvidx in v2uv:
+                loop[uv_layer].uv = v2uv[uvidx]
     
     # smooth shading(与皮肤一致, 消棱面)
     for f in new_faces:
@@ -436,14 +459,13 @@ def make_eye_cup(obj, center, side):
                         if fv.index not in ring0_set and fv.co.y < rim_y and fv not in skin_verts:
                             skin2.add(fv)
     skin_verts |= skin2
-    # 余弦衰减压凹: 距离ring0越远, 压凹越少
+    # 余弦衰减压凹: 距离ring0越近压凹越多(v25修复方向bug, 之前反了)
     if skin_verts:
-        # 计算每个皮肤顶点到最近ring0顶点的距离
         for sv in skin_verts:
             min_dist = min((sv.co - rv.co).length for rv in ring0)
-            # falloff: 0~3mm range, cosine
-            t = min(min_dist / 0.003, 1.0)  # 0 at ring0, 1 at 3mm
-            push = (1.0 - math.cos(t * math.pi / 2)) * 0.001  # 0~1mm
+            # v25: t=0(ring0近)→push最大2mm, t=1(4mm远)→push=0
+            t = min(min_dist / 0.004, 1.0)  # 0 at ring0, 1 at 4mm
+            push = math.cos(t * math.pi / 2) * 0.002  # 0~2mm
             sv.co.y += push  # +Y = 朝头内(压凹)
     print(f"make_eye_cup {side}: transition ring pushed {len(skin_verts)} skin verts")
     
