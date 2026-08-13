@@ -351,6 +351,9 @@ def make_eye_cup(obj, center, side):
     rim_y = sum(v.co.y for v in ring0) / M
     print(f"make_eye_cup {side}: boundary ring M={M} (of {len(rings)} rings), ring relaxed x3")
     
+    # 保存ring0顶点索引(后续mode切换可能使引用失效)
+    ring0_indices = [v.index for v in ring0]
+    
     # ---- 2. 球面碗剖面 + 共享极点三角扇封底(构造上保证流形) ----
     # 2026-08-07 v11根因总结: ngon封口(三角化碎片)/pointmerge(碗底重复面)都留非流形边.
     # 唯一构造上零碎片的方式=单个共享极点顶点+三角扇(经典UV球极点拓扑, 每条边恰好2面).
@@ -438,47 +441,38 @@ def make_eye_cup(obj, center, side):
             print(f"  triangulated {len(ngons)} ngons after flipped_sliver dissolve")
     print(f"make_eye_cup {side}: dissolved {len(flipped_slivers)} flipped rim slivers")
     
-    # ---- 3. 拐角羽化: ring0外侧皮肤面细分, 增加面数改善法线过渡 ----
-    # 2026-08-13 v29: bevel在三角网格上产生开放边/非流形边(96/56), 弃用.
-    # 改用: 对ring0外侧相邻的皮肤三角面边做细分(subdivide), 增加面数做圆润过渡.
-    bm.faces.ensure_lookup_table()
-    bm.edges.ensure_lookup_table()
-    ring0_set = set(v.index for v in ring0)
-    skin_edges = set()
-    for v in ring0:
-        for f in v.link_faces:
-            if len(f.verts) == 3:  # 皮肤三角面
-                for e in f.edges:
-                    # 排除ring0本身的边(碗口沿)
-                    if not (e.verts[0].index in ring0_set and e.verts[1].index in ring0_set):
-                        skin_edges.add(e)
-    if skin_edges:
-        try:
-            sub_result = bmesh.ops.subdivide_edges(bm, edges=list(skin_edges), cuts=1,
-                                                   use_grid_fill=False)
-            bmesh.update_edit_mesh(mesh)
-            # 细分产生ngon, 三角化
-            bm.faces.ensure_lookup_table()
-            ngons = [f for f in bm.faces if len(f.verts) > 4]
-            if ngons:
-                bmesh.ops.triangulate(bm, faces=ngons)
-                bmesh.update_edit_mesh(mesh)
-            print(f"  subdivided {len(skin_edges)} skin edges near ring0 (1 cut, triangulated {len(ngons)} ngons)")
-        except Exception as e:
-            print(f"  subdivide failed: {e}")
+    # ---- 3. 拐角过渡由挤出缓冲环完成(v30), 废弃subdivide/bevel ----
     
-    # ---- 4. 法线校正: 碗面朝-Y(朝眼球) ----
-    # 判断标准: normal.y > 0(朝头内=错误)才翻转. 碗壁(凹面)法线朝碗轴(朝内)是正常几何特征, 不逆.
+    # ---- 4. 法线校正: recalc_face_normals 拓扑传递(替代手动reverse_faces) ----
+    # 专家方案: 废弃normal.y硬编码判断+reverse_faces手动绕序.
+    # 收集碗面+缓冲带面+参考皮肤面, 让Blender底层C++顺着正确的皮肤拓扑统一法线朝外.
+    # 先保存ring0顶点索引(mode切换后引用失效) — 已在缓冲环段保存, 此处复用
     bmesh.update_edit_mesh(mesh)
     bpy.ops.object.mode_set(mode='OBJECT')
     bpy.ops.object.mode_set(mode='EDIT')
     bm = bmesh.from_edit_mesh(mesh)
-    to_reverse = [f for f in bm.faces
-                  if (f.calc_center_median() - center).xz.length < 0.014 and f.normal.y > 0.001]
-    if to_reverse:
-        bmesh.ops.reverse_faces(bm, faces=to_reverse)
-        bmesh.update_edit_mesh(mesh)
-    flipped = len(to_reverse)
+    bm.verts.ensure_lookup_table()
+    bm.faces.ensure_lookup_table()
+    # 重建ring0引用
+    ring0_rebuilt = [bm.verts[i] for i in ring0_indices]
+    # 碗面 = 碗区内的面
+    bowl_zone = [f for f in bm.faces
+                 if (f.calc_center_median() - center).xz.length < 0.014]
+    # 参考皮肤面 = ring0外侧相邻的皮肤三角面(法线绝对正确)
+    ref_faces = []
+    for v in ring0_rebuilt:
+        for f in v.link_faces:
+            if len(f.verts) == 3 and f not in ref_faces:
+                ref_faces.append(f)
+    # 去重: bowl_zone可能已包含部分ref_faces(碗区边缘)
+    ref_unique = [f for f in ref_faces if f not in bowl_zone]
+    if bowl_zone and ref_unique:
+        try:
+            bmesh.ops.recalc_face_normals(bm, faces=bowl_zone + ref_unique)
+            bmesh.update_edit_mesh(mesh)
+            print(f"  recalc_face_normals: {len(bowl_zone)} bowl + {len(ref_unique)} ref faces")
+        except Exception as e:
+            print(f"  recalc_face_normals failed: {e}")
     bpy.ops.object.mode_set(mode='OBJECT')
-    print(f"make_eye_cup {side}: ring0={M} faces={len(new_faces)} depth={max_depth*1000:.1f}mm normal_flipped={flipped}")
+    print(f"make_eye_cup {side}: ring0={M} bowl_faces={len(new_faces)} depth={max_depth*1000:.1f}mm")
     return ring0
