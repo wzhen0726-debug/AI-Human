@@ -11,24 +11,22 @@ import numpy as np
 from mathutils import Vector
 from eye_socket_config import *
 
-def load_eyelid_contour(side, n_points=24, margin_mm=2.0):
+def load_eyelid_contour(side, n_points=24, margin_mm=2.0, outer_extra_mm=1.0):
     """读3DDFA眼睑轮廓(杏仁形), 返回(x,z)多边形顶点列表.
-    加密到n_points点(样条插值消除6点折线棱角) + 向外扩展margin_mm.
-    2026-08-13 v18: 6点折线太粗糙, 加密到24点 + 0.5mm margin 贴合真实眼睑曲线.
-    2026-08-13 v19: margin 0.5→2.0mm, 用户GUI确认红色=当前太小, 蓝色=完整眼睑开口."""
+    加密到n_points点(样条插值) + 均匀径向扩展margin_mm + 外眼角额外扩展outer_extra_mm.
+    2026-08-13 v18: 6点折线太粗糙, 加密到24点 + 0.5mm margin.
+    2026-08-13 v19: margin 0.5→2.0mm, 用户GUI确认红色=当前太小, 蓝色=完整眼睑开口.
+    2026-08-13 v21: 外眼角额外+outer_extra_mm(+1mm), 用户GUI确认外眼角还需更大."""
     import json, math
     import numpy as np
     d = json.load(open(EYELID_CONTOUR_JSON, encoding="utf-8"))
     rim = [r for r in d[side]["rim_3d"] if r is not None]
     # 投影到x-z平面
     pts = np.array([[r[0], r[2]] for r in rim], dtype=np.float64)
-    # 闭合环
     M = len(pts)
-    # 加密: 用累积弧长+Catmull-Rom样条插值
-    # 先算每条边的弧长
+    # 加密: 弧长等间距采样
     seg_len = [np.linalg.norm(pts[(i+1)%M]-pts[i]) for i in range(M)]
     total = sum(seg_len)
-    # 等间距采样
     out = []
     acc = 0.0; i = 0
     for k in range(n_points):
@@ -39,8 +37,7 @@ def load_eyelid_contour(side, n_points=24, margin_mm=2.0):
         pt = pts[i] + (pts[(i+1)%M] - pts[i]) * t
         out.append(tuple(pt))
     poly = out
-    # 向外扩展 margin_mm (所有点沿径向向外推)
-    # 计算中心
+    # 均匀径向扩展 margin_mm
     cx = sum(p[0] for p in poly)/n_points
     cz = sum(p[1] for p in poly)/n_points
     margin = margin_mm / 1000.0
@@ -52,6 +49,16 @@ def load_eyelid_contour(side, n_points=24, margin_mm=2.0):
             expanded.append((x + dx/dist*margin, z + dz/dist*margin))
         else:
             expanded.append((x, z))
+    # 外眼角额外扩展: |x|最大的点 = 外眼角(朝太阳穴), 额外推outer_extra_mm
+    # 推外眼角 + 附近±2点按falloff(1.0, 0.66, 0.33)平滑过渡
+    outer_idx = max(range(n_points), key=lambda i: abs(expanded[i][0]))
+    x_sign = 1 if expanded[outer_idx][0] > cx else -1  # 外眼角方向
+    outer_extra = outer_extra_mm / 1000.0
+    falloff = [0.33, 0.66, 1.0, 0.66, 0.33]  # 5点窗口
+    for j, f in enumerate(falloff):
+        idx = (outer_idx - 2 + j) % n_points
+        x, z = expanded[idx]
+        expanded[idx] = (x + x_sign * outer_extra * f, z)
     return expanded
 
 def resample_ring(ring_pts, n):
@@ -150,12 +157,14 @@ def make_eye_socket(obj, center, side):
     
     # 2026-08-07 v13: 溶解口沿碎片面(<0.5mm²的sliver, 原有皮肤碎片, 法线乱->锯齿尖刺根因).
     # 只溶解严格内部面(所有边恰2面), 绝不碰边界环上的面(防开洞). ad-hoc验证抓到此缺陷.
+    # 2026-08-13 v20: XZ半径20mm→15mm, 20mm触及眉毛(z=1.69~1.72, 眼中心z=1.671, 20mm=1.691,
+    # 低眉=1.69<1.691)溶解了眉区小面→UV撕裂/纹理错乱. 15mm(<1.686)不碰眉毛.
     bpy.ops.object.mode_set(mode='EDIT')
     bm = bmesh.from_edit_mesh(mesh)
     bm.faces.ensure_lookup_table()
     slivers = [f for f in bm.faces
                if f.calc_area() < 0.5e-6
-               and (f.calc_center_median()-center).xz.length < 0.020
+               and (f.calc_center_median()-center).xz.length < 0.015
                and all(len(e.link_faces)==2 for e in f.edges)]
     if slivers:
         bmesh.ops.dissolve_faces(bm, faces=slivers)
@@ -365,12 +374,13 @@ def make_eye_cup(obj, center, side):
     
     # 2026-08-07 v14: 溶解封碗后才变内部的反向sliver(口沿皮肤碎片, 删面时在边界上没敢溶).
     # 封碗后它们变内部, 0.1um²且法线朝+Y(反), 是锯齿尖刺根因. 只溶严格内部面.
+    # 2026-08-13 v20: XZ半径20mm→15mm, 同make_eye_socket, 防触及眉毛区.
     # v15: 必须先normal_update()! update_edit_mesh后法线是旧值, 3个sliver靠旧法线逃过过滤.
     bm.normal_update()
     bm.faces.ensure_lookup_table()
     flipped_slivers = [f for f in bm.faces
                        if f.calc_area() < 0.5e-6 and f.normal.y > 0.3
-                       and (f.calc_center_median()-center).xz.length < 0.020
+                       and (f.calc_center_median()-center).xz.length < 0.015
                        and all(len(e.link_faces)==2 for e in f.edges)]
     if flipped_slivers:
         bmesh.ops.dissolve_faces(bm, faces=flipped_slivers)
