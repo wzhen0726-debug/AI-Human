@@ -181,6 +181,13 @@ def make_eye_socket(obj, center, side):
     if slivers:
         bmesh.ops.dissolve_faces(bm, faces=slivers)
         bmesh.update_edit_mesh(mesh)
+        # 2026-08-13 v24: 消除溶解产生的ngon(多边面→三角化, 防止法线异常/破面/布线乱)
+        bm.faces.ensure_lookup_table()
+        ngons = [f for f in bm.faces if len(f.verts) > 4]
+        if ngons:
+            bmesh.ops.triangulate(bm, faces=ngons)
+            bmesh.update_edit_mesh(mesh)
+            print(f"  triangulated {len(ngons)} ngons after dissolve")
     bpy.ops.object.mode_set(mode='OBJECT')
     print(f"make_eye_socket {side}: dissolved {len(slivers)} sliver faces")
 
@@ -397,10 +404,50 @@ def make_eye_cup(obj, center, side):
     if flipped_slivers:
         bmesh.ops.dissolve_faces(bm, faces=flipped_slivers)
         bmesh.update_edit_mesh(mesh)
+        # 2026-08-13 v24: 消除溶解产生的ngon
+        bm.faces.ensure_lookup_table()
+        ngons = [f for f in bm.faces if len(f.verts) > 4]
+        if ngons:
+            bmesh.ops.triangulate(bm, faces=ngons)
+            bmesh.update_edit_mesh(mesh)
+            print(f"  triangulated {len(ngons)} ngons after flipped_sliver dissolve")
     print(f"make_eye_cup {side}: dissolved {len(flipped_slivers)} flipped rim slivers")
     
-    # ---- 3. 法线校正: 碗面朝-Y(朝眼球) ----
-    bm.faces.ensure_lookup_table()
+    # ---- 3. 碗口沿过渡环: ring0外侧皮肤顶点径向衰减压凹, 平滑过渡 ----
+    # 2026-08-13 v24: ring0处的皮肤面与碗面法线不连续→折痕太锐利.
+    # 方案: ring0外侧1~2层皮肤顶点做cosine falloff压凹(0~1mm), 让皮肤平滑弯入碗口.
+    ring0_set = set(v.index for v in ring0)
+    # BFS找外侧皮肤顶点(远离碗, y更负=更靠前)
+    skin_verts = set()
+    for v in ring0:
+        for e in v.link_edges:
+            for f in e.link_faces:
+                if len(f.verts) == 3:  # 皮肤三角面
+                    for fv in f.verts:
+                        if fv.index not in ring0_set and fv.co.y < rim_y:
+                            skin_verts.add(fv)
+    # 第二层
+    skin2 = set()
+    for v in list(skin_verts):
+        for e in v.link_edges:
+            for f in e.link_faces:
+                if len(f.verts) == 3:
+                    for fv in f.verts:
+                        if fv.index not in ring0_set and fv.co.y < rim_y and fv not in skin_verts:
+                            skin2.add(fv)
+    skin_verts |= skin2
+    # 余弦衰减压凹: 距离ring0越远, 压凹越少
+    if skin_verts:
+        # 计算每个皮肤顶点到最近ring0顶点的距离
+        for sv in skin_verts:
+            min_dist = min((sv.co - rv.co).length for rv in ring0)
+            # falloff: 0~3mm range, cosine
+            t = min(min_dist / 0.003, 1.0)  # 0 at ring0, 1 at 3mm
+            push = (1.0 - math.cos(t * math.pi / 2)) * 0.001  # 0~1mm
+            sv.co.y += push  # +Y = 朝头内(压凹)
+    print(f"make_eye_cup {side}: transition ring pushed {len(skin_verts)} skin verts")
+    
+    # ---- 4. 法线校正: 碗面朝-Y(朝眼球) ----
     flipped = 0
     for f in new_faces:
         if f.is_valid and f.normal.y > 0:
