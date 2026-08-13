@@ -11,14 +11,15 @@ import numpy as np
 from mathutils import Vector
 from eye_socket_config import *
 
-def load_eyelid_contour(side, n_points=24, margin_mm=2.0, outer_extra_mm=4.0, inner_extra_mm=1.5):
+def load_eyelid_contour(side, n_points=24, margin_x_mm=2.0, margin_z_mm=1.0, outer_extra_mm=4.0, inner_extra_mm=1.5):
     """读3DDFA眼睑轮廓(杏仁形), 返回(x,z)多边形顶点列表.
-    加密到n_points点(样条插值) + 均匀径向扩展margin_mm + 外眼角额外outer_extra_mm + 内眼角额外inner_extra_mm.
-    2026-08-13 v18: 6点折线太粗糙, 加密到24点 + 0.5mm margin.
-    2026-08-13 v19: margin 0.5→2.0mm, 用户GUI确认红色=当前太小, 蓝色=完整眼睑开口.
-    2026-08-13 v21: 外眼角额外+1mm, 用户GUI确认外眼角还需更大.
-    2026-08-13 v22: 用户标注图定量(蓝/红宽比1.296, 外眼角+60px≈+6mm, 内眼角+23px≈+2.5mm):
-    外眼角+4mm, 内眼角+1.5mm. 高度不变(margin保持2mm)."""
+    加密到n_points点(样条插值) + 方向性扩展(margin_x水平/margin_z垂直) + 外眼角extra + 内眼角extra.
+    2026-08-13 v18: 6点折线→24点+0.5mm margin.
+    v19: margin 0.5→2.0mm (均匀径向).
+    v22: 外眼角+4mm内眼角+1.5mm.
+    2026-08-13 v23: margin改为方向性(margin_x=2mm水平, margin_z=1mm垂直).
+    根因: 均匀径向扩展使z方向也扩了2mm, 轮廓高13.3mm上沿z=1.684触及眉毛下缘1.68+,
+    flood-fill删了眉毛区390面→UV撕裂. 方向性后高≈11.5mm上沿z≈1.677不碰眉毛."""
     import json, math
     import numpy as np
     d = json.load(open(EYELID_CONTOUR_JSON, encoding="utf-8"))
@@ -39,33 +40,32 @@ def load_eyelid_contour(side, n_points=24, margin_mm=2.0, outer_extra_mm=4.0, in
         pt = pts[i] + (pts[(i+1)%M] - pts[i]) * t
         out.append(tuple(pt))
     poly = out
-    # 均匀径向扩展 margin_mm
+    # 方向性扩展: 水平方向点(外/内眼角)扩mx, 垂直方向点(上下睑)扩mz, 对角平滑过渡
     cx = sum(p[0] for p in poly)/n_points
     cz = sum(p[1] for p in poly)/n_points
-    margin = margin_mm / 1000.0
+    mx = margin_x_mm / 1000.0
+    mz = margin_z_mm / 1000.0
     expanded = []
     for x,z in poly:
         dx = x - cx; dz = z - cz
         dist = math.sqrt(dx*dx + dz*dz)
         if dist > 1e-9:
-            expanded.append((x + dx/dist*margin, z + dz/dist*margin))
+            # 椭圆式: x' = x + (dx/dist)*mx, z' = z + (dz/dist)*mz
+            expanded.append((x + dx/dist*mx, z + dz/dist*mz))
         else:
             expanded.append((x, z))
-    # 外眼角额外扩展: |x|最大的点 = 外眼角(朝太阳穴), 额外推outer_extra_mm
-    # 内眼角额外扩展: |x|最小的点 = 内眼角(朝鼻梁), 额外推inner_extra_mm
-    # 方向: 外眼角=远离鼻梁(sign(x)), 内眼角=靠近鼻梁(-sign(x))
+    # 外眼角额外扩展: |x|最大的点, 额外推outer_extra_mm
+    # 内眼角额外扩展: |x|最小的点, 额外推inner_extra_mm
     outer_idx = max(range(n_points), key=lambda i: abs(expanded[i][0]))
     inner_idx = min(range(n_points), key=lambda i: abs(expanded[i][0]))
     outer_dir = 1 if expanded[outer_idx][0] > 0 else -1
     inner_dir = -outer_dir
-    # 外眼角5点falloff
     outer_extra = outer_extra_mm / 1000.0
     falloff = [0.33, 0.66, 1.0, 0.66, 0.33]
     for j, f in enumerate(falloff):
         idx = (outer_idx - 2 + j) % n_points
         x, z = expanded[idx]
         expanded[idx] = (x + outer_dir * outer_extra * f, z)
-    # 内眼角5点falloff
     inner_extra = inner_extra_mm / 1000.0
     for j, f in enumerate(falloff):
         idx = (inner_idx - 2 + j) % n_points
@@ -169,14 +169,14 @@ def make_eye_socket(obj, center, side):
     
     # 2026-08-07 v13: 溶解口沿碎片面(<0.5mm²的sliver, 原有皮肤碎片, 法线乱->锯齿尖刺根因).
     # 只溶解严格内部面(所有边恰2面), 绝不碰边界环上的面(防开洞). ad-hoc验证抓到此缺陷.
-    # 2026-08-13 v20: XZ半径20mm→15mm, 20mm触及眉毛(z=1.69~1.72, 眼中心z=1.671, 20mm=1.691,
-    # 低眉=1.69<1.691)溶解了眉区小面→UV撕裂/纹理错乱. 15mm(<1.686)不碰眉毛.
+    # 2026-08-13 v23: 加z上限<1.678(与轮廓z上沿一致), 防sliver溶解触及眉毛z>1.68→UV错乱.
     bpy.ops.object.mode_set(mode='EDIT')
     bm = bmesh.from_edit_mesh(mesh)
     bm.faces.ensure_lookup_table()
     slivers = [f for f in bm.faces
                if f.calc_area() < 0.5e-6
                and (f.calc_center_median()-center).xz.length < 0.015
+               and f.calc_center_median().z < 1.678
                and all(len(e.link_faces)==2 for e in f.edges)]
     if slivers:
         bmesh.ops.dissolve_faces(bm, faces=slivers)
@@ -386,13 +386,13 @@ def make_eye_cup(obj, center, side):
     
     # 2026-08-07 v14: 溶解封碗后才变内部的反向sliver(口沿皮肤碎片, 删面时在边界上没敢溶).
     # 封碗后它们变内部, 0.1um²且法线朝+Y(反), 是锯齿尖刺根因. 只溶严格内部面.
-    # 2026-08-13 v20: XZ半径20mm→15mm, 同make_eye_socket, 防触及眉毛区.
-    # v15: 必须先normal_update()! update_edit_mesh后法线是旧值, 3个sliver靠旧法线逃过过滤.
+    # 2026-08-13 v23: 加z上限<1.678, 同make_eye_socket, 防触及眉毛区.
     bm.normal_update()
     bm.faces.ensure_lookup_table()
     flipped_slivers = [f for f in bm.faces
                        if f.calc_area() < 0.5e-6 and f.normal.y > 0.3
                        and (f.calc_center_median()-center).xz.length < 0.015
+                       and f.calc_center_median().z < 1.678
                        and all(len(e.link_faces)==2 for e in f.edges)]
     if flipped_slivers:
         bmesh.ops.dissolve_faces(bm, faces=flipped_slivers)
