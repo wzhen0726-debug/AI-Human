@@ -365,12 +365,13 @@ def make_eye_cup(obj, center, side):
             break
     avg_uv = sum((uv for uv in ring0_uv.values()), Vector((0.0, 0.0))) / max(len(ring0_uv), 1)
     vgrid = [list(ring0)]
-    NR = 8  # 8圈平滑过渡
+    NR = 24  # v27: 8→24环, 高模需要更多面数做圆润过渡(smoothstep剖面)
     for j in range(1, NR):     # 环1..NR-1(不到底)
         t = j / NR
-        ang = t * math.pi / 2
-        scale = math.cos(ang)
-        depth_frac = math.sin(ang)
+        # v27: smoothstep剖面(t²(3-2t)), 口沿坡度=0(与皮肤切向连续), 碗底平缓收拢
+        s = t * t * (3 - 2 * t)   # smoothstep
+        scale = 1.0 - s           # 半径收缩
+        depth_frac = s            # 深度
         row = []
         for i in range(M):
             base = ring0[i].co
@@ -390,9 +391,10 @@ def make_eye_cup(obj, center, side):
             try: new_faces.append(bm.faces.new((a,d,c,b)))
             except ValueError: pass
     # 极点三角扇(共享pole顶点, 每条边恰2面, 构造上流形)
+    # v27: 反转绕序(last[i+1],last[i],pole)让法线朝外, 避免面朝向反了
     last = vgrid[-1]
     for i in range(M):
-        try: new_faces.append(bm.faces.new((last[i], last[(i+1)%M], pole)))
+        try: new_faces.append(bm.faces.new((last[(i+1)%M], last[i], pole)))
         except ValueError: pass
     
     # v26: 给碗面loop分配UV. 新顶点径向对应ring0[i]的UV, pole用平均UV.
@@ -470,9 +472,16 @@ def make_eye_cup(obj, center, side):
     print(f"make_eye_cup {side}: transition ring pushed {len(skin_verts)} skin verts")
     
     # ---- 4. 法线校正: 碗面朝-Y(朝眼球) ----
+    # v27: 先做mode_set(OBJECT)再翻法线, 因为mode_set会重算法线覆盖手动flip.
+    bmesh.update_edit_mesh(mesh)
+    bpy.ops.object.mode_set(mode='OBJECT')
+    # 重新进入EDIT翻法线(碗底极点三角扇 + 碗面quad)
+    bpy.ops.object.mode_set(mode='EDIT')
+    bm = bmesh.from_edit_mesh(mesh)
     flipped = 0
-    for f in new_faces:
-        if f.is_valid and f.normal.y > 0:
+    for f in bm.faces:
+        fd = (f.calc_center_median() - center).xz.length
+        if fd < 0.014 and f.normal.y > 0:
             f.normal_flip()
             flipped += 1
     bmesh.update_edit_mesh(mesh)
