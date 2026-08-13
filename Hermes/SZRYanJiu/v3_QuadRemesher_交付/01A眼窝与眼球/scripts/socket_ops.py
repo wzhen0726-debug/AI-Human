@@ -438,65 +438,47 @@ def make_eye_cup(obj, center, side):
             print(f"  triangulated {len(ngons)} ngons after flipped_sliver dissolve")
     print(f"make_eye_cup {side}: dissolved {len(flipped_slivers)} flipped rim slivers")
     
-    # ---- 3. 碗口沿过渡环: ring0外侧皮肤顶点径向衰减压凹, 平滑过渡 ----
-    # 2026-08-13 v24: ring0处的皮肤面与碗面法线不连续→折痕太锐利.
-    # 方案: ring0外侧1~2层皮肤顶点做cosine falloff压凹(0~1mm), 让皮肤平滑弯入碗口.
+    # ---- 3. 拐角羽化: ring0外侧皮肤面细分, 增加面数改善法线过渡 ----
+    # 2026-08-13 v29: bevel在三角网格上产生开放边/非流形边(96/56), 弃用.
+    # 改用: 对ring0外侧相邻的皮肤三角面边做细分(subdivide), 增加面数做圆润过渡.
+    bm.faces.ensure_lookup_table()
+    bm.edges.ensure_lookup_table()
     ring0_set = set(v.index for v in ring0)
-    # BFS找外侧皮肤顶点(远离碗, y更负=更靠前)
-    skin_verts = set()
+    skin_edges = set()
     for v in ring0:
-        for e in v.link_edges:
-            for f in e.link_faces:
-                if len(f.verts) == 3:  # 皮肤三角面
-                    for fv in f.verts:
-                        if fv.index not in ring0_set and fv.co.y < rim_y:
-                            skin_verts.add(fv)
-    # 第二层
-    skin2 = set()
-    for v in list(skin_verts):
-        for e in v.link_edges:
-            for f in e.link_faces:
-                if len(f.verts) == 3:
-                    for fv in f.verts:
-                        if fv.index not in ring0_set and fv.co.y < rim_y and fv not in skin_verts:
-                            skin2.add(fv)
-    skin_verts |= skin2
-    # 余弦衰减压凹: 距离ring0越近压凹越多(v25修复方向bug, 之前反了)
-    if skin_verts:
-        for sv in skin_verts:
-            min_dist = min((sv.co - rv.co).length for rv in ring0)
-            # v25: t=0(ring0近)→push最大2mm, t=1(4mm远)→push=0
-            t = min(min_dist / 0.004, 1.0)  # 0 at ring0, 1 at 4mm
-            push = math.cos(t * math.pi / 2) * 0.002  # 0~2mm
-            sv.co.y += push  # +Y = 朝头内(压凹)
-    print(f"make_eye_cup {side}: transition ring pushed {len(skin_verts)} skin verts")
+        for f in v.link_faces:
+            if len(f.verts) == 3:  # 皮肤三角面
+                for e in f.edges:
+                    # 排除ring0本身的边(碗口沿)
+                    if not (e.verts[0].index in ring0_set and e.verts[1].index in ring0_set):
+                        skin_edges.add(e)
+    if skin_edges:
+        try:
+            sub_result = bmesh.ops.subdivide_edges(bm, edges=list(skin_edges), cuts=1,
+                                                   use_grid_fill=False)
+            bmesh.update_edit_mesh(mesh)
+            # 细分产生ngon, 三角化
+            bm.faces.ensure_lookup_table()
+            ngons = [f for f in bm.faces if len(f.verts) > 4]
+            if ngons:
+                bmesh.ops.triangulate(bm, faces=ngons)
+                bmesh.update_edit_mesh(mesh)
+            print(f"  subdivided {len(skin_edges)} skin edges near ring0 (1 cut, triangulated {len(ngons)} ngons)")
+        except Exception as e:
+            print(f"  subdivide failed: {e}")
     
     # ---- 4. 法线校正: 碗面朝-Y(朝眼球) ----
-    # v27: 先做mode_set(OBJECT)再翻法线, 因为mode_set会重算法线覆盖手动flip.
-    # v28: 判断条件从normal.y>0改为"法线朝碗轴"(径向点积>0), 因为碗面法线朝碗轴时
-    # normal.y也是负的(朝前但偏内), normal.y>0漏检了大部分碗面→面朝向错误.
+    # 判断标准: normal.y > 0(朝头内=错误)才翻转. 碗壁(凹面)法线朝碗轴(朝内)是正常几何特征, 不逆.
     bmesh.update_edit_mesh(mesh)
     bpy.ops.object.mode_set(mode='OBJECT')
     bpy.ops.object.mode_set(mode='EDIT')
     bm = bmesh.from_edit_mesh(mesh)
-    # v28: 用reverse_faces反转绕序(持久), 不用normal_flip(只翻向量, mode_set重算后失效).
-    to_reverse = []
-    for f in bm.faces:
-        fd = (f.calc_center_median() - center).xz.length
-        if fd < 0.014:
-            fc = f.calc_center_median()
-            axis = Vector((center.x, fc.y, center.z))
-            radial = (axis - fc)
-            if radial.length > 1e-9:
-                radial = radial.normalized()
-                if f.normal.dot(radial) > 0:  # 法线朝碗轴=朝内, 需反转绕序
-                    to_reverse.append(f)
+    to_reverse = [f for f in bm.faces
+                  if (f.calc_center_median() - center).xz.length < 0.014 and f.normal.y > 0.001]
     if to_reverse:
         bmesh.ops.reverse_faces(bm, faces=to_reverse)
-        flipped = len(to_reverse)
-    else:
-        flipped = 0
-    bmesh.update_edit_mesh(mesh)
+        bmesh.update_edit_mesh(mesh)
+    flipped = len(to_reverse)
     bpy.ops.object.mode_set(mode='OBJECT')
     print(f"make_eye_cup {side}: ring0={M} faces={len(new_faces)} depth={max_depth*1000:.1f}mm normal_flipped={flipped}")
     return ring0
