@@ -351,23 +351,79 @@ def make_eye_cup(obj, center, side):
     rim_y = sum(v.co.y for v in ring0) / M
     print(f"make_eye_cup {side}: boundary ring M={M} (of {len(rings)} rings), ring relaxed x3")
     
-    # 保存ring0顶点索引(后续mode切换可能使引用失效)
-    ring0_indices = [v.index for v in ring0]
-    
-    # ---- 2. 球面碗剖面 + 共享极点三角扇封底(构造上保证流形) ----
-    # 2026-08-07 v11根因总结: ngon封口(三角化碎片)/pointmerge(碗底重复面)都留非流形边.
-    # 唯一构造上零碎片的方式=单个共享极点顶点+三角扇(经典UV球极点拓扑, 每条边恰好2面).
-    # 8圈球面收缩让极点扇只在碗底最小一圈, smooth shading消棱. 碗内有眼球挡, 不讲究.
-    # 2026-08-13 v26: 给碗面新顶点分配UV(径向对应ring0), 修复破面(新顶点UV=(0,0)采样贴图角落)
+    # ---- 1.55 UV捕获: 必须在创建倒角带/碗面之前! ----
+    # v31根因修复: 倒角带创建后ring0顶点多了新loop(chamfer loop, 默认UV=(0,0)),
+    # link_loops[0]可能返回chamfer loop → 取到(0,0). 必须在倒角带创建前从皮肤loop捕获.
     uv_layer = bm.loops.layers.uv.active or bm.loops.layers.uv.verify()
-    # ring0顶点的UV (取每个顶点第一个loop)
     ring0_uv = {}
     for v in ring0:
         for loop in v.link_loops:
             ring0_uv[v.index] = loop[uv_layer].uv.copy()
             break
     avg_uv = sum((uv for uv in ring0_uv.values()), Vector((0.0, 0.0))) / max(len(ring0_uv), 1)
-    vgrid = [list(ring0)]
+    
+    # ---- 1.6 倒角过渡带 v32: 多环fillet圆滑接缝(用户要求加大倒角+圆润) ----
+    # 单环chamfer=两个硬折角(ring0处+ring1处). v32重构: FILLET_RINGS个中间环,
+    # ring0→ring1_final线性插值后再Laplace多轮圆角化 → 折线变曲线, 接缝真正圆润.
+    # 全部新环继承ring0[i]的UV. 皮肤三角面保持不动.
+    import math as _math
+    F = CHAMFER_FILLET_RINGS   # 中间环数(不含ring0和ring1_final)
+    # ring1_final = ring0向内收CHAMFER_WIDTH + 下沉CHAMFER_DEPTH
+    rad_dirs = []
+    for v in ring0:
+        rad = Vector((center.x - v.co.x, 0, center.z - v.co.z))
+        rad_dirs.append(rad / rad.length if rad.length > 1e-9 else Vector((0,0,0)))
+    fillet_rings = [list(ring0)]  # 第0环=ring0(皮肤边界, 不平滑)
+    for k in range(1, F + 2):     # k=1..F中间环, k=F+1是ring1_final
+        t = k / (F + 1)
+        row = []
+        for i in range(M):
+            pos = ring0[i].co + rad_dirs[i] * (CHAMFER_WIDTH * t) + Vector((0, CHAMFER_DEPTH * t, 0))
+            row.append(bm.verts.new(pos) if k <= F else bm.verts.new(pos))
+        fillet_rings.append(row)
+    ring1 = fillet_rings[-1]  # 碗的起始环
+    # Laplace圆角化: 除ring0外所有fillet环(边界固定, 折线→曲线)
+    # v31根因教训: 必须用enumerate索引, 新顶点v.index在ensure_lookup_table前是stale的.
+    for _ in range(CHAMFER_SMOOTH):
+        new_pos = {}
+        for k in range(1, F + 2):
+            for i in range(M):
+                v = fillet_rings[k][i]
+                a = fillet_rings[k][(i-1)%M].co; b = fillet_rings[k][(i+1)%M].co
+                c_prev = fillet_rings[k-1][i].co
+                c_next = fillet_rings[k+1][i].co if k+1 <= F+1 else fillet_rings[k][i].co
+                new_pos[(k, i)] = (a + b + c_prev + c_next) * 0.25
+        for k in range(1, F + 2):
+            for i in range(M):
+                fillet_rings[k][i].co = new_pos[(k, i)]
+    # 相邻环quad连接
+    chamfer_faces = []
+    chamfer_fail = 0
+    for k in range(F + 1):  # fillet_rings[k] → fillet_rings[k+1]
+        for i in range(M):
+            i2 = (i + 1) % M
+            try:
+                f = bm.faces.new((fillet_rings[k][i], fillet_rings[k][i2],
+                                  fillet_rings[k+1][i2], fillet_rings[k+1][i]))
+                f.smooth = True
+                chamfer_faces.append(f)
+            except ValueError:
+                chamfer_fail += 1
+    bm.edges.ensure_lookup_table()
+    print(f"  fillet band: {len(chamfer_faces)} faces ({F+1} strips x {M}, fail={chamfer_fail})")
+    
+    # v32根因修复: 用坐标快照保存ring0多边形! 索引在后续dissolve+mode切换后会重排失效
+    # (v31灾难: R侧ring0_indices失效→polygon乱序→几何兜底误翻184866面).
+    ring0_coords = [tuple(v.co) for v in ring0]
+    
+    # ---- 2. 球面碗剖面 + 共享极点三角扇封底(构造上保证流形) ----
+    # 2026-08-07 v11根因总结: ngon封口(三角化碎片)/pointmerge(碗底重复面)都留非流形边.
+    # 唯一构造上零碎片的方式=单个共享极点顶点+三角扇(经典UV球极点拓扑, 每条边恰好2面).
+    # 8圈球面收缩让极点扇只在碗底最小一圈, smooth shading消棱. 碗内有眼球挡, 不讲究.
+    # 2026-08-13 v26: 给碗面新顶点分配UV(径向对应ring0), 修复破面(新顶点UV=(0,0)采样贴图角落)
+    # v31: ring0_uv/uv_layer/avg_uv已在倒角带创建前捕获(见---- 1.55 ----)
+    # v31: 碗从ring1(倒角带内环)开始, ring0-ring1之间是倒角过渡带
+    vgrid = [list(ring1)]
     NR = 24  # v27: 8→24环, 高模需要更多面数做圆润过渡(smoothstep剖面)
     for j in range(1, NR):     # 环1..NR-1(不到底)
         t = j / NR
@@ -377,7 +433,7 @@ def make_eye_cup(obj, center, side):
         depth_frac = s            # 深度
         row = []
         for i in range(M):
-            base = ring0[i].co
+            base = ring1[i].co
             x = center.x + (base.x-center.x)*scale
             z = center.z + (base.z-center.z)*scale
             y = base.y + (rim_y + max_depth - base.y)*depth_frac
@@ -400,15 +456,20 @@ def make_eye_cup(obj, center, side):
         try: new_faces.append(bm.faces.new((last[(i+1)%M], last[i], pole)))
         except ValueError: pass
     
-    # v26: 给碗面loop分配UV. 新顶点径向对应ring0[i]的UV, pole用平均UV.
-    # 碗面内部(最终被眼球挡)颜色跟随眼周肤色, 不突兀.
+    # v26: 给碗面loop分配UV. v32: 所有fillet环/碗面新顶点都径向继承ring0[i]的UV.
+    # v31根因修复: 新顶点index在ensure_lookup_table()前是stale → 必须先刷新.
+    bm.verts.ensure_lookup_table()
     v2uv = {}
     for i in range(M):
-        v2uv[vgrid[0][i].index] = ring0_uv[ring0[i].index]
+        # ring0本身(fillet带外环, 皮肤共享顶点可能loop UV被bmesh重置)
+        v2uv[ring0[i].index] = ring0_uv[ring0[i].index]
+        # 所有fillet中间环 + ring1 都继承ring0[i]的UV
+        for k in range(1, len(fillet_rings)):
+            v2uv[fillet_rings[k][i].index] = ring0_uv[ring0[i].index]
         for j in range(1, NR):
             v2uv[vgrid[j][i].index] = ring0_uv[ring0[i].index]
     v2uv[pole.index] = avg_uv
-    for f in new_faces:
+    for f in chamfer_faces + new_faces:
         for loop in f.loops:
             uvidx = loop.vert.index
             if uvidx in v2uv:
@@ -422,12 +483,15 @@ def make_eye_cup(obj, center, side):
     # 2026-08-07 v14: 溶解封碗后才变内部的反向sliver(口沿皮肤碎片, 删面时在边界上没敢溶).
     # 封碗后它们变内部, 0.1um²且法线朝+Y(反), 是锯齿尖刺根因. 只溶严格内部面.
     # 2026-08-13 v23: 加z上限<1.678, 同make_eye_socket, 防触及眉毛区.
+    # 2026-08-13 v32根因修复: 加y上限<rim_y+1mm! 碗底极点三角扇面积极小(0.0001mm2级)
+    # 且满足原判据 → 被误溶 → 碗底出现开放边+非流形边(实测L眼1开放边+2非流形边).
     bm.normal_update()
     bm.faces.ensure_lookup_table()
     flipped_slivers = [f for f in bm.faces
                        if f.calc_area() < 0.5e-6 and f.normal.y > 0.3
                        and (f.calc_center_median()-center).xz.length < 0.015
                        and f.calc_center_median().z < 1.678
+                       and f.calc_center_median().y < rim_y + 0.001
                        and all(len(e.link_faces)==2 for e in f.edges)]
     if flipped_slivers:
         bmesh.ops.dissolve_faces(bm, faces=flipped_slivers)
@@ -446,15 +510,20 @@ def make_eye_cup(obj, center, side):
     # ---- 4. 法线校正: recalc_face_normals 拓扑传递(替代手动reverse_faces) ----
     # 专家方案: 废弃normal.y硬编码判断+reverse_faces手动绕序.
     # 收集碗面+缓冲带面+参考皮肤面, 让Blender底层C++顺着正确的皮肤拓扑统一法线朝外.
-    # 先保存ring0顶点索引(mode切换后引用失效) — 已在缓冲环段保存, 此处复用
     bmesh.update_edit_mesh(mesh)
     bpy.ops.object.mode_set(mode='OBJECT')
     bpy.ops.object.mode_set(mode='EDIT')
     bm = bmesh.from_edit_mesh(mesh)
     bm.verts.ensure_lookup_table()
     bm.faces.ensure_lookup_table()
-    # 重建ring0引用
-    ring0_rebuilt = [bm.verts[i] for i in ring0_indices]
+    # v32: 用坐标最近邻重建ring0(索引在dissolve/mode切换后会重排失效)
+    bm.verts.ensure_lookup_table()
+    all_v = list(bm.verts)
+    ring0_rebuilt = []
+    for coord in ring0_coords:
+        cv = Vector(coord)
+        best = min(all_v, key=lambda v: (v.co - cv).length_squared)
+        ring0_rebuilt.append(best)
     # 碗面 = 碗区内的面(只限前脸 y<0, 排除后脑勺)
     bowl_zone = [f for f in bm.faces
                  if (f.calc_center_median() - center).xz.length < 0.014
@@ -474,6 +543,25 @@ def make_eye_cup(obj, center, side):
             print(f"  recalc_face_normals: {len(bowl_zone)} bowl + {len(ref_unique)} ref faces")
         except Exception as e:
             print(f"  recalc_face_normals failed: {e}")
+    
+    # ---- 5. 几何朝向保证 v32(决定性): 开口内的面(碗+倒角带)必须朝眼球 ----
+    # 根因: recalc_face_normals是拓扑启发式, 对高模的非流形/碎面会留下朝内的孤岛.
+    # 用几何判据兜底: 开口内任何面, 法线应指向眼球中心, 背离眼球的翻掉.
+    # v32根因修复: 用ring0_coords(坐标快照)构建polygon, 不用ring0_rebuilt(索引重排失效,
+    # v31曾致R侧polygon乱序误翻184866面).
+    ring0_poly = [(c[0], c[2]) for c in ring0_coords]
+    flipped_geo = 0
+    for f in bm.faces:
+        fc = f.calc_center_median()
+        # 额外Y深度带限制: 只处理眼窝深度带内的面, 双重保险排除后脑勺/其它部位
+        if -0.13 < fc.y < -0.08 and point_in_polygon(fc.x, fc.z, ring0_poly):
+            # 开口内的面 = 碗/倒角带. 法线应指向眼球(center).
+            if f.normal.dot(center - fc) < 0:
+                f.normal_flip()
+                flipped_geo += 1
+    bmesh.update_edit_mesh(mesh)
+    print(f"  geometric orientation: flipped {flipped_geo} inside-opening faces to face eyeball")
+    
     bpy.ops.object.mode_set(mode='OBJECT')
     print(f"make_eye_cup {side}: ring0={M} bowl_faces={len(new_faces)} depth={max_depth*1000:.1f}mm")
     return ring0
