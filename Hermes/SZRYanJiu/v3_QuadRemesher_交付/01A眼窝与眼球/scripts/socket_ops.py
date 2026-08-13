@@ -473,17 +473,29 @@ def make_eye_cup(obj, center, side):
     
     # ---- 4. 法线校正: 碗面朝-Y(朝眼球) ----
     # v27: 先做mode_set(OBJECT)再翻法线, 因为mode_set会重算法线覆盖手动flip.
+    # v28: 判断条件从normal.y>0改为"法线朝碗轴"(径向点积>0), 因为碗面法线朝碗轴时
+    # normal.y也是负的(朝前但偏内), normal.y>0漏检了大部分碗面→面朝向错误.
     bmesh.update_edit_mesh(mesh)
     bpy.ops.object.mode_set(mode='OBJECT')
-    # 重新进入EDIT翻法线(碗底极点三角扇 + 碗面quad)
     bpy.ops.object.mode_set(mode='EDIT')
     bm = bmesh.from_edit_mesh(mesh)
-    flipped = 0
+    # v28: 用reverse_faces反转绕序(持久), 不用normal_flip(只翻向量, mode_set重算后失效).
+    to_reverse = []
     for f in bm.faces:
         fd = (f.calc_center_median() - center).xz.length
-        if fd < 0.014 and f.normal.y > 0:
-            f.normal_flip()
-            flipped += 1
+        if fd < 0.014:
+            fc = f.calc_center_median()
+            axis = Vector((center.x, fc.y, center.z))
+            radial = (axis - fc)
+            if radial.length > 1e-9:
+                radial = radial.normalized()
+                if f.normal.dot(radial) > 0:  # 法线朝碗轴=朝内, 需反转绕序
+                    to_reverse.append(f)
+    if to_reverse:
+        bmesh.ops.reverse_faces(bm, faces=to_reverse)
+        flipped = len(to_reverse)
+    else:
+        flipped = 0
     bmesh.update_edit_mesh(mesh)
     bpy.ops.object.mode_set(mode='OBJECT')
     print(f"make_eye_cup {side}: ring0={M} faces={len(new_faces)} depth={max_depth*1000:.1f}mm normal_flipped={flipped}")
