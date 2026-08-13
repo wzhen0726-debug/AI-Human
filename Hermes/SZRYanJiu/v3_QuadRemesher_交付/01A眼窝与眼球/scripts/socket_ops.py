@@ -11,10 +11,11 @@ import numpy as np
 from mathutils import Vector
 from eye_socket_config import *
 
-def load_eyelid_contour(side, n_points=24, margin_mm=0.5):
+def load_eyelid_contour(side, n_points=24, margin_mm=2.0):
     """读3DDFA眼睑轮廓(杏仁形), 返回(x,z)多边形顶点列表.
     加密到n_points点(样条插值消除6点折线棱角) + 向外扩展margin_mm.
-    2026-08-13 v18: 6点折线太粗糙, 加密到24点 + 0.5mm margin 贴合真实眼睑曲线."""
+    2026-08-13 v18: 6点折线太粗糙, 加密到24点 + 0.5mm margin 贴合真实眼睑曲线.
+    2026-08-13 v19: margin 0.5→2.0mm, 用户GUI确认红色=当前太小, 蓝色=完整眼睑开口."""
     import json, math
     import numpy as np
     d = json.load(open(EYELID_CONTOUR_JSON, encoding="utf-8"))
