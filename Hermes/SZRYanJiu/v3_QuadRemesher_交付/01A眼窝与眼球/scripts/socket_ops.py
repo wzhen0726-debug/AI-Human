@@ -455,9 +455,10 @@ def make_eye_cup(obj, center, side):
     bm.faces.ensure_lookup_table()
     # 重建ring0引用
     ring0_rebuilt = [bm.verts[i] for i in ring0_indices]
-    # 碗面 = 碗区内的面
+    # 碗面 = 碗区内的面(只限前脸 y<0, 排除后脑勺)
     bowl_zone = [f for f in bm.faces
-                 if (f.calc_center_median() - center).xz.length < 0.014]
+                 if (f.calc_center_median() - center).xz.length < 0.014
+                 and f.calc_center_median().y < 0]
     # 参考皮肤面 = ring0外侧相邻的皮肤三角面(法线绝对正确)
     ref_faces = []
     for v in ring0_rebuilt:

@@ -27,19 +27,16 @@ def load_3ddfa_centers():
 
 def fix_socket_normals(obj, side, center=None):
     """翻转眼窝开口(眼睑轮廓多边形)内所有朝内的面, 统一朝-Y(朝外/朝眼球).
-    压凹把眼睑顶点往+Y推, 面片翻折法线朝内. 只动眼窝内的面, 不全局重算."""
+    2026-08-13 v30: 全局fc.y<0判据改为局部深度abs(fc.y-cy)<0.05(专家方案1),
+    不依赖模型原点, 后脑勺(y≈+0.09, 距眼中心cy≈-0.106达196mm)天然被排除."""
     import bmesh
     from socket_ops import load_eyelid_contour, point_in_polygon
     poly = load_eyelid_contour(side)
     bpy.context.view_layer.objects.active = obj
     bpy.ops.object.mode_set(mode='EDIT')
     bm = bmesh.from_edit_mesh(obj.data)
-    # 2026-08-07 v15: 必须先normal_update()! 删面/封碗后法线是旧值,
-    # 3个反向sliver靠旧法线逃过 f.normal.y>0 检查没被翻(ad-hoc验证抓到).
     bm.normal_update()
     bm.faces.ensure_lookup_table()
-    # 2026-08-07 v16: 3个反向sliver在眼窝zone内但在眼睑polygon外 -> 补zone判据.
-    # zone=眼中心22mm xz半径且y∈[-0.116,-0.080](碗的深度带). 只翻朝内面.
     c = Vector(center) if center is not None else None
     def in_zone(fc):
         if c is None: return False
@@ -47,10 +44,10 @@ def fix_socket_normals(obj, side, center=None):
     flipped = 0
     for f in bm.faces:
         fc = f.calc_center_median()
-        # 2026-08-13 v17: 必须加Y限制! 眼睑轮廓XZ投影穿过头部中心, 后脑勺同XZ位置的面
-        # (法线朝+Y朝外)被 point_in_polygon 误判翻转 -> 后脑勺从背面"穿透".
-        # 眼窝/碗全部在前脸(Y<0), 后脑勺Y>+0.05. 加 fc.y < 0 彻底隔离.
-        if fc.y < 0 and f.normal.y > 0 and (point_in_polygon(fc.x, fc.z, poly) or in_zone(fc)):
+        # 局部深度锁定: 只处理眼中心前后50mm内的面(彻底隔绝后脑勺, 不依赖全局y<0)
+        if c is not None and abs(fc.y - c.y) > 0.05:
+            continue
+        if f.normal.y > 0 and (point_in_polygon(fc.x, fc.z, poly) or in_zone(fc)):
             f.normal_flip()
             flipped += 1
     bmesh.update_edit_mesh(obj.data)
