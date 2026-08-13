@@ -11,12 +11,14 @@ import numpy as np
 from mathutils import Vector
 from eye_socket_config import *
 
-def load_eyelid_contour(side, n_points=24, margin_mm=2.0, outer_extra_mm=1.0):
+def load_eyelid_contour(side, n_points=24, margin_mm=2.0, outer_extra_mm=4.0, inner_extra_mm=1.5):
     """读3DDFA眼睑轮廓(杏仁形), 返回(x,z)多边形顶点列表.
-    加密到n_points点(样条插值) + 均匀径向扩展margin_mm + 外眼角额外扩展outer_extra_mm.
+    加密到n_points点(样条插值) + 均匀径向扩展margin_mm + 外眼角额外outer_extra_mm + 内眼角额外inner_extra_mm.
     2026-08-13 v18: 6点折线太粗糙, 加密到24点 + 0.5mm margin.
     2026-08-13 v19: margin 0.5→2.0mm, 用户GUI确认红色=当前太小, 蓝色=完整眼睑开口.
-    2026-08-13 v21: 外眼角额外+outer_extra_mm(+1mm), 用户GUI确认外眼角还需更大."""
+    2026-08-13 v21: 外眼角额外+1mm, 用户GUI确认外眼角还需更大.
+    2026-08-13 v22: 用户标注图定量(蓝/红宽比1.296, 外眼角+60px≈+6mm, 内眼角+23px≈+2.5mm):
+    外眼角+4mm, 内眼角+1.5mm. 高度不变(margin保持2mm)."""
     import json, math
     import numpy as np
     d = json.load(open(EYELID_CONTOUR_JSON, encoding="utf-8"))
@@ -50,15 +52,25 @@ def load_eyelid_contour(side, n_points=24, margin_mm=2.0, outer_extra_mm=1.0):
         else:
             expanded.append((x, z))
     # 外眼角额外扩展: |x|最大的点 = 外眼角(朝太阳穴), 额外推outer_extra_mm
-    # 推外眼角 + 附近±2点按falloff(1.0, 0.66, 0.33)平滑过渡
+    # 内眼角额外扩展: |x|最小的点 = 内眼角(朝鼻梁), 额外推inner_extra_mm
+    # 方向: 外眼角=远离鼻梁(sign(x)), 内眼角=靠近鼻梁(-sign(x))
     outer_idx = max(range(n_points), key=lambda i: abs(expanded[i][0]))
-    x_sign = 1 if expanded[outer_idx][0] > cx else -1  # 外眼角方向
+    inner_idx = min(range(n_points), key=lambda i: abs(expanded[i][0]))
+    outer_dir = 1 if expanded[outer_idx][0] > 0 else -1
+    inner_dir = -outer_dir
+    # 外眼角5点falloff
     outer_extra = outer_extra_mm / 1000.0
-    falloff = [0.33, 0.66, 1.0, 0.66, 0.33]  # 5点窗口
+    falloff = [0.33, 0.66, 1.0, 0.66, 0.33]
     for j, f in enumerate(falloff):
         idx = (outer_idx - 2 + j) % n_points
         x, z = expanded[idx]
-        expanded[idx] = (x + x_sign * outer_extra * f, z)
+        expanded[idx] = (x + outer_dir * outer_extra * f, z)
+    # 内眼角5点falloff
+    inner_extra = inner_extra_mm / 1000.0
+    for j, f in enumerate(falloff):
+        idx = (inner_idx - 2 + j) % n_points
+        x, z = expanded[idx]
+        expanded[idx] = (x + inner_dir * inner_extra * f, z)
     return expanded
 
 def resample_ring(ring_pts, n):
