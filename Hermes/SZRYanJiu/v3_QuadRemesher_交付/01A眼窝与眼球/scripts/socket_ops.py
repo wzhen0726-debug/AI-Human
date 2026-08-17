@@ -480,6 +480,10 @@ def make_eye_cup(obj, center, side):
         f.smooth = True
     bmesh.update_edit_mesh(mesh)
     
+    # v34: 保存碗面+倒角带面中心坐标(快照), 供mode切换后几何朝向兜底重新定位.
+    # 必须在mode切换前! 之后chamfer_faces/new_faces是陈旧引用(旧bm已free).
+    bowl_center_coords = [tuple(f.calc_center_median()) for f in chamfer_faces + new_faces]
+    
     # 2026-08-07 v14: 溶解封碗后才变内部的反向sliver(口沿皮肤碎片, 删面时在边界上没敢溶).
     # 封碗后它们变内部, 0.1um²且法线朝+Y(反), 是锯齿尖刺根因. 只溶严格内部面.
     # 2026-08-13 v23: 加z上限<1.678, 同make_eye_socket, 防触及眉毛区.
@@ -506,10 +510,9 @@ def make_eye_cup(obj, center, side):
     print(f"make_eye_cup {side}: dissolved {len(flipped_slivers)} flipped rim slivers")
     
     # ---- 3. 拐角过渡由挤出缓冲环完成(v30), 废弃subdivide/bevel ----
-    
+
     # ---- 4. 法线校正: recalc_face_normals 拓扑传递(替代手动reverse_faces) ----
-    # 专家方案: 废弃normal.y硬编码判断+reverse_faces手动绕序.
-    # 收集碗面+缓冲带面+参考皮肤面, 让Blender底层C++顺着正确的皮肤拓扑统一法线朝外.
+    # 纯绕序测试证实: 创建绕序不对(L仅19%朝眼球), recalc绝对必要.
     bmesh.update_edit_mesh(mesh)
     bpy.ops.object.mode_set(mode='OBJECT')
     bpy.ops.object.mode_set(mode='EDIT')
@@ -534,7 +537,6 @@ def make_eye_cup(obj, center, side):
         for f in v.link_faces:
             if len(f.verts) == 3 and f not in ref_faces:
                 ref_faces.append(f)
-    # 去重: bowl_zone可能已包含部分ref_faces(碗区边缘)
     ref_unique = [f for f in ref_faces if f not in bowl_zone]
     if bowl_zone and ref_unique:
         try:
@@ -543,25 +545,22 @@ def make_eye_cup(obj, center, side):
             print(f"  recalc_face_normals: {len(bowl_zone)} bowl + {len(ref_unique)} ref faces")
         except Exception as e:
             print(f"  recalc_face_normals failed: {e}")
-    
-    # ---- 5. 几何朝向保证 v32(决定性): 开口内的面(碗+倒角带)必须朝眼球 ----
-    # 根因: recalc_face_normals是拓扑启发式, 对高模的非流形/碎面会留下朝内的孤岛.
-    # 用几何判据兜底: 开口内任何面, 法线应指向眼球中心, 背离眼球的翻掉.
-    # v32根因修复: 用ring0_coords(坐标快照)构建polygon, 不用ring0_rebuilt(索引重排失效,
-    # v31曾致R侧polygon乱序误翻184866面).
-    ring0_poly = [(c[0], c[2]) for c in ring0_coords]
+
+    # ---- 5. 几何朝向保证 v35: 碗面+倒角带面必须朝眼球 ----
+    # v33根因: y范围[-0.13,-0.08]太宽, 覆盖了eye center前方的皮肤面(鼻梁z≈1.68, y≈-0.12)
+    # → 误翻皮肤面→front_inward+1129. 纯绕序测试证实绕序不对, recalc后仍有~16%碗面朝反.
+    # v35修复: y>center.y(深入头内=碗面)+y<center.y+0.02(碗深15mm+5mm冗余, 排除后脑勺y>0.05)
+    # +xz<0.014. 后脑勺在同xz圈内y≈0.09会被误翻, 上限y<center.y+0.02排除之.
     flipped_geo = 0
     for f in bm.faces:
         fc = f.calc_center_median()
-        # 额外Y深度带限制: 只处理眼窝深度带内的面, 双重保险排除后脑勺/其它部位
-        if -0.13 < fc.y < -0.08 and point_in_polygon(fc.x, fc.z, ring0_poly):
-            # 开口内的面 = 碗/倒角带. 法线应指向眼球(center).
+        if center.y < fc.y < center.y + 0.02 and (fc - center).xz.length < 0.014:
             if f.normal.dot(center - fc) < 0:
                 f.normal_flip()
                 flipped_geo += 1
     bmesh.update_edit_mesh(mesh)
-    print(f"  geometric orientation: flipped {flipped_geo} inside-opening faces to face eyeball")
-    
+    print(f"  geometric orientation: flipped {flipped_geo} bowl faces to face eyeball")
+
     bpy.ops.object.mode_set(mode='OBJECT')
     print(f"make_eye_cup {side}: ring0={M} bowl_faces={len(new_faces)} depth={max_depth*1000:.1f}mm")
     return ring0
