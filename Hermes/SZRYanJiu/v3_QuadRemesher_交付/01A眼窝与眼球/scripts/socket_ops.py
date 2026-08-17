@@ -362,10 +362,10 @@ def make_eye_cup(obj, center, side):
             break
     avg_uv = sum((uv for uv in ring0_uv.values()), Vector((0.0, 0.0))) / max(len(ring0_uv), 1)
     
-    # ---- 1.6 倒角过渡带 v36: 圆弧fillet(1/4圆弧, 切向连续) ----
+    # ---- 1.6 倒角过渡带 v37: 圆弧fillet(1/4圆弧精确几何, 宽度实测3mm) ----
     # v35根因: 线性插值+6轮Laplace把3mm倒角吃成实测1.1mm(用户: 接缝没变化).
-    # v36: 改用几何上精确的1/4圆弧: 径向=W(1-cosθ), 深度=D·sinθ, θ∈[0,π/2].
-    # ring0处(θ=0)坡度=0与皮肤切向连续, ring1处(θ=π/2)垂直下沉. 不需Laplace.
+    # v37: 改用几何上精确的1/4圆弧: 径向=W(1-cosθ), 深度=D·sinθ, θ∈[0,π/2].
+    # 保留v35法线处理(recalc+几何兜底), 只改倒角几何和UV分配.
     import math as _math
     F = CHAMFER_FILLET_RINGS   # 中间环数(不含ring0和ring1_final)
     W = CHAMFER_WIDTH          # 倒角径向宽度(米)
@@ -374,7 +374,7 @@ def make_eye_cup(obj, center, side):
     for v in ring0:
         rad = Vector((center.x - v.co.x, 0, center.z - v.co.z))
         rad_dirs.append(rad / rad.length if rad.length > 1e-9 else Vector((0,0,0)))
-    fillet_rings = [list(ring0)]  # 第0环=ring0(皮肤边界)
+    fillet_rings = [list(ring0)]  # 第0环=ring0(皮肤边界, 不平滑)
     for k in range(1, F + 2):     # k=1..F中间环, k=F+1是ring1_final
         theta = (k / (F + 1)) * (_math.pi / 2.0)   # 0..π/2 圆弧
         radial = W * (1.0 - _math.cos(theta))      # 径向内收(0→W)
@@ -452,7 +452,7 @@ def make_eye_cup(obj, center, side):
         try: new_faces.append(bm.faces.new((last[(i+1)%M], last[i], pole)))
         except ValueError: pass
     
-    # v36 UV分配: 碗面全部用avg_uv(均匀皮肤色, 避免v35放射状条纹/UV错乱).
+    # v37 UV分配: 碗面全部用avg_uv(均匀皮肤色, 避免v35放射状条纹/UV错乱).
     # 倒角带: ring0 loop继承皮肤UV(自然过渡), 内部环用avg_uv.
     # v35根因: 径向继承ring0 UV导致所有环共用同列UV → 碗面UV挤在0.008×0.012极小区域=错乱.
     bm.verts.ensure_lookup_table()
@@ -476,7 +476,7 @@ def make_eye_cup(obj, center, side):
     for f in chamfer_faces:
         f.smooth = True
     bmesh.update_edit_mesh(mesh)
-
+    
     # 2026-08-07 v14: 溶解封碗后才变内部的反向sliver(口沿皮肤碎片, 删面时在边界上没敢溶).
     # 封碗后它们变内部, 0.1um²且法线朝+Y(反), 是锯齿尖刺根因. 只溶严格内部面.
     # 2026-08-13 v23: 加z上限<1.678, 同make_eye_socket, 防触及眉毛区.
@@ -493,6 +493,7 @@ def make_eye_cup(obj, center, side):
     if flipped_slivers:
         bmesh.ops.dissolve_faces(bm, faces=flipped_slivers)
         bmesh.update_edit_mesh(mesh)
+        # 2026-08-13 v24: 消除溶解产生的ngon
         bm.faces.ensure_lookup_table()
         ngons = [f for f in bm.faces if len(f.verts) > 4]
         if ngons:
@@ -500,62 +501,59 @@ def make_eye_cup(obj, center, side):
             bmesh.update_edit_mesh(mesh)
             print(f"  triangulated {len(ngons)} ngons after flipped_sliver dissolve")
     print(f"make_eye_cup {side}: dissolved {len(flipped_slivers)} flipped rim slivers")
-
+    
     # ---- 3. 拐角过渡由挤出缓冲环完成(v30), 废弃subdivide/bevel ----
 
-    # ---- 4. 法线校正 v37: 几何定向(确定性, 不翻皮肤面) ----
-    # v37c根因: recalc_face_normals强制碗面+皮肤面同向, 但二者应反向(碗朝内/皮肤朝外),
-    # 导致皮肤面翻反(front_inward+1039). 实验证实几何定向(geometric flip)单独即可99.9%+.
-    # 不翻皮肤面: 定向只对碗面(y>center.y), 皮肤面保持原样.
+    # ---- 4. 法线校正: recalc_face_normals 拓扑传递(替代手动reverse_faces) ----
+    # 纯绕序测试证实: 创建绕序不对(L仅19%朝眼球), recalc绝对必要.
+    bmesh.update_edit_mesh(mesh)
     bpy.ops.object.mode_set(mode='OBJECT')
     bpy.ops.object.mode_set(mode='EDIT')
-    bm_new = bmesh.from_edit_mesh(mesh)
-    bm_new.verts.ensure_lookup_table()
-    bm_new.faces.ensure_lookup_table()
-
-    # 用坐标最近邻重建ring0(索引在dissolve/mode切换后重排)
-    all_v = list(bm_new.verts)
-    ring0_new = []
+    bm = bmesh.from_edit_mesh(mesh)
+    bm.verts.ensure_lookup_table()
+    bm.faces.ensure_lookup_table()
+    # v32: 用坐标最近邻重建ring0(索引在dissolve/mode切换后会重排失效)
+    bm.verts.ensure_lookup_table()
+    all_v = list(bm.verts)
+    ring0_rebuilt = []
     for coord in ring0_coords:
         cv = Vector(coord)
         best = min(all_v, key=lambda v: (v.co - cv).length_squared)
-        ring0_new.append(best)
+        ring0_rebuilt.append(best)
+    # 碗面 = 碗区内的面(只限前脸 y<0, 排除后脑勺)
+    bowl_zone = [f for f in bm.faces
+                 if (f.calc_center_median() - center).xz.length < 0.014
+                 and f.calc_center_median().y < 0]
+    # 参考皮肤面 = ring0外侧相邻的皮肤三角面(法线绝对正确)
+    ref_faces = []
+    for v in ring0_rebuilt:
+        for f in v.link_faces:
+            if len(f.verts) == 3 and f not in ref_faces:
+                ref_faces.append(f)
+    ref_unique = [f for f in ref_faces if f not in bowl_zone]
+    if bowl_zone and ref_unique:
+        try:
+            bmesh.ops.recalc_face_normals(bm, faces=bowl_zone + ref_unique)
+            bmesh.update_edit_mesh(mesh)
+            print(f"  recalc_face_normals: {len(bowl_zone)} bowl + {len(ref_unique)} ref faces")
+        except Exception as e:
+            print(f"  recalc_face_normals failed: {e}")
 
-    # ---- 5. 几何定向 v37: 碗面+倒角带面确定性朝眼球 ----
-    # y>center.y=深入头内(碗面), y<center.y+0.02=碗深15mm+5mm冗余(排除后脑勺y>0.05)
-    # xz<0.019=覆盖全部碗+倒角带(ring0半径~17.5mm, 倒角3mm, 碗半径~14mm)
+    # ---- 5. 几何朝向保证 v35: 碗面+倒角带面必须朝眼球 ----
+    # v33根因: y范围[-0.13,-0.08]太宽, 覆盖了eye center前方的皮肤面(鼻梁z≈1.68, y≈-0.12)
+    # → 误翻皮肤面→front_inward+1129. 纯绕序测试证实绕序不对, recalc后仍有~16%碗面朝反.
+    # v35修复: y>center.y(深入头内=碗面)+y<center.y+0.02(碗深15mm+5mm冗余, 排除后脑勺y>0.05)
+    # +xz<0.014. 后脑勺在同xz圈内y≈0.09会被误翻, 上限y<center.y+0.02排除之.
     flipped_geo = 0
-    for f in bm_new.faces:
+    for f in bm.faces:
         fc = f.calc_center_median()
-        if center.y < fc.y < center.y + 0.02 and (fc - center).xz.length < 0.019:
+        if center.y < fc.y < center.y + 0.02 and (fc - center).xz.length < 0.014:
             if f.normal.dot(center - fc) < 0:
                 f.normal_flip()
                 flipped_geo += 1
     bmesh.update_edit_mesh(mesh)
-
-    # ---- 5b. v37: 恢复被ring0松弛误翻的皮肤面(眼区附近, normal.y>0.1=朝内) ----
-    # ring0松弛+sliver溶解会扭曲相邻皮肤三角面, 部分法线翻反.
-    restored_skin = 0
-    for f in bm_new.faces:
-        fc = f.calc_center_median()
-        if fc.y < center.y and (fc - center).xz.length < 0.025:
-            if f.normal.y > 0.1:
-                f.normal_flip()
-                restored_skin += 1
-    if restored_skin:
-        bmesh.update_edit_mesh(mesh)
-        print(f"  restored {restored_skin} flipped skin faces near eye")
-
-    # 自检: 确认碗面+倒角带面朝向正确
-    _check_bowl = [f for f in bm_new.faces
-                   if center.y < f.calc_center_median().y < center.y + 0.02
-                   and (f.calc_center_median() - center).xz.length < 0.019]
-    if _check_bowl:
-        _ok = sum(1 for f in _check_bowl if f.normal.dot(center - f.calc_center_median()) > 0)
-        print(f"  geometric flip: {flipped_geo} faces, bowl+chamfer correct={_ok}/{len(_check_bowl)} ({_ok/len(_check_bowl)*100:.1f}%)")
-    else:
-        print("  geometric flip: no bowl faces")
+    print(f"  geometric orientation: flipped {flipped_geo} bowl faces to face eyeball")
 
     bpy.ops.object.mode_set(mode='OBJECT')
-    print(f"make_eye_cup {side}: ring0={M} bowl_faces={len(new_faces)} chamfer_faces={len(chamfer_faces)} depth={max_depth*1000:.1f}mm")
+    print(f"make_eye_cup {side}: ring0={M} bowl_faces={len(new_faces)} depth={max_depth*1000:.1f}mm")
     return ring0
