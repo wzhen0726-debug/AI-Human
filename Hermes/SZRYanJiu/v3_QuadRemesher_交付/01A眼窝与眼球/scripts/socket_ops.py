@@ -480,10 +480,6 @@ def make_eye_cup(obj, center, side):
         f.smooth = True
     bmesh.update_edit_mesh(mesh)
     
-    # v34: 保存碗面+倒角带面中心坐标(快照), 供mode切换后几何朝向兜底重新定位.
-    # 必须在mode切换前! 之后chamfer_faces/new_faces是陈旧引用(旧bm已free).
-    bowl_center_coords = [tuple(f.calc_center_median()) for f in chamfer_faces + new_faces]
-    
     # 2026-08-07 v14: 溶解封碗后才变内部的反向sliver(口沿皮肤碎片, 删面时在边界上没敢溶).
     # 封碗后它们变内部, 0.1um²且法线朝+Y(反), 是锯齿尖刺根因. 只溶严格内部面.
     # 2026-08-13 v23: 加z上限<1.678, 同make_eye_socket, 防触及眉毛区.
