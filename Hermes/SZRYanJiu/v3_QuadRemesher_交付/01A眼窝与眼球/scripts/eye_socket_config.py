@@ -38,11 +38,11 @@ CUP_SEGMENTS = 32       # 经线段数(绕碗口, 越大越平滑)
 CUP_RINGS = 16          # 纬线圈数(口沿->碗底, 2026-08-07: 8环坡度太陡, 增到16环平滑过渡)
 CUP_DEPTH = 0.015       # 碗最深 15mm (2026-08-07: 20mm碗底y到+0.10穿进后脑壳, 减到15mm)
 
-# 2026-08-13 v32: 倒角过渡带参数(用户: 接缝倒角要更大+圆润, 多环fillet)
-CHAMFER_WIDTH = 0.003    # 倒角宽度 3mm (ring0向内收)
+# 2026-08-17 v37: 倒角过渡带参数(圆弧fillet, 1/4圆弧精确几何, 不需Laplace)
+# v37: 宽度降到3mm(5mm在内眼角R侧穿透, min距离3.22mm→非流形边8个)
+CHAMFER_WIDTH = 0.003    # 倒角宽度 3mm (v37圆弧fillet不丢失, 实测等于设定值)
 CHAMFER_DEPTH = 0.002    # 倒角深度 2mm (向碗底方向下沉)
-CHAMFER_FILLET_RINGS = 4 # 中间圆角环数(v32: 折线→曲线, 接缝真正圆润)
-CHAMFER_SMOOTH = 6       # fillet圆角化Laplace轮数
+CHAMFER_FILLET_RINGS = 4 # 中间圆角环数(圆弧参数化, 环数越多越圆润)
 
 # 检测参数 (v2: 全脸眼带+K-means外簇+最暗核心, 不再靠种子点)
 EYE_BAND_Z_MIN = 1.60   # 眼带z下限(米)

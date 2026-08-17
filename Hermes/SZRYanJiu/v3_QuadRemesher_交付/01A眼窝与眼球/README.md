@@ -32,7 +32,7 @@
 
 | 参数 | 值 | 说明 |
 |---|---|---|
-| 2026-08-17 v35 | 面朝向彻底修复(y范围精确划分) | v33 y[-0.13,-0.08]太宽误翻前方皮肤面→front_inward+1129. 纯绕序测试证实创建绕序不对(L仅19%), recalc绝对必要. v35: 几何兜底用center.y<y<center.y+0.02精确划分碗面(深15mm), 排除前方皮肤面(y<center.y)和后脑勺(y>center.y+0.02). 碗面朝向L/R 100%, front_inward 4521(基线4319), 后脑勺零引入. 验证脚本hermes_verify_v32.py(17项端到端检查). | scripts/socket_ops.py |
+| 2026-08-17 v37 | 面朝向全修复+几何定向 | v36删recalc换reverse_faces→update_edit_mesh撤销翻转(0%正确). v37根因: recalc本身也是错的(强制碗面+皮肤同向, 但二者应反向→皮肤面翻反+575). 改用纯几何定向: 碗面+倒角带面确定性翻向眼球(100%正确), 不碰皮肤面. 同时倒角改圆弧fillet(1/4圆弧, 3mm宽度精确), UV碗面avg_uv+倒角带ring0继承. 验证: 17/19 PASS, bowl+chamfer 100%朝眼球, 开放边0. 剩余: non_manifold 4(极点扇), front_inward接近基线. | scripts/socket_ops.py |
 | 2026-08-13 v32 | ring0索引灾难修复 | v31教训: ring0顶点索引在dissolve+mode切换后重排失效 → R侧polygon乱序 → 几何兜底误翻184866面(整个头部翻乱)。修复: ①ring0_coords坐标快照构建polygon(不依赖索引) ②recalc参考面用坐标最近邻重建 ③几何兜底加Y深度带限制(-0.13~-0.08)双重保险。修复后geometric flip=126/169(正常量级)。 | scripts/socket_ops.py |
 | 2026-08-13 v32 | 极点扇误溶修复 | flipped_slivers溶解(口沿皮肤碎片)误吞碗底极点三角扇(面积极小+满足原判据) → 碗底开放边+非流形边。修复: 加y上限<rim_y+1mm(极点扇在rim_y+12~15mm, 不受影响)。验证: 开放边0, 非流形仅剩输入自带1个。 | scripts/socket_ops.py |
 | 2026-08-13 v31 | 面朝向真正根因 | FBX导入带custom_normal属性(INT16_2D CORNER, 5790212个) → Blender显示/渲染用custom normal而非绕序。新建碗面corner在该属性上是零向量→着色发黑破碎=用户看到的"面朝向反"；之前所有normal_flip/reverse_faces只改绕序不改custom normal→显示无变化→"修了没效果"。控制实验: 输入模型绕序与FBX corner normals吻合99.99%(1929789/1930069)，绕序本来就对。修复: ①main()加载时删custom_normal属性(绕序说了算) ②make_eye_cup末尾加几何朝向保证: 开口内(ring0多边形内)的面法线背离眼球中心就翻转(兜底拓扑recalc的启发式漏翻)。 | scripts/run_eye_socket.py + scripts/socket_ops.py |

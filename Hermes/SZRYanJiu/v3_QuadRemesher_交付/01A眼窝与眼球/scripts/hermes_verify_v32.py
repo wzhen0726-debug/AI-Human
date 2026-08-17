@@ -117,19 +117,32 @@ for f in bm.faces:
                 break
 check("UV_zero_quads", uv_zero == 0, f"{uv_zero}")
 
-# H. 碗面法线朝开口 (真实碗面=center.y<y<center.y+0.02深入头内, 法线应朝向眼球中心)
+# H. 碗面法线朝开口 (覆盖全部: 碗面+倒角带, xz<0.019m, y深入头内)
 for side, center in [("L", cL), ("R", cR)]:
     bowl_faces = [f for f in bm.faces
                   if center.y < f.calc_center_median().y < center.y + 0.02
-                  and (f.calc_center_median() - center).xz.length < 0.014]
+                  and (f.calc_center_median() - center).xz.length < 0.019]
     if bowl_faces:
         toward_eye = sum(1 for f in bowl_faces
                          if f.normal.dot(center - f.calc_center_median()) > 0)
         ratio = toward_eye / len(bowl_faces) * 100
-        check(f"bowl_normal_toward_eye_{side}", ratio > 95.0,
+        check(f"bowl_normal_toward_eye_{side}", ratio > 98.0,
               f"{toward_eye}/{len(bowl_faces)} ({ratio:.1f}%)")
     else:
         check(f"bowl_normal_toward_eye_{side}", False, "no bowl faces found")
+
+# H2. 倒角带外圈法线 (xz 14-19mm, 之前被几何兜底漏掉的部分)
+for side, center in [("L", cL), ("R", cR)]:
+    outer = [f for f in bm.faces
+             if center.y < f.calc_center_median().y < center.y + 0.02
+             and 0.014 < (f.calc_center_median() - center).xz.length < 0.019]
+    if outer:
+        toward = sum(1 for f in outer if f.normal.dot(center - f.calc_center_median()) > 0)
+        ratio = toward / len(outer) * 100
+        check(f"chamfer_outer_normal_{side}", ratio > 95.0,
+              f"{toward}/{len(outer)} ({ratio:.1f}%)")
+    else:
+        check(f"chamfer_outer_normal_{side}", False, "no chamfer outer faces")
 
 # I. 前脸朝内面数 (不恶化, 真实基线=输入模型删custom_normal后测)
 front_inward = [f for f in bm.faces
