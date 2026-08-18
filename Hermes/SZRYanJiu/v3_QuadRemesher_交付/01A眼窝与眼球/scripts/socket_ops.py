@@ -520,9 +520,9 @@ def make_eye_cup(obj, center, side):
         cv = Vector(coord)
         best = min(all_v, key=lambda v: (v.co - cv).length_squared)
         ring0_rebuilt.append(best)
-    # 碗面 = 碗区内的面(只限前脸 y<0, 排除后脑勺)
+    # 碗面 = 碗区内的面+倒角带(只限前脸 y<0, 排除后脑勺), xz<0.021覆盖全部
     bowl_zone = [f for f in bm.faces
-                 if (f.calc_center_median() - center).xz.length < 0.014
+                 if (f.calc_center_median() - center).xz.length < 0.021
                  and f.calc_center_median().y < 0]
     # 参考皮肤面 = ring0外侧相邻的皮肤三角面(法线绝对正确)
     ref_faces = []
@@ -539,15 +539,14 @@ def make_eye_cup(obj, center, side):
         except Exception as e:
             print(f"  recalc_face_normals failed: {e}")
 
-    # ---- 5. 几何朝向保证 v35: 碗面+倒角带面必须朝眼球 ----
-    # v33根因: y范围[-0.13,-0.08]太宽, 覆盖了eye center前方的皮肤面(鼻梁z≈1.68, y≈-0.12)
-    # → 误翻皮肤面→front_inward+1129. 纯绕序测试证实绕序不对, recalc后仍有~16%碗面朝反.
-    # v35修复: y>center.y(深入头内=碗面)+y<center.y+0.02(碗深15mm+5mm冗余, 排除后脑勺y>0.05)
-    # +xz<0.014. 后脑勺在同xz圈内y≈0.09会被误翻, 上限y<center.y+0.02排除之.
+    # ---- 5. 几何朝向保证 v37: 碗面+倒角带面必须朝眼球 ----
+    # v37根因: v35的xz<0.014漏掉倒角带外圈(14-20.5mm, 实测倒角带法线仅47.8%/55.3%).
+    # v37修复: xz扩展到0.021(覆盖ring0半径17.5mm+倒角3mm=20.5mm, 加0.5mm冗余).
+    # y>center.y(深入头内=碗面)+y<center.y+0.02(碗深15mm+5mm冗余, 排除后脑勺y>0.05).
     flipped_geo = 0
     for f in bm.faces:
         fc = f.calc_center_median()
-        if center.y < fc.y < center.y + 0.02 and (fc - center).xz.length < 0.014:
+        if center.y < fc.y < center.y + 0.02 and (fc - center).xz.length < 0.021:
             if f.normal.dot(center - fc) < 0:
                 f.normal_flip()
                 flipped_geo += 1
