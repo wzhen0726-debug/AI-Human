@@ -337,19 +337,25 @@ def make_eye_cup(obj, center, side):
     ring0 = [bm.verts[i] for i in ring_idx]  # 拓扑行走顺序(与网格边界一致, 不排序!)
     M = len(ring0)
     
-    # ---- 1.5 松弛ring0去锯齿(3次Laplace) ----
-    # 2026-08-07 v12: 锯齿口沿(vision反复报的尖刺)+碗底非流形边(0.3mm sliver,4面共边)
-    # 同一根因=边界环局部zigzag. 收缩后zigzag的quad重叠->非流形. 松弛ring0:
-    # 顶点与皮肤共享, 移动它同时平滑了洞口边缘(正是我们要的).
-    for _ in range(3):
+    # ---- 1.5 松弛ring0去锯齿(v39: 3→12次Laplace, 消除大跳变) ----
+    # v39根因: 3次Laplace后rim顶点半径跳变avg1.45mm/max3.89mm, 大跳变115-154处=锯齿.
+    # 12次Laplace+自适应权重(跳变大的点多松弛) → 跳变<0.3mm.
+    for _ in range(12):
         new_pos = {}
         for i, v in enumerate(ring0):
             a = ring0[(i-1)%M].co; b = ring0[(i+1)%M].co
-            new_pos[v.index] = v.co*0.5 + (a+b)*0.25
+            # v39: 自适应权重, 跳变大的点多松弛
+            jump = (v.co - (a+b)*0.5).length
+            w = min(0.5 + jump * 800, 0.95)  # 跳变越大权重越大, 最大0.95
+            new_pos[v.index] = v.co*(1-w) + (a+b)*0.5*w
         for v in ring0:
             v.co = new_pos[v.index]
     rim_y = sum(v.co.y for v in ring0) / M
-    print(f"make_eye_cup {side}: boundary ring M={M} (of {len(rings)} rings), ring relaxed x3")
+    # v39: 验证松弛效果
+    _radii = [(v.co - center).xz.length for v in ring0]
+    _jumps = [abs(_radii[(i+1)%M] - _radii[i]) for i in range(M)]
+    print(f"make_eye_cup {side}: boundary ring M={M} (of {len(rings)} rings), ring relaxed x12, "
+          f"jump avg={sum(_jumps)/len(_jumps)*1000:.2f}mm max={max(_jumps)*1000:.2f}mm")
     
     # ---- 1.55 UV捕获: 必须在创建倒角带/碗面之前! ----
     # v31根因修复: 倒角带创建后ring0顶点多了新loop(chamfer loop, 默认UV=(0,0)),
@@ -452,23 +458,9 @@ def make_eye_cup(obj, center, side):
         try: new_faces.append(bm.faces.new((last[(i+1)%M], last[i], pole)))
         except ValueError: pass
     
-    # v37 UV分配: 碗面全部用avg_uv(均匀皮肤色, 避免v35放射状条纹/UV错乱).
+    # v39 UV分配: 碗面全部用avg_uv(均匀皮肤色, 避免放射条纹/UV错乱).
     # 倒角带: ring0 loop继承皮肤UV(自然过渡), 内部环用avg_uv.
-    # v35根因: 径向继承ring0 UV导致所有环共用同列UV → 碗面UV挤在0.008×0.012极小区域=错乱.
-    bm.verts.ensure_lookup_table()
-    v2uv = {}
-    for i in range(M):
-        v2uv[ring0[i].index] = ring0_uv[ring0[i].index]
-        for k in range(1, len(fillet_rings)):
-            v2uv[fillet_rings[k][i].index] = ring0_uv[ring0[i].index]
-        for j in range(1, NR):
-            v2uv[vgrid[j][i].index] = avg_uv
-    v2uv[pole.index] = avg_uv
-    for f in chamfer_faces + new_faces:
-        for loop in f.loops:
-            uvidx = loop.vert.index
-            if uvidx in v2uv:
-                loop[uv_layer].uv = v2uv[uvidx]
+    # v39修复: UV分配移到最后(所有bmesh操作之后), 防止被update_edit_mesh覆盖.
     
     # smooth shading(与皮肤一致, 消棱面)
     for f in new_faces:
@@ -531,27 +523,108 @@ def make_eye_cup(obj, center, side):
             if len(f.verts) == 3 and f not in ref_faces:
                 ref_faces.append(f)
     ref_unique = [f for f in ref_faces if f not in bowl_zone]
-    if bowl_zone and ref_unique:
+    # v38: 禁用recalc, 它会强制碗面+皮肤同向, 但碗面应朝-Y而皮肤应朝外, 二者不同.
+    # recalc之后几何兜底再翻, 但recalc又把面翻回去. 直接禁用recalc, 只用几何兜底.
+    _SKIP_RECALC = True
+    if bowl_zone and ref_unique and not _SKIP_RECALC:
         try:
             bmesh.ops.recalc_face_normals(bm, faces=bowl_zone + ref_unique)
             bmesh.update_edit_mesh(mesh)
             print(f"  recalc_face_normals: {len(bowl_zone)} bowl + {len(ref_unique)} ref faces")
         except Exception as e:
             print(f"  recalc_face_normals failed: {e}")
+    elif _SKIP_RECALC:
+        print("  recalc_face_normals: SKIPPED (v38, geometric only)")
 
-    # ---- 5. 几何朝向保证 v37: 碗面+倒角带面必须朝眼球 ----
-    # v37根因: v35的xz<0.014漏掉倒角带外圈(14-20.5mm, 实测倒角带法线仅47.8%/55.3%).
-    # v37修复: xz扩展到0.021(覆盖ring0半径17.5mm+倒角3mm=20.5mm, 加0.5mm冗余).
-    # y>center.y(深入头内=碗面)+y<center.y+0.02(碗深15mm+5mm冗余, 排除后脑勺y>0.05).
+    # ---- 5. 几何朝向保证 v38: 眼窝所有面法线必须朝头前(-Y) ----
+    # v38根因: "朝眼球"判据错误 + normal_flip在update_edit_mesh时丢失(和v36 reverse_faces一样).
+    # 证据: xz13-20mm大量normal.y>0.3(朝头内)面=用户看到的黑色/反向面.
+    # 正确几何: 眼窝是凹陷, 从前面看进去, 所有可见面(碗内壁+倒角带)法线都应朝-Y(头前/观察者).
+    # 修复: 用bmesh.ops.reverse_faces(标准算子, 同时改绕序+缓存, update_edit_mesh不丢失).
+    # 判据: normal.y>0(朝头内=反向).
     flipped_geo = 0
+    to_flip = []
     for f in bm.faces:
         fc = f.calc_center_median()
         if center.y < fc.y < center.y + 0.02 and (fc - center).xz.length < 0.021:
-            if f.normal.dot(center - fc) < 0:
-                f.normal_flip()
-                flipped_geo += 1
+            if f.normal.y > 0:
+                to_flip.append(f)
+    if to_flip:
+        bmesh.ops.reverse_faces(bm, faces=to_flip)
+        bm.normal_update()
+        flipped_geo = len(to_flip)
     bmesh.update_edit_mesh(mesh)
-    print(f"  geometric orientation: flipped {flipped_geo} bowl faces to face eyeball")
+    # v38: 立即自检确认翻转生效
+    _still_wrong = sum(1 for f in bm.faces
+                       if center.y < f.calc_center_median().y < center.y + 0.02
+                       and (f.calc_center_median() - center).xz.length < 0.021
+                       and f.normal.y > 0)
+    print(f"  geometric orientation: reversed {flipped_geo} bowl faces to face -Y, still wrong={_still_wrong}")
+
+    # v39: UV分配(所有几何操作完成后, 防止被update_edit_mesh覆盖)
+    # 碗面全部用avg_uv(均匀皮肤色), 倒角带ring0继承皮肤UV, 内部环用avg_uv.
+    # v39修复: 眼窝区UV与皮肤UV连续过渡, 避免交界处断裂.
+    # 关键: 重新从mesh创建bmesh, 确保包含所有顶点.
+    bmesh.update_edit_mesh(mesh)
+    bpy.ops.object.mode_set(mode='OBJECT')
+    bpy.ops.object.mode_set(mode='EDIT')
+    bm = bmesh.from_edit_mesh(mesh)
+    bm.verts.ensure_lookup_table()
+    bm.faces.ensure_lookup_table()
+    uv_layer = bm.loops.layers.uv.active or bm.loops.layers.uv.verify()
+    # 收集眼窝开口边缘的皮肤UV(用于连续过渡)
+    skin_uvs = []
+    for v in bm.verts:
+        dxz = (v.co - center).xz.length
+        # 眼窝开口边缘: xz 15-20mm, y在center.y附近(±2mm)
+        if 0.015 < dxz < 0.020 and abs(v.co.y - center.y) < 0.002:
+            for loop in v.link_loops:
+                uv = loop[uv_layer].uv
+                if 0.01 < uv.x < 0.99 and 0.01 < uv.y < 0.99:
+                    skin_uvs.append((v.co.copy(), uv.copy()))
+                break
+    if skin_uvs:
+        # 计算avg_uv(中位数)
+        us = sorted([uv.x for co, uv in skin_uvs])
+        vs = sorted([uv.y for co, uv in skin_uvs])
+        avg_u = us[len(us)//2]
+        avg_v = vs[len(vs)//2]
+    else:
+        avg_u, avg_v = 0.5, 0.5
+    # v40: 先修复 UV=(0,0) 残留 loop (输入模型眼球残留面片, 采样贴图亮角→白弧带)
+    zero_fixed = 0
+    for f in bm.faces:
+        fc = f.calc_center_median()
+        dxz = math.sqrt((fc.x-center.x)**2 + (fc.z-center.z)**2)
+        if dxz < 0.025 and abs(fc.y - center.y) < 0.015:
+            for loop in f.loops:
+                if loop[uv_layer].uv.length < 0.01:  # UV≈(0,0) 残留
+                    loop[uv_layer].uv = (avg_u, avg_v)
+                    zero_fixed += 1
+    print(f"  UV=(0,0)残留修复: {zero_fixed} loops → avg_uv")
+    # 为眼窝区面分配UV: 倒角带用皮肤UV(连续), 碗面用avg_uv(均匀)
+    assigned = 0
+    for f in bm.faces:
+        fc = f.calc_center_median()
+        dxz = math.sqrt((fc.x-center.x)**2 + (fc.z-center.z)**2)
+        if center.y < fc.y < center.y + 0.02 and dxz < 0.021:
+            # 倒角带(xz 15-18mm): 继承皮肤UV
+            if 0.015 < dxz < 0.018:
+                # 找最近的皮肤顶点UV
+                best_uv = min(skin_uvs, key=lambda x: (x[0] - fc).length_squared)[1] if skin_uvs else (avg_u, avg_v)
+                for loop in f.loops:
+                    loop[uv_layer].uv = best_uv
+                    assigned += 1
+            # 碗面(xz<15mm): avg_uv
+            else:
+                for loop in f.loops:
+                    loop[uv_layer].uv = (avg_u, avg_v)
+                    assigned += 1
+    bmesh.update_edit_mesh(mesh)
+    # 验证UV
+    us = [loop[uv_layer].uv.x for f in bm.faces for loop in f.loops]
+    vs = [loop[uv_layer].uv.y for f in bm.faces for loop in f.loops]
+    print(f"  UV分配: {assigned} loops, avg=({avg_u:.4f},{avg_v:.4f}), u=[{min(us):.4f},{max(us):.4f}] v=[{min(vs):.4f},{max(vs):.4f}]")
 
     bpy.ops.object.mode_set(mode='OBJECT')
     print(f"make_eye_cup {side}: ring0={M} bowl_faces={len(new_faces)} depth={max_depth*1000:.1f}mm")

@@ -114,7 +114,9 @@ def main():
     
     # v31: 删custom_normal属性 + 眼窝区局部recalc(皮肤参考). 绝不全局recalc/质心翻转.
     unify_normals_global(obj, cL, cR)
-    
+
+    # v39: UV分配已在make_eye_cup内完成(防止被update_edit_mesh覆盖), 这里不再重复分配.
+
     # 保存
     bpy.ops.wm.save_as_mainfile(filepath=OUT_BLEND)
     print(f"Saved: {OUT_BLEND}")
