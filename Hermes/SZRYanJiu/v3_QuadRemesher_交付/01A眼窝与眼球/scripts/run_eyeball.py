@@ -119,14 +119,23 @@ def place_eyeball(eye, iris_center, side):
     print(f"place_eyeball {side}: loc=({target.x:.4f},{target.y:.4f},{target.z:.4f}) scale={EYE_SCALE}")
 
 def render_verification(cL, cR):
-    """渲染正面+特写验证图. Workbench+贴图(避免EEVEE卡顿用户机器)"""
+    """渲染正面+特写验证图. EEVEE+三灯(确保可见)"""
     os.makedirs(SHOT_DIR, exist_ok=True)
     scene = bpy.context.scene
-    scene.render.engine = 'BLENDER_WORKBENCH'
+    scene.render.engine = 'BLENDER_EEVEE'
     scene.render.resolution_x = 800
     scene.render.resolution_y = 800
-    scene.display.shading.light = 'STUDIO'
-    scene.display.shading.color_type = 'TEXTURE'
+    # 三灯照明(同render_v39_check.py方案, 已验证)
+    for name, loc, energy in [("Key", (0, -1, 0.5), 120), ("Fill", (0.5, 0.3, 0), 40), ("Rim", (0, 1, 0.3), 60)]:
+        ld = bpy.data.lights.new(name, type='SUN'); ld.energy = energy
+        lo = bpy.data.objects.new(name, ld); lo.location = loc
+        scene.collection.objects.link(lo)
+    # 环境光
+    scene.world.use_nodes = True
+    bg = scene.world.node_tree.nodes.get('Background')
+    if bg:
+        bg.inputs['Color'].default_value = (0.6, 0.6, 0.6, 1.0)
+        bg.inputs['Strength'].default_value = 0.8
     face_center = Vector(((cL[0]+cR[0])/2, min(cL[1], cR[1]), (cL[2]+cR[2])/2))
     cam = bpy.data.objects.get("Camera") or bpy.data.objects.new("Camera", bpy.data.cameras.new("Camera"))
     if not cam.users_scene:
@@ -136,6 +145,7 @@ def render_verification(cL, cR):
         ("front", Vector((face_center.x, face_center.y - 0.30, face_center.z))),
         ("close", Vector((face_center.x, face_center.y - 0.12, face_center.z))),
     ]
+    cam.data.lens = 85  # 长焦特写
     for name, pos in shots:
         cam.location = pos
         look = face_center - pos
