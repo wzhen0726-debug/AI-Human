@@ -11,6 +11,11 @@ import numpy as np
 from mathutils import Vector
 from eye_socket_config import *
 
+# v43: 眼区面删除前的 (dx,dz,u,v) UV样本缓存, 供 make_eye_cup 把贴图眼睛/睫毛细节映射回碗面.
+# 根因: 贴图里画了完整眼睛(睫毛+虹膜+瞳孔), 但 make_eye_socket 删掉这些面后, make_eye_cup 给碗面
+# 分配均匀肤色avg_uv → 睫毛丢失、眼窝里是纯肉色. 修复=删面前捕获眼区UV, 重建碗后按XZ位置加权映射回.
+_EYE_UV_SAMPLES = {}
+
 def load_eyelid_contour(side, n_points=72, margin_x_mm=0.0, margin_z_mm=0.0, outer_extra_mm=0.0, inner_extra_mm=0.0):
     """读3DDFA眼睑轮廓(杏仁形), 返回(x,z)多边形顶点列表.
     加密到n_points点(样条插值) + 方向性扩展(margin_x水平/margin_z垂直) + 外眼角extra + 内眼角extra.
@@ -154,6 +159,18 @@ def make_eye_socket(obj, center, side):
                 to_delete.add(nb)
                 stack.append(nb)
     del_faces = [bm.faces[i] for i in to_delete]
+    # v43: 删面前捕获眼区面的顶点级UV样本(贴图眼睛/睫毛细节的XZ位置映射), 供make_eye_cup重建碗后恢复
+    uv_layer_src = bm.loops.layers.uv.active
+    samples = []
+    if uv_layer_src:
+        for f in del_faces:
+            for loop in f.loops:
+                co = loop.vert.co
+                uv = loop[uv_layer_src].uv
+                if 0.01 < uv.x < 0.99 and 0.01 < uv.y < 0.99:
+                    samples.append((co.x - center.x, co.z - center.z, uv.x, uv.y))
+    _EYE_UV_SAMPLES[side] = samples
+    print(f"make_eye_socket {side}: captured {len(samples)} eye-region UV samples for bowl mapping")
     bmesh.ops.delete(bm, geom=del_faces, context='FACES')
     bmesh.update_edit_mesh(mesh)
     bpy.ops.object.mode_set(mode='OBJECT')
@@ -675,29 +692,80 @@ def make_eye_cup(obj, center, side):
                     loop[uv_layer].uv = (avg_u, avg_v)
                     zero_fixed += 1
     print(f"  UV=(0,0)残留修复: {zero_fixed} loops → avg_uv")
-    # 为眼窝区面分配UV: 倒角带用皮肤UV(连续), 碗面用avg_uv(均匀)
+    # v43: 从删面前捕获的眼区样本构建 XZ→UV 查找表(IDW), 把贴图画好的眼睛细节(睫毛/虹膜)恢复回碗面.
+    # 贴图眼睛本质是XZ位置的函数(原始眼区面就按XZ位置画的), 碗面是同一XZ区域重建, 故可按XZ反查.
+    _eye_samples = _EYE_UV_SAMPLES.get(side, [])
+    _eye_grid = None
+    if len(_eye_samples) >= 16:
+        _sa = np.array(_eye_samples, dtype=np.float64)  # (dx, dz, u, v)
+        _sx, _sz, _su, _sv = _sa[:,0], _sa[:,1], _sa[:,2], _sa[:,3]
+        _lim = 0.016   # 网格覆盖±16mm(略大于碗口径15mm)
+        _GRID = 40
+        _xs = np.linspace(-_lim, _lim, _GRID)
+        _zs = np.linspace(-_lim, _lim, _GRID)
+        _gridU = np.zeros((_GRID,_GRID)); _gridV = np.zeros((_GRID,_GRID))
+        for _i in range(_GRID):
+            _dx = _xs[_i] - _sx
+            _dx2 = _dx*_dx
+            for _j in range(_GRID):
+                _dz = _zs[_j] - _sz
+                _w = 1.0/(_dx2 + _dz*_dz + 1e-10)   # IDW权重(距离平方倒数, 近邻主导)
+                _gridU[_i,_j] = (_w*_su).sum()/_w.sum()
+                _gridV[_i,_j] = (_w*_sv).sum()/_w.sum()
+        def _bowl_uv_lookup(dx, dz):
+            _fx = (dx + _lim)/(2*_lim)*(_GRID-1)
+            _fz = (dz + _lim)/(2*_lim)*(_GRID-1)
+            _ix = int(max(0, min(_GRID-2, _fx)))
+            _iz = int(max(0, min(_GRID-2, _fz)))
+            _tx = max(0.0, min(1.0, _fx-_ix)); _tz = max(0.0, min(1.0, _fz-_iz))
+            _a=_gridU[_ix,_iz]; _b=_gridU[_ix+1,_iz]; _c=_gridU[_ix,_iz+1]; _d=_gridU[_ix+1,_iz+1]
+            u = _a*(1-_tx)*(1-_tz) + _b*_tx*(1-_tz) + _c*(1-_tx)*_tz + _d*_tx*_tz
+            _a=_gridV[_ix,_iz]; _b=_gridV[_ix+1,_iz]; _c=_gridV[_ix,_iz+1]; _d=_gridV[_ix+1,_iz+1]
+            v = _a*(1-_tx)*(1-_tz) + _b*_tx*(1-_tz) + _c*(1-_tx)*_tz + _d*_tx*_tz
+            return (u, v)
+        _eye_grid = True
+        print(f"  v43: bowl UV lookup grid {_GRID}x{_GRID} built from {len(_eye_samples)} eye samples")
+    else:
+        print(f"  v43: WARNING only {len(_eye_samples)} eye samples, fallback to avg_uv")
+    # 为眼窝区面分配UV: 倒角带用皮肤UV(连续), 碗面用贴图眼睛UV(v43)
     assigned = 0
+    bowl_mapped = 0
     for f in bm.faces:
         fc = f.calc_center_median()
         dxz = math.sqrt((fc.x-center.x)**2 + (fc.z-center.z)**2)
         if center.y < fc.y < center.y + 0.02 and dxz < 0.021:
-            # 倒角带(xz 15-18mm): 继承皮肤UV
+            # 倒角带(xz 15-18mm): 继承皮肤UV(自然过渡)
             if 0.015 < dxz < 0.018:
                 # 找最近的皮肤顶点UV
                 best_uv = min(skin_uvs, key=lambda x: (x[0] - fc).length_squared)[1] if skin_uvs else (avg_u, avg_v)
                 for loop in f.loops:
                     loop[uv_layer].uv = best_uv
                     assigned += 1
-            # 碗面(xz<15mm): avg_uv
-            else:
+            # 碗面本体(xz≤12mm=碗口8.7+倒角3): v43=贴图眼睛UV加权映射(恢复睫毛/虹膜), 无样本时回退avg_uv
+            # v43b: 查找表只覆盖±16mm且眼睛细节都在碗内, 12mm外不映射——否则原始脸颊皮肤被
+            # clamp到网格边缘深色值, 形成暗环(vision报"下睫毛印在脸颊", dxz18-20mm亮度0.28)
+            elif dxz <= 0.012:
+                if _eye_grid is not None:
+                    du, dv = _bowl_uv_lookup(fc.x - center.x, fc.z - center.z)
+                    for loop in f.loops:
+                        loop[uv_layer].uv = (du, dv)
+                        assigned += 1
+                    bowl_mapped += 1
+                else:
+                    for loop in f.loops:
+                        loop[uv_layer].uv = (avg_u, avg_v)
+                        assigned += 1
+            # dxz 12-15mm: 碗口外缘皮肤, 用干净肤色avg_uv(与倒角带过渡一致)
+            elif dxz <= 0.015:
                 for loop in f.loops:
                     loop[uv_layer].uv = (avg_u, avg_v)
                     assigned += 1
+            # dxz 18-21mm: 原始脸颊皮肤, 保留原UV不动(防暗环)
     bmesh.update_edit_mesh(mesh)
     # 验证UV
     us = [loop[uv_layer].uv.x for f in bm.faces for loop in f.loops]
     vs = [loop[uv_layer].uv.y for f in bm.faces for loop in f.loops]
-    print(f"  UV分配: {assigned} loops, avg=({avg_u:.4f},{avg_v:.4f}), u=[{min(us):.4f},{max(us):.4f}] v=[{min(vs):.4f},{max(vs):.4f}]")
+    print(f"  UV分配: {assigned} loops, 碗面贴图映射={bowl_mapped}面, avg=({avg_u:.4f},{avg_v:.4f}), u=[{min(us):.4f},{max(us):.4f}] v=[{min(vs):.4f},{max(vs):.4f}]")
 
     bpy.ops.object.mode_set(mode='OBJECT')
     print(f"make_eye_cup {side}: ring0={M} bowl_faces={len(new_faces)} depth={max_depth*1000:.1f}mm")
