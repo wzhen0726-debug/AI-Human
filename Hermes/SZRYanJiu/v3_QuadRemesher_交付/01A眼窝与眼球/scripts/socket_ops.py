@@ -11,7 +11,7 @@ import numpy as np
 from mathutils import Vector
 from eye_socket_config import *
 
-def load_eyelid_contour(side, n_points=24, margin_x_mm=2.0, margin_z_mm=1.0, outer_extra_mm=4.0, inner_extra_mm=1.5):
+def load_eyelid_contour(side, n_points=24, margin_x_mm=0.0, margin_z_mm=0.0, outer_extra_mm=0.0, inner_extra_mm=0.0):
     """读3DDFA眼睑轮廓(杏仁形), 返回(x,z)多边形顶点列表.
     加密到n_points点(样条插值) + 方向性扩展(margin_x水平/margin_z垂直) + 外眼角extra + 内眼角extra.
     2026-08-13 v18: 6点折线→24点+0.5mm margin.
@@ -356,6 +356,9 @@ def make_eye_cup(obj, center, side):
     _jumps = [abs(_radii[(i+1)%M] - _radii[i]) for i in range(M)]
     print(f"make_eye_cup {side}: boundary ring M={M} (of {len(rings)} rings), ring relaxed x12, "
           f"jump avg={sum(_jumps)/len(_jumps)*1000:.2f}mm max={max(_jumps)*1000:.2f}mm")
+    # v41: 打印rim半径分布(诊断交缝精度)
+    _rmm = [r*1000 for r in _radii]
+    print(f"  rim半径: [{min(_rmm):.1f},{max(_rmm):.1f}]mm avg={sum(_rmm)/M:.1f}mm")
     
     # ---- 1.55 UV捕获: 必须在创建倒角带/碗面之前! ----
     # v31根因修复: 倒角带创建后ring0顶点多了新loop(chamfer loop, 默认UV=(0,0)),
