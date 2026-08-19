@@ -11,7 +11,7 @@ import numpy as np
 from mathutils import Vector
 from eye_socket_config import *
 
-def load_eyelid_contour(side, n_points=24, margin_x_mm=0.0, margin_z_mm=0.0, outer_extra_mm=0.0, inner_extra_mm=0.0):
+def load_eyelid_contour(side, n_points=72, margin_x_mm=0.0, margin_z_mm=0.0, outer_extra_mm=0.0, inner_extra_mm=0.0):
     """读3DDFA眼睑轮廓(杏仁形), 返回(x,z)多边形顶点列表.
     加密到n_points点(样条插值) + 方向性扩展(margin_x水平/margin_z垂直) + 外眼角extra + 内眼角extra.
     2026-08-13 v18: 6点折线→24点+0.5mm margin.
@@ -337,19 +337,69 @@ def make_eye_cup(obj, center, side):
     ring0 = [bm.verts[i] for i in ring_idx]  # 拓扑行走顺序(与网格边界一致, 不排序!)
     M = len(ring0)
     
-    # ---- 1.5 松弛ring0去锯齿(v39: 3→12次Laplace, 消除大跳变) ----
-    # v39根因: 3次Laplace后rim顶点半径跳变avg1.45mm/max3.89mm, 大跳变115-154处=锯齿.
-    # 12次Laplace+自适应权重(跳变大的点多松弛) → 跳变<0.3mm.
+    # ---- 1.5 松弛ring0去锯齿(v42: 3次轻度Laplace, 平衡形状保持与平滑) ----
+    # v39: 12次太强(扭曲rim形状, avg偏差6.4mm), v42: 0次太弱(星爆拓扑)
+    # 3次轻度松弛: 消除锯齿但保持3DDFA轮廓形状
     for _ in range(12):
         new_pos = {}
         for i, v in enumerate(ring0):
             a = ring0[(i-1)%M].co; b = ring0[(i+1)%M].co
-            # v39: 自适应权重, 跳变大的点多松弛
-            jump = (v.co - (a+b)*0.5).length
-            w = min(0.5 + jump * 800, 0.95)  # 跳变越大权重越大, 最大0.95
+            # v42: 固定权重0.3(轻度松弛), 避免扭曲
+            w = 0.3
             new_pos[v.index] = v.co*(1-w) + (a+b)*0.5*w
         for v in ring0:
             v.co = new_pos[v.index]
+    
+    # v42: 松弛后径向投影回3DDFA轮廓(约束到正确位置, 消除偏离)
+    # 方法: 轮廓折线密集采样建立 角度θ→半径r 插值表, 每个ring0顶点保持自身角度,
+    #       半径设为r(θ). 避免最近点投影的聚簇bug(曾致jump max 6.8mm).
+    import json as _json
+    with open(EYELID_CONTOUR_JSON, encoding="utf-8") as _f:
+        _dd = _json.load(_f)
+    _pts = [(r[0]-center.x, r[2]-center.z) for r in _dd[side]["rim_3d"] if r is not None]
+    # 折线密集采样(每段细分16点), 建立(θ,r)表
+    _samples = []
+    _n = len(_pts)
+    for _i in range(_n):
+        _p1 = _pts[_i]; _p2 = _pts[(_i+1)%_n]
+        for _t in range(16):
+            _f = _t/16
+            _sx = _p1[0]+(_p2[0]-_p1[0])*_f; _sz = _p1[1]+(_p2[1]-_p1[1])*_f
+            _samples.append((math.atan2(_sz, _sx), math.sqrt(_sx*_sx+_sz*_sz)))
+    _samples.sort()
+    _thetas = [s[0] for s in _samples]; _radii_tab = [s[1] for s in _samples]
+    def _radius_at(theta):
+        # 周期插值
+        import bisect
+        i = bisect.bisect_left(_thetas, theta)
+        if i == 0 or i == len(_thetas):
+            # 环绕: theta < 最小 或 >= 最大, 用首尾环绕
+            t1, r1 = _thetas[-1], _radii_tab[-1]
+            t2, r2 = _thetas[0], _radii_tab[0]
+            if t1 > t2:  # 环绕 -π/π
+                span = (t2 + 2*math.pi) - t1
+                d = (theta - t1) if theta >= t1 else (theta + 2*math.pi - t1)
+            else:
+                span = t2 - t1; d = theta - t1
+        else:
+            t1, r1 = _thetas[i-1], _radii_tab[i-1]
+            t2, r2 = _thetas[i], _radii_tab[i]
+            span = t2 - t1; d = theta - t1
+        if span <= 0: return r1
+        return r1 + (r2-r1) * d / span
+    
+    projected = 0
+    for v in ring0:
+        dx = v.co.x - center.x; dz = v.co.z - center.z
+        r_now = math.sqrt(dx*dx + dz*dz)
+        if r_now < 1e-9: continue
+        theta = math.atan2(dz, dx)
+        r_target = _radius_at(theta)
+        if abs(r_target - r_now) > 0.0005:  # >0.5mm才移动
+            v.co.x = center.x + r_target * math.cos(theta)
+            v.co.z = center.z + r_target * math.sin(theta)
+            projected += 1
+    print(f"  径向投影回3DDFA轮廓: {projected}/{M}顶点")
     rim_y = sum(v.co.y for v in ring0) / M
     # v39: 验证松弛效果
     _radii = [(v.co - center).xz.length for v in ring0]
