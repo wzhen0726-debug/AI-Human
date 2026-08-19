@@ -125,10 +125,13 @@ def render_verification(cL, cR):
     scene.render.engine = 'BLENDER_EEVEE'
     scene.render.resolution_x = 800
     scene.render.resolution_y = 800
-    # 三灯照明(同render_v39_check.py方案, 已验证)
+    # 三灯照明(同render_v39_check.py: AREA灯+朝向面部. 注意不能用SUN——SUN能量单位W/m², 同数值会严重过曝)
+    face_center = Vector(((cL[0]+cR[0])/2, min(cL[1], cR[1]), (cL[2]+cR[2])/2))
     for name, loc, energy in [("Key", (0, -1, 0.5), 120), ("Fill", (0.5, 0.3, 0), 40), ("Rim", (0, 1, 0.3), 60)]:
-        ld = bpy.data.lights.new(name, type='SUN'); ld.energy = energy
+        ld = bpy.data.lights.new(name, type='AREA'); ld.energy = energy; ld.size = 1.0
         lo = bpy.data.objects.new(name, ld); lo.location = loc
+        look = face_center - Vector(loc)
+        lo.rotation_euler = look.to_track_quat('-Z', 'Y').to_euler()
         scene.collection.objects.link(lo)
     # 环境光
     scene.world.use_nodes = True
@@ -136,7 +139,6 @@ def render_verification(cL, cR):
     if bg:
         bg.inputs['Color'].default_value = (0.6, 0.6, 0.6, 1.0)
         bg.inputs['Strength'].default_value = 0.8
-    face_center = Vector(((cL[0]+cR[0])/2, min(cL[1], cR[1]), (cL[2]+cR[2])/2))
     cam = bpy.data.objects.get("Camera") or bpy.data.objects.new("Camera", bpy.data.cameras.new("Camera"))
     if not cam.users_scene:
         scene.collection.objects.link(cam)

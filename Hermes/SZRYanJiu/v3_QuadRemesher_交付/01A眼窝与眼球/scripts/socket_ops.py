@@ -626,15 +626,35 @@ def make_eye_cup(obj, center, side):
     bm.faces.ensure_lookup_table()
     uv_layer = bm.loops.layers.uv.active or bm.loops.layers.uv.verify()
     # 收集眼窝开口边缘的皮肤UV(用于连续过渡)
+    # v42b: 取样窗口改为"下眼睑皮肤区"(dz<0下侧), 避开上眼睑贴图深色眼妆区.
+    #       原窗口(xz15-20mm整圈)穿过上眼睑→中位数UV落进眼线/眼影深色像素(亮度0.15-0.35)→
+    #       碗面采样成深棕色(用户截图红箭头指的下眼睑深色斑块). 下眼睑皮肤区实测亮度0.48.
+    #       同时过滤深色UV样本(亮度<0.40视为眼妆区丢弃).
+    tex_img = None
+    for _m in obj.data.materials:
+        if _m and _m.use_nodes:
+            for _n in _m.node_tree.nodes:
+                if _n.type == 'TEX_IMAGE' and _n.image:
+                    tex_img = _n.image
+    _tex_px = tex_img.pixels[:] if tex_img else None
+    _TW, _TH = tex_img.size if tex_img else (0, 0)
+    def _uv_bright(u, v):
+        if not _tex_px: return 1.0
+        _x = min(max(int(u*_TW), 0), _TW-1); _y = min(max(int(v*_TH), 0), _TH-1)
+        _i = (_y*_TW + _x)*4
+        return (_tex_px[_i] + _tex_px[_i+1] + _tex_px[_i+2]) / 3
     skin_uvs = []
     for v in bm.verts:
-        dxz = (v.co - center).xz.length
-        # 眼窝开口边缘: xz 15-20mm, y在center.y附近(±2mm)
-        if 0.015 < dxz < 0.020 and abs(v.co.y - center.y) < 0.002:
+        dx = v.co.x - center.x; dz = v.co.z - center.z
+        dxz = math.sqrt(dx*dx + dz*dz)
+        # v42b: 下眼睑皮肤区(dz<0下侧), 碗外18-30mm, 脸部前缘
+        if dz < -0.008 and 0.018 < dxz < 0.030 and v.co.y < center.y:
             for loop in v.link_loops:
                 uv = loop[uv_layer].uv
                 if 0.01 < uv.x < 0.99 and 0.01 < uv.y < 0.99:
-                    skin_uvs.append((v.co.copy(), uv.copy()))
+                    # v42b: 丢弃深色样本(眼妆/眼线区)
+                    if _uv_bright(uv.x, uv.y) > 0.40:
+                        skin_uvs.append((v.co.copy(), uv.copy()))
                 break
     if skin_uvs:
         # 计算avg_uv(中位数)
