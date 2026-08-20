@@ -1,0 +1,55 @@
+Traceback (most recent call last):
+  File "D:\Program Files\Blender Foundation\Blender 5.1\5.1\scripts\modules\addon_utils.py", line 515, in enable
+    mod.register()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py", line 42, in register
+    from .exporter import register_exporter
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\exporter.py", line 2, in <module>
+    import bpy_types
+ModuleNotFoundError: No module named 'bpy_types'
+00:01.859  blend            | Read blend: "E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\01A眼窝与眼球\models\01_1_eye_socket.blend"
+00:08.609  blend            | Read blend: "E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\01高模修复与黏连检测\models\01_highpoly_repair.blend"
+E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\01A眼窝与眼球\scripts\diagnose_t3_rim.py:137: DeprecationWarning: 'Material.use_nodes' is expected to be removed in Blender 6.0
+  if m and m.use_nodes:
+Exception in module register(): C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py
+Reloading external rigs...
+Reloading external metarigs...
+Extra Pies: Register built-in pies for use with non-standard Keymap.
+register_class(...):
+警告: 'List_View' 不包含带有前缀和后缀的 '_UL_'
+Registered B2RUVL 0.1.6.
+Registered MACHIN3tools 1.13.8.DeusEx with 2 tools, 0 pie menus
+ARP首选项已成功加载！
+更新骨架预设…
+Zen UV Library: REGISTERED.
+======================================================================
+A. OUTPUT blend 01_1: islands + seam rings
+
+--- L eye connectivity: 1 components in zone ---
+  main: 6452 faces
+  SEAM ring: only 0 verts (no clear seam)
+  3DDFA contour: width=26.8mm height=9.7mm aspect=2.75, r=[6.5,13.8] avg=9.2mm
+  open edges=0, non-manifold edges=0 (zone<25mm)
+  15-21mm band: 1139/1139 faces have CONSTANT uv (overwritten)
+
+--- R eye connectivity: 1 components in zone ---
+  main: 6609 faces
+  SEAM ring: 4 verts, width=2.5mm height=2.1mm aspect=1.16, r=[15.6,17.3] avg=16.4mm
+  3DDFA contour: width=26.8mm height=9.2mm aspect=2.91, r=[5.8,13.9] avg=9.1mm
+  open edges=0, non-manifold edges=0 (zone<25mm)
+  15-21mm band: 1099/1101 faces have CONSTANT uv (overwritten)
+======================================================================
+B. INPUT blend: painted-eye extent from texture dark pixels
+texture: 3d模型写实人像_basecolor 8192x8192
+
+--- L: NO dark samples captured ---
+
+--- R: NO dark samples captured ---
+======================================================================
+DIAG DONE
+Unregistered B2RUVL 0.1.6.
+Unregistered MACHIN3tools 1.13.8.DeusEx.
+Zen UV Library: UNREGISTERED.
+Blender 5.1.0 (hash adfe2921d5f3 built 2026-03-17 01:37:32)
+
+Blender quit

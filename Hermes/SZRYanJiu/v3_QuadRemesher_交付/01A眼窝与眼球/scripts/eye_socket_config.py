@@ -24,8 +24,10 @@ HOLE_RZ = 0.009   # 半高 (上下眼睑方向)
 
 # 2026-08-07: 真实眼形=3DDFA眼睑轮廓(杏仁形26.8x9.7mm, 宽高比2.75, 两头尖).
 # 之前的对称椭圆(rz=9mm)太圆太高, 宽高比仅1.44, 开出来像"球"不像杏仁.
-EYELID_CONTOUR_JSON = os.path.join(DELIVERY, "01A眼窝与眼球", "screenshots", "3ddfa", "eyelid_contour.json")
-USE_EYELID_CONTOUR = True   # True=用3DDFA眼睑轮廓开孔(杏仁), False=回退对称椭圆
+# 2026-08-20: 3DDFA眼裂偏小偏上, 改用GUI半自动标记点提取的真实眼窝边界(eyelid_contour_manual.json)
+EYELID_CONTOUR_JSON = os.path.join(DELIVERY, "01A眼窝与眼球", "screenshots", "3ddfa", "eyelid_contour_manual.json")
+EYELID_CONTOUR_3DDFA_JSON = os.path.join(DELIVERY, "01A眼窝与眼球", "screenshots", "3ddfa", "eyelid_contour.json")
+USE_EYELID_CONTOUR = True   # True=用眼睑轮廓开孔(杏仁), False=回退对称椭圆
 
 # 压凹范围与深度
 SOCKET_RADIUS = 0.015   # 压凹影响半径 15mm
@@ -38,11 +40,13 @@ CUP_SEGMENTS = 32       # 经线段数(绕碗口, 越大越平滑)
 CUP_RINGS = 16          # 纬线圈数(口沿->碗底, 2026-08-07: 8环坡度太陡, 增到16环平滑过渡)
 CUP_DEPTH = 0.015       # 碗最深 15mm (2026-08-07: 20mm碗底y到+0.10穿进后脑壳, 减到15mm)
 
-# 2026-08-17 v37: 倒角过渡带参数(圆弧fillet, 1/4圆弧精确几何, 不需Laplace)
-# v37: 宽度降到3mm(5mm在内眼角R侧穿透, min距离3.22mm→非流形边8个)
-CHAMFER_WIDTH = 0.003    # 倒角宽度 3mm (v37圆弧fillet不丢失, 实测等于设定值)
-CHAMFER_DEPTH = 0.002    # 倒角深度 2mm (向碗底方向下沉)
-CHAMFER_FILLET_RINGS = 4 # 中间圆角环数(圆弧参数化, 环数越多越圆润)
+# 2026-08-20 v46h: 倒角参数根据眼窝大小动态计算.
+# 根因: 固定3mm倒角带对35mm宽眼窝太窄, ring1处面分布突变→M形环线.
+# 计算: 倒角宽度 = 眼窝平均半径的20% (35mm宽→avg半径17.5mm→倒角宽3.5mm, 上限6mm).
+#       倒角深度 = 宽度的50% (保持弧度比例).
+CHAMFER_WIDTH_RATIO = 0.20   # 倒角宽度占眼窝平均半径比例
+CHAMFER_DEPTH_RATIO = 0.50   # 倒角深度占宽度比例
+CHAMFER_FILLET_RINGS = 8     # 中间环数(增加让过渡更平滑)
 
 # 检测参数 (v2: 全脸眼带+K-means外簇+最暗核心, 不再靠种子点)
 EYE_BAND_Z_MIN = 1.60   # 眼带z下限(米)

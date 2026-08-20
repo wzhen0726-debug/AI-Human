@@ -1,0 +1,42 @@
+Traceback (most recent call last):
+  File "D:\Program Files\Blender Foundation\Blender 5.1\5.1\scripts\modules\addon_utils.py", line 515, in enable
+    mod.register()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py", line 42, in register
+    from .exporter import register_exporter
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\exporter.py", line 2, in <module>
+    import bpy_types
+ModuleNotFoundError: No module named 'bpy_types'
+00:01.719  blend            | Read blend: "E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\01A眼窝与眼球\models\01_1_eye_socket.blend"
+E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\01A眼窝与眼球\scripts\diagnose_v44_uv.py:20: DeprecationWarning: 'Material.use_nodes' is expected to be removed in Blender 6.0
+  if m and m.use_nodes:
+Exception in module register(): C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py
+Reloading external rigs...
+Reloading external metarigs...
+Extra Pies: Register built-in pies for use with non-standard Keymap.
+register_class(...):
+警告: 'List_View' 不包含带有前缀和后缀的 '_UL_'
+Registered B2RUVL 0.1.6.
+Registered MACHIN3tools 1.13.8.DeusEx with 2 tools, 0 pie menus
+ARP首选项已成功加载！
+更新骨架预设…
+Zen UV Library: REGISTERED.
+=== L ===
+15-21mm band: 1139/1139 constant-UV faces (v43b was 1139/1139)
+tagged faces (bowl+chamfer): 1733
+  upper_lid: 4-6mm:0.18(21) 6-8mm:0.32(44) 8-10mm:0.37(76) 10-12mm:0.40(110) 12-14mm:0.37(143) 14-16mm:0.34(110) 16-18mm:0.33(98) 18-20mm:0.33(100) 20-22mm:0.37(112) 22-24mm:0.40(135) 24-26mm:0.42(71)
+  lower_lid: 4-6mm:0.22(12) 6-8mm:0.39(77) 8-10mm:0.39(85) 10-12mm:0.38(81) 12-14mm:0.38(117) 14-16mm:0.41(131) 16-18mm:0.43(156) 18-20mm:0.44(232) 20-22mm:0.44(201) 22-24mm:0.46(196) 24-26mm:0.48(85)
+  corner_band: 0-2mm:0.08(569) 2-4mm:0.12(408) 4-6mm:0.19(294) 6-8mm:0.23(211) 8-10mm:0.43(159) 10-12mm:0.40(115) 12-14mm:0.30(97) 14-16mm:0.27(80) 16-18mm:0.30(97) 18-20mm:0.32(97) 20-22mm:0.37(77) 22-24mm:0.43(74) 24-26mm:0.45(37)
+=== R ===
+15-21mm band: 1099/1101 constant-UV faces (v43b was 1139/1139)
+tagged faces (bowl+chamfer): 2001
+  upper_lid: 4-6mm:0.14(26) 6-8mm:0.27(54) 8-10mm:0.32(77) 10-12mm:0.41(106) 12-14mm:0.42(124) 14-16mm:0.39(113) 16-18mm:0.38(98) 18-20mm:0.38(104) 20-22mm:0.39(106) 22-24mm:0.41(124) 24-26mm:0.43(80)
+  lower_lid: 4-6mm:0.33(26) 6-8mm:0.37(59) 8-10mm:0.38(63) 10-12mm:0.39(79) 12-14mm:0.40(96) 14-16mm:0.41(113) 16-18mm:0.42(160) 18-20mm:0.44(196) 20-22mm:0.45(227) 22-24mm:0.47(213) 24-26mm:0.48(99)
+  corner_band: 0-2mm:0.08(798) 2-4mm:0.13(423) 4-6mm:0.15(300) 6-8mm:0.31(228) 8-10mm:0.31(161) 10-12mm:0.36(120) 12-14mm:0.33(81) 14-16mm:0.31(74) 16-18mm:0.34(85) 18-20mm:0.33(94) 20-22mm:0.38(96) 22-24mm:0.43(92) 24-26mm:0.46(37)
+V44 DIAG DONE
+Unregistered B2RUVL 0.1.6.
+Unregistered MACHIN3tools 1.13.8.DeusEx.
+Zen UV Library: UNREGISTERED.
+Blender 5.1.0 (hash adfe2921d5f3 built 2026-03-17 01:37:32)
+
+Blender quit

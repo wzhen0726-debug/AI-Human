@@ -289,6 +289,12 @@ def make_eye_cup(obj, center, side):
     bm = bmesh.from_edit_mesh(mesh)
     bm.verts.ensure_lookup_table()
     bm.edges.ensure_lookup_table()
+    # v44: per-side int tag层. 最先创建, 新面创建时立即打tag(倒角带=1/碗=2).
+    # 教训: 事后回头打tag会ReferenceError: BMFace removed(wrapper失效).
+    # per-side命名: R眼pass不会把L眼已tag面误认成本侧新面(避免用R查找表覆盖L眼UV).
+    tag_l = bm.faces.layers.int.get("v44tag_" + side)
+    if tag_l is None:
+        tag_l = bm.faces.layers.int.new("v44tag_" + side)
     
     def in_zone(co):
         return (co.x-center.x)**2 + (co.z-center.z)**2 < 0.022**2
@@ -438,106 +444,108 @@ def make_eye_cup(obj, center, side):
             break
     avg_uv = sum((uv for uv in ring0_uv.values()), Vector((0.0, 0.0))) / max(len(ring0_uv), 1)
     
-    # ---- 1.6 倒角过渡带 v37: 圆弧fillet(1/4圆弧精确几何, 宽度实测3mm) ----
-    # v35根因: 线性插值+6轮Laplace把3mm倒角吃成实测1.1mm(用户: 接缝没变化).
-    # v37: 改用几何上精确的1/4圆弧: 径向=W(1-cosθ), 深度=D·sinθ, θ∈[0,π/2].
-    # 保留v35法线处理(recalc+几何兜底), 只改倒角几何和UV分配.
-    import math as _math
-    F = CHAMFER_FILLET_RINGS   # 中间环数(不含ring0和ring1_final)
-    W = CHAMFER_WIDTH          # 倒角径向宽度(米)
-    D = CHAMFER_DEPTH          # 倒角下沉深度(米)
+    # ---- 1.6+2. 合并倒角带+碗面(消除ring1分界线/M形环线) ----
+    # v46i: 从ring0直接到碗底, 中间无ring1分界线. 倒角带和碗面合并为一块.
+    # 根因: 原设计倒角带(8条带)和碗面(16环)分开创建, 在ring1处相接→M形环线.
+    # 修复: 从ring0开始, 用单一曲线(宽度W+深度D→收缩到10%)直接到碗底,
+    #       中间无分界线. 环数=F+NR, 前F环是倒角(宽度W), 后NR环是碗面(收缩到10%).
+    F = CHAMFER_FILLET_RINGS   # 倒角环数(不含ring0)
+    # 眼窝平均半径 = (宽+高)/4
+    import json as _json2
+    with open(EYELID_CONTOUR_JSON, encoding="utf-8") as _f2:
+        _cd = _json2.load(_f2)
+    _w_mm = _cd[side]["width_mm"]; _h_mm = _cd[side]["height_mm"]
+    _avg_radius = (_w_mm + _h_mm) / 4.0 / 1000.0  # 米
+    W = min(_avg_radius * CHAMFER_WIDTH_RATIO, 0.006)   # 倒角宽度, 上限6mm
+    D = W * CHAMFER_DEPTH_RATIO                          # 倒角深度 = 宽度的50%
+    print(f"  倒角参数: 眼窝{_w_mm:.1f}x{_h_mm:.1f}mm avg半径{_avg_radius*1000:.1f}mm → 倒角宽{W*1000:.2f}mm 深{D*1000:.2f}mm")
+    
     rad_dirs = []
     for v in ring0:
         rad = Vector((center.x - v.co.x, 0, center.z - v.co.z))
         rad_dirs.append(rad / rad.length if rad.length > 1e-9 else Vector((0,0,0)))
-    fillet_rings = [list(ring0)]  # 第0环=ring0(皮肤边界, 不平滑)
-    for k in range(1, F + 2):     # k=1..F中间环, k=F+1是ring1_final
-        theta = (k / (F + 1)) * (_math.pi / 2.0)   # 0..π/2 圆弧
-        radial = W * (1.0 - _math.cos(theta))      # 径向内收(0→W)
-        depth = D * _math.sin(theta)               # 下沉(0→D)
+    
+    # 合并环: 前F环倒角 + 后NR环碗面, 共F+NR环
+    NR = 16  # 碗面环数
+    all_rings = [list(ring0)]  # 第0环=ring0
+    for k in range(1, F + NR + 1):  # k=1..F+NR
+        if k <= F:
+            # 倒角部分: 宽度W, 深度D, quintic smoothstep
+            t = k / (F + 1)
+            q = t*t*t*(t*(6.0*t - 15.0) + 10.0)
+            depth = D * q
+            radial = W * q
+            scale = 1.0  # 不收缩, 只下沉
+        else:
+            # 碗面部分: 从倒角末端开始, 收缩到25%.
+            # v46j教训: 收缩到10%时末环半径≈1.2mm, 84顶点间距仅0.09mm <
+            # remove_doubles阈值0.1mm → 碗底正常顶点被焊坍缩(84→55).
+            # 收缩到25%: 末环半径≈3mm, 间距0.22mm>0.1mm安全, 碗底也不需要更高密度.
+            t = (k - F) / NR
+            s = t*t*(3 - 2*t)  # smoothstep
+            scale = 1.0 - 0.75 * s  # 收缩到25%
+            depth = D + (rim_y + max_depth - D - rim_y) * s  # 从倒角深度继续下沉
+            radial = 0  # 不再外扩, 只收缩
         row = []
         for i in range(M):
-            pos = ring0[i].co + rad_dirs[i] * radial + Vector((0, depth, 0))
+            base = ring0[i].co
+            # 先倒角(外扩+下沉), 再收缩(径向收缩)
+            if k <= F:
+                pos = base + rad_dirs[i] * radial + Vector((0, depth, 0))
+            else:
+                # 倒角末端位置
+                chamfer_end = base + rad_dirs[i] * W + Vector((0, D, 0))
+                # 从倒角末端收缩
+                pos = center + (chamfer_end - center) * scale + Vector((0, depth - D, 0))
             row.append(bm.verts.new(pos))
-        fillet_rings.append(row)
-    ring1 = fillet_rings[-1]  # 碗的起始环
-    # 相邻环quad连接
-    chamfer_faces = []
-    chamfer_fail = 0
-    for k in range(F + 1):  # fillet_rings[k] → fillet_rings[k+1]
+        all_rings.append(row)
+    
+    # 创建面: 相邻环quad, 全部打tag=2(碗面, 不再区分倒角带)
+    new_faces = []
+    for j in range(len(all_rings)-1):
         for i in range(M):
-            i2 = (i + 1) % M
+            i2=(i+1)%M
+            a=all_rings[j][i]; b=all_rings[j][i2]; c=all_rings[j+1][i2]; d=all_rings[j+1][i]
             try:
-                f = bm.faces.new((fillet_rings[k][i], fillet_rings[k][i2],
-                                  fillet_rings[k+1][i2], fillet_rings[k+1][i]))
-                f.smooth = True
-                chamfer_faces.append(f)
-            except ValueError:
-                chamfer_fail += 1
-    bm.edges.ensure_lookup_table()
-    # 实测倒角宽度自检
+                _nf = bm.faces.new((a,d,c,b))
+                _nf.smooth = True
+                _nf[tag_l] = 2
+                new_faces.append(_nf)
+            except ValueError: pass
+    
+    # 碗底: 最后一环到中心点
+    pole = bm.verts.new((center.x, rim_y + max_depth, center.z))
+    last = all_rings[-1]
+    for i in range(M):
+        try:
+            _nf = bm.faces.new((last[(i+1)%M], last[i], pole))
+            _nf[tag_l] = 2
+            new_faces.append(_nf)
+        except ValueError: pass
+    
+    # 实测倒角宽度自检(前F环的径向内收量)
     _span = []
     for i in range(M):
         _r0 = (ring0[i].co - center).xz.length
-        _r1 = (ring1[i].co - center).xz.length
+        _r1 = (all_rings[F][i].co - center).xz.length  # 倒角末端环
         _span.append((_r0 - _r1) * 1000)
-    print(f"  fillet band: {len(chamfer_faces)} faces ({F+1} strips x {M}, fail={chamfer_fail}), "
-          f"实际宽度 min={min(_span):.2f}mm max={max(_span):.2f}mm avg={sum(_span)/len(_span):.2f}mm")
+    print(f"  合并环: {len(new_faces)} faces ({F+NR} rings x {M}), "
+          f"倒角宽度 min={min(_span):.2f}mm max={max(_span):.2f}mm avg={sum(_span)/len(_span):.2f}mm")
     
-    # v32根因修复: 用坐标快照保存ring0多边形! 索引在后续dissolve+mode切换后会重排失效
-    # (v31灾难: R侧ring0_indices失效→polygon乱序→几何兜底误翻184866面).
-    ring0_coords = [tuple(v.co) for v in ring0]
-    
-    # ---- 2. 球面碗剖面 + 共享极点三角扇封底(构造上保证流形) ----
-    # 2026-08-07 v11根因总结: ngon封口(三角化碎片)/pointmerge(碗底重复面)都留非流形边.
-    # 唯一构造上零碎片的方式=单个共享极点顶点+三角扇(经典UV球极点拓扑, 每条边恰好2面).
-    # 8圈球面收缩让极点扇只在碗底最小一圈, smooth shading消棱. 碗内有眼球挡, 不讲究.
-    # 2026-08-13 v26: 给碗面新顶点分配UV(径向对应ring0), 修复破面(新顶点UV=(0,0)采样贴图角落)
-    # v31: ring0_uv/uv_layer/avg_uv已在倒角带创建前捕获(见---- 1.55 ----)
-    # v31: 碗从ring1(倒角带内环)开始, ring0-ring1之间是倒角过渡带
-    vgrid = [list(ring1)]
-    NR = 24  # v27: 8→24环, 高模需要更多面数做圆润过渡(smoothstep剖面)
-    for j in range(1, NR):     # 环1..NR-1(不到底)
-        t = j / NR
-        # v27: smoothstep剖面(t²(3-2t)), 口沿坡度=0(与皮肤切向连续), 碗底平缓收拢
-        s = t * t * (3 - 2 * t)   # smoothstep
-        scale = 1.0 - s           # 半径收缩
-        depth_frac = s            # 深度
-        row = []
-        for i in range(M):
-            base = ring1[i].co
-            x = center.x + (base.x-center.x)*scale
-            z = center.z + (base.z-center.z)*scale
-            y = base.y + (rim_y + max_depth - base.y)*depth_frac
-            row.append(bm.verts.new((x,y,z)))
-        vgrid.append(row)
-    pole = bm.verts.new((center.x, rim_y+max_depth, center.z))  # 单个共享极点
-    
-    new_faces = []
-    # 相邻环quad
-    for j in range(len(vgrid)-1):
-        for i in range(M):
-            i2=(i+1)%M
-            a=vgrid[j][i]; b=vgrid[j][i2]; c=vgrid[j+1][i2]; d=vgrid[j+1][i]
-            try: new_faces.append(bm.faces.new((a,d,c,b)))
-            except ValueError: pass
-    # 极点三角扇(共享pole顶点, 每条边恰2面, 构造上流形)
-    # v27: 反转绕序(last[i+1],last[i],pole)让法线朝外, 避免面朝向反了
-    last = vgrid[-1]
-    for i in range(M):
-        try: new_faces.append(bm.faces.new((last[(i+1)%M], last[i], pole)))
-        except ValueError: pass
-    
-    # v39 UV分配: 碗面全部用avg_uv(均匀皮肤色, 避免放射条纹/UV错乱).
-    # 倒角带: ring0 loop继承皮肤UV(自然过渡), 内部环用avg_uv.
-    # v39修复: UV分配移到最后(所有bmesh操作之后), 防止被update_edit_mesh覆盖.
+    # v44: 拓扑标记已在面创建时完成(倒角带=1/碗=2, per-side层).
+    # v43b根因: ring0半径随角度3.9~13.8mm变化(杏仁), 固定12/15/18mm径向分段错位 →
+    #   ①上下睑ring0<12mm处原始皮肤被套眼睛贴图(睫毛渗到眼睑→开口显宽圆/拉伸带)
+    #   ②眼角倒角带12~18mm被写常数UV(眼角贴片)
+    # 修复: 只给tag面分配眼睛贴图UV, 原始皮肤UV一律不动(见下方v44 UV段).
     
     # smooth shading(与皮肤一致, 消棱面)
     for f in new_faces:
         f.smooth = True
-    for f in chamfer_faces:
-        f.smooth = True
+    # v46i: 合并后无chamfer_faces, 不再单独平滑
     bmesh.update_edit_mesh(mesh)
+    
+    # v46i: 用坐标快照保存ring0多边形(供后续法线处理用)
+    ring0_coords = [tuple(v.co) for v in ring0]
     
     # 2026-08-07 v14: 溶解封碗后才变内部的反向sliver(口沿皮肤碎片, 删面时在边界上没敢溶).
     # 封碗后它们变内部, 0.1um²且法线朝+Y(反), 是锯齿尖刺根因. 只溶严格内部面.
@@ -616,7 +624,8 @@ def make_eye_cup(obj, center, side):
     to_flip = []
     for f in bm.faces:
         fc = f.calc_center_median()
-        if center.y < fc.y < center.y + 0.02 and (fc - center).xz.length < 0.021:
+        # v45: rim扩大后(avg10.9mm) xz半径需从0.021扩到0.025, 覆盖碗外缘翻转面
+        if center.y < fc.y < center.y + 0.02 and (fc - center).xz.length < 0.025:
             if f.normal.y > 0:
                 to_flip.append(f)
     if to_flip:
@@ -627,7 +636,7 @@ def make_eye_cup(obj, center, side):
     # v38: 立即自检确认翻转生效
     _still_wrong = sum(1 for f in bm.faces
                        if center.y < f.calc_center_median().y < center.y + 0.02
-                       and (f.calc_center_median() - center).xz.length < 0.021
+                       and (f.calc_center_median() - center).xz.length < 0.025
                        and f.normal.y > 0)
     print(f"  geometric orientation: reversed {flipped_geo} bowl faces to face -Y, still wrong={_still_wrong}")
 
@@ -727,41 +736,50 @@ def make_eye_cup(obj, center, side):
         print(f"  v43: bowl UV lookup grid {_GRID}x{_GRID} built from {len(_eye_samples)} eye samples")
     else:
         print(f"  v43: WARNING only {len(_eye_samples)} eye samples, fallback to avg_uv")
-    # 为眼窝区面分配UV: 倒角带用皮肤UV(连续), 碗面用贴图眼睛UV(v43)
+    # v44: UV分配用拓扑标记(per-side tag层), 不再用径向距离启发式.
+    # v43b根因(定量证实): 杏仁形ring0半径随角度3.9~13.8mm变化, 固定12/15/18mm分段错位 →
+    #   ①上下睑(ring0≈4-6mm)的原始眼睑皮肤被套眼睛查找表 → 睫毛渗到眼睑皮肤, 开口显宽圆+拉伸带
+    #   ②眼角倒角带(12~18mm)被写常数avg_uv → 眼角"贴片"伪影
+    #   ③15-21mm带1139/1139原始皮肤面全被覆盖成常数UV(诊断实测)
+    # 修复: 只给标记面分配UV(倒角带=1/碗=2, 用眼睛贴图XZ查找=重建该处原始贴图映射,
+    #       倒角外缘与相邻皮肤贴图自然连续); 原始皮肤UV一律不动. 查找表按顶点取样(平滑梯度).
+    _tag_l2 = bm.faces.layers.int.get("v44tag_" + side)
     assigned = 0
     bowl_mapped = 0
+    chamfer_mapped = 0
+    if _tag_l2 is None:
+        print("  v44 WARNING: tag layer lost after mode roundtrip, tagged faces will fallback avg_uv")
     for f in bm.faces:
-        fc = f.calc_center_median()
-        dxz = math.sqrt((fc.x-center.x)**2 + (fc.z-center.z)**2)
-        if center.y < fc.y < center.y + 0.02 and dxz < 0.021:
-            # 倒角带(xz 15-18mm): 继承皮肤UV(自然过渡)
-            if 0.015 < dxz < 0.018:
-                # 找最近的皮肤顶点UV
-                best_uv = min(skin_uvs, key=lambda x: (x[0] - fc).length_squared)[1] if skin_uvs else (avg_u, avg_v)
-                for loop in f.loops:
-                    loop[uv_layer].uv = best_uv
-                    assigned += 1
-            # 碗面本体(xz≤12mm=碗口8.7+倒角3): v43=贴图眼睛UV加权映射(恢复睫毛/虹膜), 无样本时回退avg_uv
-            # v43b: 查找表只覆盖±16mm且眼睛细节都在碗内, 12mm外不映射——否则原始脸颊皮肤被
-            # clamp到网格边缘深色值, 形成暗环(vision报"下睫毛印在脸颊", dxz18-20mm亮度0.28)
-            elif dxz <= 0.012:
-                if _eye_grid is not None:
-                    du, dv = _bowl_uv_lookup(fc.x - center.x, fc.z - center.z)
-                    for loop in f.loops:
-                        loop[uv_layer].uv = (du, dv)
-                        assigned += 1
-                    bowl_mapped += 1
-                else:
-                    for loop in f.loops:
-                        loop[uv_layer].uv = (avg_u, avg_v)
-                        assigned += 1
-            # dxz 12-15mm: 碗口外缘皮肤, 用干净肤色avg_uv(与倒角带过渡一致)
-            elif dxz <= 0.015:
-                for loop in f.loops:
-                    loop[uv_layer].uv = (avg_u, avg_v)
-                    assigned += 1
-            # dxz 18-21mm: 原始脸颊皮肤, 保留原UV不动(防暗环)
+        tg = f[_tag_l2] if _tag_l2 is not None else 0
+        if tg == 0:
+            continue   # 原始皮肤: UV不动(关键! 不再覆盖)
+        for loop in f.loops:
+            vc = loop.vert.co
+            if _eye_grid is not None:
+                du, dv = _bowl_uv_lookup(vc.x - center.x, vc.z - center.z)
+            else:
+                du, dv = (avg_u, avg_v)
+            loop[uv_layer].uv = (du, dv)
+            assigned += 1
+        if tg == 2: bowl_mapped += 1
+        else: chamfer_mapped += 1
     bmesh.update_edit_mesh(mesh)
+    # v46: 最终翻转pass - 用tag层(倒角带=1/碗=2/原始皮肤=0)只处理新创建面.
+    # 根因: y范围判断(center.y<fc.y)漏掉倒角带上半部分靠前的面(y<center.y).
+    _flip2 = 0
+    _tag_fl = bm.faces.layers.int.get("v44tag_" + side)
+    for _f in bm.faces:
+        _tg = _f[_tag_fl] if _tag_fl is not None else 0
+        if _tg == 0:
+            continue   # 原始皮肤面不动
+        if _f.normal.y > 0.05:
+            bmesh.ops.reverse_faces(bm, faces=[_f])
+            _flip2 += 1
+    if _flip2:
+        bm.normal_update()
+        bmesh.update_edit_mesh(mesh)
+        print(f"  final flip: {_flip2} residual flipped faces")
+    print(f"  v44拓扑UV: 碗={bowl_mapped}面 倒角带={chamfer_mapped}面 {assigned}loops(原始皮肤UV未动)")
     # 验证UV
     us = [loop[uv_layer].uv.x for f in bm.faces for loop in f.loops]
     vs = [loop[uv_layer].uv.y for f in bm.faces for loop in f.loops]

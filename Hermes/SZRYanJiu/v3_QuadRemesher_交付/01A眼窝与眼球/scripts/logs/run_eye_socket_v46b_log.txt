@@ -1,0 +1,82 @@
+Traceback (most recent call last):
+  File "D:\Program Files\Blender Foundation\Blender 5.1\5.1\scripts\modules\addon_utils.py", line 515, in enable
+    mod.register()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py", line 42, in register
+    from .exporter import register_exporter
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\exporter.py", line 2, in <module>
+    import bpy_types
+ModuleNotFoundError: No module named 'bpy_types'
+00:01.859  blend            | Read blend: "E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\01高模修复与黏连检测\models\01_highpoly_repair.blend"
+03:05.500  render           | Saved: 'E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\01A眼窝与眼球\screenshots\01_1_eye_socket_front.png'
+03:05.640  render           | Saved: 'E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\01A眼窝与眼球\screenshots\01_1_eye_socket_side.png'
+Exception in module register(): C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py
+Reloading external rigs...
+Reloading external metarigs...
+Extra Pies: Register built-in pies for use with non-standard Keymap.
+register_class(...):
+警告: 'List_View' 不包含带有前缀和后缀的 '_UL_'
+Registered B2RUVL 0.1.6.
+Registered MACHIN3tools 1.13.8.DeusEx with 2 tools, 0 pie menus
+ARP首选项已成功加载！
+更新骨架预设…
+Zen UV Library: REGISTERED.
+=== 01_1 Eye Socket ===
+main: removed custom_normal attribute at load
+Using 3DDFA semantic centers
+load_3ddfa_centers: L=[-0.03580213 -0.10575226  1.6710855 ] R=[ 0.03261311 -0.10607946  1.6706626 ]
+  眼间距=68.4mm
+make_eye_socket L: captured 2112 eye-region UV samples for bowl mapping
+make_eye_socket L: flood-fill deleted 704 faces (single connected patch)
+make_eye_socket L: push-in removed (凹陷由碗负责)
+信息: 已删除 0 个顶点
+make_eye_socket L: cleanup done (local weld only, no global recalc)
+  triangulated 18 ngons after dissolve
+make_eye_socket L: dissolved 194 sliver faces
+make_eye_cup L: removed 0 island faces
+  径向投影回3DDFA轮廓: 5/78顶点
+make_eye_cup L: boundary ring M=78 (of 1 rings), ring relaxed x12, jump avg=0.60mm max=1.44mm
+  rim半径: [4.9,17.9]mm avg=11.0mm
+  fillet band: 390 faces (5 strips x 78, fail=0), 实际宽度 min=3.00mm max=3.00mm avg=3.00mm
+  triangulated 1 ngons after flipped_sliver dissolve
+make_eye_cup L: dissolved 11 flipped rim slivers
+  recalc_face_normals: SKIPPED (v38, geometric only)
+  geometric orientation: reversed 1688 bowl faces to face -Y, still wrong=0
+  UV=(0,0)残留修复: 8974 loops → avg_uv
+  v43: bowl UV lookup grid 40x40 built from 2112 eye samples
+  final flip: 194 residual flipped faces
+  v44拓扑UV: 碗=1875面 倒角带=390面 8974loops(原始皮肤UV未动)
+  UV分配: 8974 loops, 碗面贴图映射=1875面, avg=(0.0769,0.0591), u=[0.0000,1.0000] v=[0.0000,1.0000]
+make_eye_cup L: ring0=78 bowl_faces=1872 depth=15.0mm
+make_eye_socket R: captured 2094 eye-region UV samples for bowl mapping
+make_eye_socket R: flood-fill deleted 698 faces (single connected patch)
+make_eye_socket R: push-in removed (凹陷由碗负责)
+信息: 已删除 330 个顶点
+make_eye_socket R: cleanup done (local weld only, no global recalc)
+  triangulated 15 ngons after dissolve
+make_eye_socket R: dissolved 168 sliver faces
+make_eye_cup R: removed 0 island faces
+  径向投影回3DDFA轮廓: 5/82顶点
+make_eye_cup R: boundary ring M=82 (of 1 rings), ring relaxed x12, jump avg=0.57mm max=1.13mm
+  rim半径: [5.2,20.2]mm avg=11.7mm
+  fillet band: 410 faces (5 strips x 82, fail=0), 实际宽度 min=3.00mm max=3.00mm avg=3.00mm
+make_eye_cup R: dissolved 8 flipped rim slivers
+  recalc_face_normals: SKIPPED (v38, geometric only)
+  geometric orientation: reversed 1767 bowl faces to face -Y, still wrong=0
+  UV=(0,0)残留修复: 9430 loops → avg_uv
+  v43: bowl UV lookup grid 40x40 built from 2094 eye samples
+  final flip: 206 residual flipped faces
+  v44拓扑UV: 碗=1968面 倒角带=410面 9430loops(原始皮肤UV未动)
+  UV分配: 9430 loops, 碗面贴图映射=1968面, avg=(0.5750,0.1094), u=[0.0000,1.0000] v=[0.0000,1.0000]
+make_eye_cup R: ring0=82 bowl_faces=1968 depth=15.0mm
+信息: 已另存为 "01_1_eye_socket.blend"
+Saved: E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\01A眼窝与眼球\models\01_1_eye_socket.blend
+shot: E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\01A眼窝与眼球\screenshots\01_1_eye_socket_front.png
+shot: E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\01A眼窝与眼球\screenshots\01_1_eye_socket_side.png
+=== Done ===
+Unregistered B2RUVL 0.1.6.
+Unregistered MACHIN3tools 1.13.8.DeusEx.
+Zen UV Library: UNREGISTERED.
+Blender 5.1.0 (hash adfe2921d5f3 built 2026-03-17 01:37:32)
+
+Blender quit
