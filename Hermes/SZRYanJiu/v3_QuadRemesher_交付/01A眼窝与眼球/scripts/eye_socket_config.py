@@ -48,6 +48,13 @@ CHAMFER_WIDTH_RATIO = 0.20   # 倒角宽度占眼窝平均半径比例
 CHAMFER_DEPTH_RATIO = 0.50   # 倒角深度占宽度比例
 CHAMFER_FILLET_RINGS = 8     # 中间环数(增加让过渡更平滑)
 
+# v47: M形凸脊消除两方案开关
+# "no_chamfer"    = 方案A: 不倒角, 碗面直接从rim收缩下沉(无外扩段→无凸脊)
+# "chamfer_relax" = 方案B: 保留倒角, 对眼窝内部环做Laplacian松弛磨圆凸脊
+SOCKET_VARIANT = "no_chamfer"
+SOCKET_RELAX_PASSES = 8      # 松弛迭代次数
+SOCKET_RELAX_LAMBDA = 0.5    # 松弛步长
+
 # 检测参数 (v2: 全脸眼带+K-means外簇+最暗核心, 不再靠种子点)
 EYE_BAND_Z_MIN = 1.60   # 眼带z下限(米)
 EYE_BAND_Z_MAX = 1.70   # 眼带z上限

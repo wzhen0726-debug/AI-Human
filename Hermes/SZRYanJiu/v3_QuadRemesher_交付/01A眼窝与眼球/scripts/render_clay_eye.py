@@ -5,6 +5,7 @@ import bpy, os, sys, json
 from mathutils import Vector
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from eye_socket_config import *
+OUT_TAG = os.environ.get("RENDER_TAG", "v47B")
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.wm.open_mainfile(filepath=OUT_BLEND)
@@ -55,13 +56,13 @@ cam.data.lens = 85
 eye = cR
 cam.location = Vector((eye.x, eye.y - 0.10, eye.z + 0.005))
 cam.rotation_euler = (eye - cam.location).to_track_quat('-Z','Y').to_euler()
-scene.render.filepath = os.path.join(SHOT_DIR, "v46f_R_eye_clay.png")
+scene.render.filepath = os.path.join(SHOT_DIR, f"{OUT_TAG}_R_eye_clay.png")
 bpy.ops.render.render(write_still=True)
 print("saved:", scene.render.filepath)
 
 # 下半部特写
 cam.location = Vector((eye.x, eye.y - 0.10, eye.z - 0.008))
 cam.rotation_euler = (Vector((eye.x, eye.y, eye.z-0.005)) - cam.location).to_track_quat('-Z','Y').to_euler()
-scene.render.filepath = os.path.join(SHOT_DIR, "v46f_R_eye_lower_clay.png")
+scene.render.filepath = os.path.join(SHOT_DIR, f"{OUT_TAG}_R_eye_lower_clay.png")
 bpy.ops.render.render(write_still=True)
 print("saved:", scene.render.filepath)

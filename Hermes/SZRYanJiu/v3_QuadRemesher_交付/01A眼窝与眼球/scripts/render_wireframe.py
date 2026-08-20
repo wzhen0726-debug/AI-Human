@@ -49,6 +49,6 @@ scene.camera = cam
 cam.data.lens = 85
 cam.location = Vector((cR.x, cR.y - 0.12, cR.z))
 cam.rotation_euler = (cR - cam.location).to_track_quat('-Z','Y').to_euler()
-scene.render.filepath = os.path.join(SHOT_DIR, "v46j_R_wireframe.png")
+scene.render.filepath = os.path.join(SHOT_DIR, f"{os.environ.get('RENDER_TAG', 'v47B')}_R_wireframe.png")
 bpy.ops.render.render(write_still=True)
 print("saved:", scene.render.filepath)

@@ -458,7 +458,10 @@ def make_eye_cup(obj, center, side):
     _avg_radius = (_w_mm + _h_mm) / 4.0 / 1000.0  # 米
     W = min(_avg_radius * CHAMFER_WIDTH_RATIO, 0.006)   # 倒角宽度, 上限6mm
     D = W * CHAMFER_DEPTH_RATIO                          # 倒角深度 = 宽度的50%
-    print(f"  倒角参数: 眼窝{_w_mm:.1f}x{_h_mm:.1f}mm avg半径{_avg_radius*1000:.1f}mm → 倒角宽{W*1000:.2f}mm 深{D*1000:.2f}mm")
+    # v47方案A: 不倒角 → W=D=F=0, 碗面从rim直接单一smoothstep收缩下沉
+    if SOCKET_VARIANT == "no_chamfer":
+        W = 0.0; D = 0.0; F = 0
+    print(f"  倒角参数[{SOCKET_VARIANT}]: 眼窝{_w_mm:.1f}x{_h_mm:.1f}mm avg半径{_avg_radius*1000:.1f}mm → 倒角宽{W*1000:.2f}mm 深{D*1000:.2f}mm F={F}")
     
     rad_dirs = []
     for v in ring0:
@@ -531,6 +534,39 @@ def make_eye_cup(obj, center, side):
         _span.append((_r0 - _r1) * 1000)
     print(f"  合并环: {len(new_faces)} faces ({F+NR} rings x {M}), "
           f"倒角宽度 min={min(_span):.2f}mm max={max(_span):.2f}mm avg={sum(_span)/len(_span):.2f}mm")
+
+    # ---- v47方案B: Laplacian松弛眼窝内部环, 磨圆倒角凸脊(M线) ----
+    # ring0(rim,已缝合皮肤)和碗底极点锁住不动, 其余环顶点向邻居均值靠拢.
+    # Jacobi式(每轮用旧坐标算delta)避免不对称漂移.
+    # 教训: 新建顶点后v.index未ensure_lookup_table()会过期/冲突, 锁定必须用对象身份id().
+    if SOCKET_VARIANT == "chamfer_relax" and SOCKET_RELAX_PASSES > 0:
+        _interior = [v for ring in all_rings[1:] for v in ring]
+        _locked = set(id(v) for v in ring0)
+        _locked.add(id(pole))
+        def _max_r():
+            return max((v.co - center).xz.length for v in _interior) * 1000
+        _r_before = _max_r()
+        for _p in range(SOCKET_RELAX_PASSES):
+            _deltas = {}
+            for v in _interior:
+                if id(v) in _locked:
+                    continue
+                nbrs = [e.other_vert(v) for e in v.link_edges]
+                if not nbrs:
+                    continue
+                avg = sum((n.co for n in nbrs), Vector((0.0, 0.0, 0.0))) / len(nbrs)
+                _deltas[id(v)] = (avg - v.co) * SOCKET_RELAX_LAMBDA
+            _moved = 0
+            for v in _interior:
+                d = _deltas.get(id(v))
+                if d is not None and d.length > 1e-9:
+                    v.co += d
+                    _moved += 1
+            if _p == 0 or _p == SOCKET_RELAX_PASSES - 1:
+                print(f"    松弛轮{_p}: 移动{_moved}/{len(_interior)}顶点, 最大半径{_max_r():.3f}mm")
+        _r_after = _max_r()
+        print(f"  v47松弛: {SOCKET_RELAX_PASSES}轮 λ={SOCKET_RELAX_LAMBDA} "
+              f"{len(_interior)}内部顶点, 最大半径{_r_before:.2f}→{_r_after:.2f}mm")
     
     # v44: 拓扑标记已在面创建时完成(倒角带=1/碗=2, per-side层).
     # v43b根因: ring0半径随角度3.9~13.8mm变化(杏仁), 固定12/15/18mm径向分段错位 →
