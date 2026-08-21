@@ -28,7 +28,7 @@ nt.links.new(bsdf.outputs['BSDF'], out.inputs['Surface'])
 obj.data.materials.clear()
 obj.data.materials.append(mat)
 
-# 三灯
+# 三灯(v48修过曝: key 100→40等, 原值在浅灰材质上高光洗掉接缝细节, vision多次误判)
 for o in [x for x in bpy.data.objects if x.type == 'LIGHT']:
     bpy.data.objects.remove(o, do_unlink=True)
 def add_light(name, loc, energy, size=1.0):
@@ -36,9 +36,9 @@ def add_light(name, loc, energy, size=1.0):
     lo = bpy.data.objects.new(name, ld); lo.location = loc
     lo.rotation_euler = (center-loc).to_track_quat('-Z','Y').to_euler()
     bpy.context.collection.objects.link(lo)
-add_light("key", Vector((center.x-0.3, center.y-0.4, center.z+0.3)), 100, 0.5)
-add_light("fill", Vector((center.x+0.3, center.y-0.35, center.z+0.1)), 35, 0.8)
-add_light("rim", Vector((center.x, center.y+0.4, center.z+0.35)), 50, 0.4)
+add_light("key", Vector((center.x-0.3, center.y-0.4, center.z+0.3)), 40, 0.5)
+add_light("fill", Vector((center.x+0.3, center.y-0.35, center.z+0.1)), 15, 0.8)
+add_light("rim", Vector((center.x, center.y+0.4, center.z+0.35)), 20, 0.4)
 world = bpy.context.scene.world or bpy.data.worlds.new("World")
 bpy.context.scene.world = world; world.use_nodes = True
 bg = world.node_tree.nodes.get('Background')
