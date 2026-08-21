@@ -51,9 +51,16 @@ CHAMFER_FILLET_RINGS = 8     # 中间环数(增加让过渡更平滑)
 # v47: M形凸脊消除两方案开关
 # "no_chamfer"    = 方案A: 不倒角, 碗面直接从rim收缩下沉(无外扩段→无凸脊)
 # "chamfer_relax" = 方案B: 保留倒角, 对眼窝内部环做Laplacian松弛磨圆凸脊
-SOCKET_VARIANT = "no_chamfer"
-SOCKET_RELAX_PASSES = 8      # 松弛迭代次数
+# "inward_fillet" = v48: 方案A+内圆角平滑接缝(只内收+下沉绝不外扩→无M形;
+#                   quintic零斜率起步与皮肤切线连续)
+SOCKET_VARIANT = "inward_fillet"
+SOCKET_RELAX_PASSES = 6      # 松弛迭代次数
 SOCKET_RELAX_LAMBDA = 0.5    # 松弛步长
+
+# v48 内圆角参数(平滑脸与眼窝接缝)
+SOCKET_FILLET_RINGS = 4        # 内圆角环数
+SOCKET_FILLET_INWARD = 0.0012  # 内收量(米)=1.2mm
+SOCKET_FILLET_DEPTH = 0.0006   # 圆角下沉深度(米)=0.6mm
 
 # 检测参数 (v2: 全脸眼带+K-means外簇+最暗核心, 不再靠种子点)
 EYE_BAND_Z_MIN = 1.60   # 眼带z下限(米)

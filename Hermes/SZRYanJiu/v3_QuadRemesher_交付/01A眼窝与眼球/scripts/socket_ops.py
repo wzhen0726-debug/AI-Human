@@ -461,6 +461,13 @@ def make_eye_cup(obj, center, side):
     # v47方案A: 不倒角 → W=D=F=0, 碗面从rim直接单一smoothstep收缩下沉
     if SOCKET_VARIANT == "no_chamfer":
         W = 0.0; D = 0.0; F = 0
+    # v48: 内圆角平滑接缝 → 只内收+下沉(绝不外扩→几何上不可能产生M形凸脊),
+    # quintic q在t=0零斜率起步, 与皮肤表面切线连续, 接缝无硬边.
+    # 符号注意: rad_dirs指向眼中心, W正值=内收(原倒角自检证实), 负值会外扩!
+    elif SOCKET_VARIANT == "inward_fillet":
+        W = SOCKET_FILLET_INWARD    # 正值=径向内收1.2mm
+        D = SOCKET_FILLET_DEPTH
+        F = SOCKET_FILLET_RINGS
     print(f"  倒角参数[{SOCKET_VARIANT}]: 眼窝{_w_mm:.1f}x{_h_mm:.1f}mm avg半径{_avg_radius*1000:.1f}mm → 倒角宽{W*1000:.2f}mm 深{D*1000:.2f}mm F={F}")
     
     rad_dirs = []
