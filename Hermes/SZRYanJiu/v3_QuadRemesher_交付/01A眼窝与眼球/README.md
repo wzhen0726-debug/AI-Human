@@ -1,58 +1,74 @@
 # 01A 眼窝与眼球
 
-> 状态：眼窝 ✅ 已交付；眼球摆入 ⚠️ 参数未定案（详见 `方案md记录/v3_QuadRemesher/01A眼窝与眼球/问题分析_眼球摆入.md`）
+> 状态：眼窝 ✅ v48 内圆角定案（用户满意）；眼球摆入 ✅ v3e 定案（解剖参考点定位，vision 四项验收通过）；颜色面板 ✅ 常驻插件已启用
 
 ## 位置
 01高模修复之后、02 QR之前。眼窝在高模上做（QR会把洞口边缘重拓扑成干净quad边界环），眼球是独立物体不进QR/UV/烘焙。
 
+## 快速使用（给不懂建模的人）
+
+### 换眼睛颜色（3步）
+1. 打开 `models/01_2_eyeball_placed.blend`
+2. 3D视图按 **N** 键 → 侧边栏选 **"眼睛颜色"** 标签
+3. 选 **虹膜颜色**（蓝/棕/绿/榛/红/紫/丧尸）+ **血丝程度**（无/中/重）→ 点 **"应用眼睛颜色"** → Ctrl+S 保存
+
+（插件已装为常驻 addon `eye_color_panel`，打开任何 blend 都可用；命令行版：`blender -b 文件.blend --python set_eye_color.py -- 棕色 中`）
+
+### 重新摆眼球（换眼睛模型后）
+改 `scripts/eye002_config.py` 后跑 `run_eyeball_v2.py`。两个毫米旋钮（都有中文注释）：
+- `EYE_PROTRUSION_MM`：凸出量。眼球太凸→减小（更靠里）；太凹→增大
+- `EYE_Z_OFFSET_MM`：高度偏移。视线显朝上→减小；显朝下→增大
+
+定位逻辑全自动适配新模型：x/z=用户手动标记的眼裂轮廓中心，深度参考=眼裂开口平面（左右天然对称），角膜顶点距自动测量。
+
 ## 功能
 
-### 眼窝制作（run_eye_socket.py）
-- 自动检测虹膜中心（贴图暗像素法，双眼各500+暗像素顶点，质心稳定）
-- 按眼裂尺寸开孔（26×18mm椭圆，双眼各删 ~700 面）
-- 压凹成窝（半径15mm、最深10mm、cosine平滑衰减）
-- 验证：中心区残留顶点=0（完全打穿）
+### 眼窝制作（run_eye_socket.py，v48 inward_fillet 定案）
+- 眼裂轮廓：用户 Blender GUI 半自动标记12点/眼 → Shrinkwrap吸附 → 镜像到另一只眼（`screenshots/3ddfa/eyelid_contour_manual.json`）
+- 开孔+封碗+内圆角：`SOCKET_VARIANT="inward_fillet"`（只内收1.2mm+下沉0.6mm无外扩 → 无M形凸脊、接缝平滑）
+- 验证：`check_integrity_local.py`（KD-tree 0.01mm重复点判定/边界边/非流形/极点扇全绿）
 
-### 眼球摆入（run_eyeball.py）
-- 导入 eye_01.glb，按x坐标拆左右眼（GLB命名与位置相反，按位置分配）
-- 摆入眼窝：球心=开口中心沿全局前向(-Y)内缩 `EYE_PUSH_IN`；朝向=局部+Z(瞳孔)对准全局-Y（平视）
-- 强制贴图显示（Image Texture直连Base Color）
-- 渲染正面/侧面/特写验证图
+### 眼球摆入（run_eyeball_v2.py，v3 解剖参考点定位）
+- 眼睛模型002（Eye_Iris+Eye_Sclera+Eye_Shadow，append后join单对象、删父empty）
+- 摆位：x/z=眼裂轮廓中心；球心y=开口平面y+(角膜距−凸出量)，角膜距自动测量（002实测15.31mm）
+- 定案参数：凸出量 −1.5mm（角膜收在睑缘后1.5mm）、高度偏移 −0.3mm
+- 效果：上睑盖虹膜顶1-2mm、虹膜底贴下睑不露白、上方不露白、左右对称不凸出
+- 自动上色（按 EYE_COLOR/EYE_BLOODLINE）+ 验证渲染（正面/特写）
 
 ## 输入
 - `01高模修复与黏连检测/models/01_highpoly_repair.blend`
-- `原始模型/Metahuman低模/眼睛模型001/eye_01.glb`（双眼各802顶点/1536面，直径约29mm，自带1024贴图）
+- `原始模型/Metahuman低模/眼睛模型002/Eye.blend` + `Textures/`（7色系×血丝等级，19个颜色变体）
+- `screenshots/3ddfa/eyelid_contour_manual.json`（用户手动标记眼裂轮廓，眼窝与眼球共用基准）
 
 ## 输出
-- `models/01_1_eye_socket.blend`（含双眼窝，供02 QR读取）
-- `models/01_2_eyeball_placed.blend`（含眼球，⚠️ 参数未定案，仅供对照）
-- `screenshots/` 各阶段验证截图
-
-## 参数
-
-| 参数 | 值 | 说明 |
-|---|---|---|
-| 2026-08-17 v37 | 面朝向全修复+几何定向 | v36删recalc换reverse_faces→update_edit_mesh撤销翻转(0%正确). v37根因: recalc本身也是错的(强制碗面+皮肤同向, 但二者应反向→皮肤面翻反+575). 改用纯几何定向: 碗面+倒角带面确定性翻向眼球(100%正确), 不碰皮肤面. 同时倒角改圆弧fillet(1/4圆弧, 3mm宽度精确), UV碗面avg_uv+倒角带ring0继承. 验证: 17/19 PASS, bowl+chamfer 100%朝眼球, 开放边0. 剩余: non_manifold 4(极点扇), front_inward接近基线. | scripts/socket_ops.py |
-| 2026-08-13 v32 | ring0索引灾难修复 | v31教训: ring0顶点索引在dissolve+mode切换后重排失效 → R侧polygon乱序 → 几何兜底误翻184866面(整个头部翻乱)。修复: ①ring0_coords坐标快照构建polygon(不依赖索引) ②recalc参考面用坐标最近邻重建 ③几何兜底加Y深度带限制(-0.13~-0.08)双重保险。修复后geometric flip=126/169(正常量级)。 | scripts/socket_ops.py |
-| 2026-08-13 v32 | 极点扇误溶修复 | flipped_slivers溶解(口沿皮肤碎片)误吞碗底极点三角扇(面积极小+满足原判据) → 碗底开放边+非流形边。修复: 加y上限<rim_y+1mm(极点扇在rim_y+12~15mm, 不受影响)。验证: 开放边0, 非流形仅剩输入自带1个。 | scripts/socket_ops.py |
-| 2026-08-13 v31 | 面朝向真正根因 | FBX导入带custom_normal属性(INT16_2D CORNER, 5790212个) → Blender显示/渲染用custom normal而非绕序。新建碗面corner在该属性上是零向量→着色发黑破碎=用户看到的"面朝向反"；之前所有normal_flip/reverse_faces只改绕序不改custom normal→显示无变化→"修了没效果"。控制实验: 输入模型绕序与FBX corner normals吻合99.99%(1929789/1930069)，绕序本来就对。修复: ①main()加载时删custom_normal属性(绕序说了算) ②make_eye_cup末尾加几何朝向保证: 开口内(ring0多边形内)的面法线背离眼球中心就翻转(兜底拓扑recalc的启发式漏翻)。 | scripts/run_eye_socket.py + scripts/socket_ops.py |
-| 2026-08-13 v31 | 废弃的全局法线方案(实验记录) | ①全局recalc_face_normals: 高模非流形边破坏flood-fill传播，后脑勺朝内面67551→199339恶化3倍。②质心规则翻转: 翻掉422589面(下颌底/腋下等悬垂面法线本就指向质心)，灾难性。③带区域边界的局部recalc: 把碗从皮肤锚点切断→重翻。结论: 全局/区域启发式对高模全部不可靠，几何判据兜底+删custom_normal才是正解。 | — |
-| 2026-08-13 | 后脑勺穿透修复 | `fix_socket_normals` 的 `point_in_polygon` 只检查 X,Z 投影无 Y 限制，后脑勺同 X,Z 位置 395 面法线被误翻（+Y→-Y），视觉效果=穿透。根因: 3DDFA 眼睑轮廓 XZ 投影穿过头部中心。修复: 加 `fc.y < 0` 限制（前脸/碗全在 Y<0，后脑勺 Y>+0.05）。已验证: 后脑勺 391 面全部朝 +Y 正常。 | v3_QuadRemesher_交付/01A眼窝与眼球/scripts/run_eye_socket.py |
-| 2026-08-13 | 开口轮廓加密+margin | 6 点折线杏仁形→24 点平滑多边形（弧长等距插值），加 0.5mm 径向 margin。解决"开口形状差一丢丢没对齐贴图/模型"。删面数 414→455 (L) / 397→432 (R)。 | v3_QuadRemesher_交付/01A眼窝与眼球/scripts/socket_ops.py |
-| 2026-08-13 | 文件清理 | models/ 只保留 01_1_eye_socket.blend + 01_2_eyeball_placed.blend，删除旧版备份/暗像素版/glb 检查文件。诊断用临时贴图截图也清理。 | — |
-| 压凹 | 半径15mm，最深10mm | cosine平滑衰减 |
-| EYE_SCALE | 1.0 | 眼球缩放，先不缩，渲染定夺，备0.85-0.9 |
-| EYE_PUSH_IN | 0.022（22mm） | ⚠️ 未定案，视觉验证结果矛盾 |
-| PUPIL_LOCAL_DIR | (0, -0.04, 0.997) | 瞳孔=局部+Z，实测 |
+- `models/01_1_eye_socket.blend`（v48眼窝，供02 QR读取；备份 `_v48_final.blend`、两方案对比版）
+- `models/01_2_eyeball_placed.blend`（v3e眼球，榛色/无血丝）
+- `screenshots/` 各阶段验证截图（`01_2_eye002_front.png` 为v3e验收图）
 
 ## 运行
 ```bash
 cd scripts
-# 眼窝
-"D:/Program Files/Blender Foundation/Blender 5.1/blender.exe" --background --factory-startup --python run_eye_socket.py
-# 眼球摆入
-"D:/Program Files/Blender Foundation/Blender 5.1/blender.exe" --background --factory-startup --python run_eyeball.py
+# 眼窝(v48)
+"D:/Program Files/Blender Foundation/Blender 5.1/blender.exe" -b --python run_eye_socket.py
+# 眼球摆入(v3e)
+"D:/Program Files/Blender Foundation/Blender 5.1/blender.exe" -b --python run_eyeball_v2.py
+# 命令行换色
+"D:/Program Files/Blender Foundation/Blender 5.1/blender.exe" -b ../models/01_2_eyeball_placed.blend --python set_eye_color.py -- 棕色 中
 ```
+
+## 主要脚本
+| 脚本 | 作用 |
+|---|---|
+| `run_eye_socket.py` + `socket_ops.py` + `eye_socket_config.py` | 眼窝管线（开孔/封碗/内圆角/法线） |
+| `run_eyeball_v2.py` + `eye002_config.py` | 眼球摆入（v3解剖定位+自动上色） |
+| `set_eye_color.py` / `switch_eyeball_color.py` | 换色（N面板+命令行 / 管线内） |
+| `eye_color_panel_addon.py` | 常驻中文颜色面板插件（已安装启用） |
+| `eye002_make_registry.py` → `eye002_colors.json` | 扫描Textures生成颜色注册表 |
+| `place_eyelid_markers.py` / `mirror_markers.py` / `read_eyelid_markers.py` | 眼裂轮廓半自动标记 |
+| `check_integrity_local.py` / `check_eyeball_fit.py` | 完整性/适配检查 |
+| `render_clay_eye.py` / `render_wireframe.py` | 素模/线框验证渲染 |
+
+完整过程记录（含所有坑与迭代）：`01A眼窝与眼球_技术方案详细记录.md`（第1-20章）。
 
 ## 附：3DDFA-V3 调研结论（2026-08-04）
 

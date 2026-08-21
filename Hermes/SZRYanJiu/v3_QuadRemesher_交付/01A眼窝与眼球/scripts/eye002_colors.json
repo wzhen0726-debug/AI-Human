@@ -1,0 +1,45 @@
+{
+  "tex_dir": "E:\\WangZhen_Project\\AI\\ShuZiRen\\Hermes\\SZRYanJiu\\原始模型\\Metahuman低模\\眼睛模型002\\Textures",
+  "colors": {
+    "Blue": {
+      "Bld1": "E:\\WangZhen_Project\\AI\\ShuZiRen\\Hermes\\SZRYanJiu\\原始模型\\Metahuman低模\\眼睛模型002\\Textures\\Eye_Blue_Bld1_D.tga",
+      "Bld2": "E:\\WangZhen_Project\\AI\\ShuZiRen\\Hermes\\SZRYanJiu\\原始模型\\Metahuman低模\\眼睛模型002\\Textures\\Eye_Blue_Bld2_D.tga",
+      "base": "E:\\WangZhen_Project\\AI\\ShuZiRen\\Hermes\\SZRYanJiu\\原始模型\\Metahuman低模\\眼睛模型002\\Textures\\Eye_Blue_D.tga"
+    },
+    "Brown": {
+      "Bld1": "E:\\WangZhen_Project\\AI\\ShuZiRen\\Hermes\\SZRYanJiu\\原始模型\\Metahuman低模\\眼睛模型002\\Textures\\Eye_Brown_Bld1_D.tga",
+      "Bld2": "E:\\WangZhen_Project\\AI\\ShuZiRen\\Hermes\\SZRYanJiu\\原始模型\\Metahuman低模\\眼睛模型002\\Textures\\Eye_Brown_Bld2_D.tga",
+      "base": "E:\\WangZhen_Project\\AI\\ShuZiRen\\Hermes\\SZRYanJiu\\原始模型\\Metahuman低模\\眼睛模型002\\Textures\\Eye_Brown_D.tga"
+    },
+    "Green": {
+      "Bld1": "E:\\WangZhen_Project\\AI\\ShuZiRen\\Hermes\\SZRYanJiu\\原始模型\\Metahuman低模\\眼睛模型002\\Textures\\Eye_Green_Bld1_D.tga",
+      "Bld2": "E:\\WangZhen_Project\\AI\\ShuZiRen\\Hermes\\SZRYanJiu\\原始模型\\Metahuman低模\\眼睛模型002\\Textures\\Eye_Green_Bld2_D.tga",
+      "base": "E:\\WangZhen_Project\\AI\\ShuZiRen\\Hermes\\SZRYanJiu\\原始模型\\Metahuman低模\\眼睛模型002\\Textures\\Eye_Green_D.tga"
+    },
+    "Hazel": {
+      "Bld1": "E:\\WangZhen_Project\\AI\\ShuZiRen\\Hermes\\SZRYanJiu\\原始模型\\Metahuman低模\\眼睛模型002\\Textures\\Eye_Hazel_Bld1_D.tga",
+      "Bld2": "E:\\WangZhen_Project\\AI\\ShuZiRen\\Hermes\\SZRYanJiu\\原始模型\\Metahuman低模\\眼睛模型002\\Textures\\Eye_Hazel_Bld2_D.tga",
+      "base": "E:\\WangZhen_Project\\AI\\ShuZiRen\\Hermes\\SZRYanJiu\\原始模型\\Metahuman低模\\眼睛模型002\\Textures\\Eye_Hazel_D.tga"
+    },
+    "Red": {
+      "Bld1": "E:\\WangZhen_Project\\AI\\ShuZiRen\\Hermes\\SZRYanJiu\\原始模型\\Metahuman低模\\眼睛模型002\\Textures\\Eye_Red_Bld1_D.tga",
+      "Bld2": "E:\\WangZhen_Project\\AI\\ShuZiRen\\Hermes\\SZRYanJiu\\原始模型\\Metahuman低模\\眼睛模型002\\Textures\\Eye_Red_Bld2_D.tga",
+      "base": "E:\\WangZhen_Project\\AI\\ShuZiRen\\Hermes\\SZRYanJiu\\原始模型\\Metahuman低模\\眼睛模型002\\Textures\\Eye_Red_D.tga"
+    },
+    "Violet": {
+      "Bld1": "E:\\WangZhen_Project\\AI\\ShuZiRen\\Hermes\\SZRYanJiu\\原始模型\\Metahuman低模\\眼睛模型002\\Textures\\Eye_Violet_Bld1_D.tga",
+      "Bld2": "E:\\WangZhen_Project\\AI\\ShuZiRen\\Hermes\\SZRYanJiu\\原始模型\\Metahuman低模\\眼睛模型002\\Textures\\Eye_Violet_Bld2_D.tga",
+      "base": "E:\\WangZhen_Project\\AI\\ShuZiRen\\Hermes\\SZRYanJiu\\原始模型\\Metahuman低模\\眼睛模型002\\Textures\\Eye_Violet_D.tga"
+    },
+    "Zombie": {
+      "base": "E:\\WangZhen_Project\\AI\\ShuZiRen\\Hermes\\SZRYanJiu\\原始模型\\Metahuman低模\\眼睛模型002\\Textures\\Eye_Zombie_D.tga"
+    }
+  },
+  "aux_maps": {
+    "Eye_A.tga": "12.0MB",
+    "Eye_BM.tga": "12.0MB",
+    "Eye_H.tga": "12.0MB",
+    "Eye_N.tga": "12.0MB"
+  },
+  "note": "base=无血丝, Bld1/Bld2=血丝递增; Zombie只有base"
+}
