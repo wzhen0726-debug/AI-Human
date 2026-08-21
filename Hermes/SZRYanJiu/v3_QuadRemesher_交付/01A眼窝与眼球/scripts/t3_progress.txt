@@ -1,2 +1,0 @@
-revert swap
-exit=0
