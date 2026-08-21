@@ -22,20 +22,31 @@ def measure_corneal_dist(eye):
     ys = [v.co.y for v in eye.data.vertices]
     return abs(min(ys))
 
-def compute_eye_position(side, corneal_dist):
-    """解剖参考点定位(v3):
+def load_manual_finetune():
+    """加载用户GUI手动验收的微调偏移(相对解剖默认位, mm). 文件不存在则返回零偏移.
+    面板"保存到管线"写入此文件; 删除文件即回到纯解剖规律默认."""
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "eyeball_finetune_manual.json")
+    if os.path.exists(p):
+        d = json.load(open(p, encoding="utf-8"))
+        print(f"加载手动微调定案: {p}")
+        return d.get("dx_mm", 0.0), d.get("dy_mm", 0.0), d.get("dz_mm", 0.0)
+    return 0.0, 0.0, 0.0
+
+def compute_eye_position(side, corneal_dist, finetune=(0.0, 0.0, 0.0)):
+    """解剖参考点定位(v4):
     x/z = 眼睑开口中心(用户手动标记, 与眼窝同基准)
     y   = 眼睑开口平面y + 角膜顶点距 - 凸出量
-    深度参考是开口平面(左右几乎完全对称) → 两眼深度自动同步, 不再用拟合球心
-    (拟合球心左右差0.4mm是上一版两眼不同步的根因)."""
+    z  += 高度偏移(规律2: 虹膜底贴下睑 → 002为+1.4mm)
+    + 手动微调偏移(GUI验收后由面板保存, 两眼同一偏移→同步)"""
     import json
     with open(EYE_XZ_JSON, encoding="utf-8") as f:
         cont = json.load(f)
     c = cont[side]["center"]
     rim_y = c[1]                                # 眼睑开口平面y(用户标记)
-    cx = c[0]
-    cz = c[2] + EYE_Z_OFFSET_MM / 1000.0        # 高度微调
-    cy = rim_y + corneal_dist - EYE_PROTRUSION_MM / 1000.0
+    dx, dy, dz = finetune
+    cx = c[0] + dx / 1000.0
+    cz = c[2] + EYE_Z_OFFSET_MM / 1000.0 + dz / 1000.0
+    cy = rim_y + corneal_dist - EYE_PROTRUSION_MM / 1000.0 + dy / 1000.0
     return np.array([cx, cy, cz], dtype=np.float32), rim_y
 
 def append_eye_objects():
@@ -103,8 +114,9 @@ def apply_eye_color(eye, color, bloodline):
     print(f"  {eye.name} 颜色={color}/{bloodline}: 替换{swapped}个贴图节点 → {tex_name}")
 
 def main():
-    print("=== 01_2 Eyeball v3 (解剖参考点定位, 换模型自动适配) ===")
+    print("=== 01_2 Eyeball v4 (解剖规律定位+手动微调覆盖, 换模型自动适配) ===")
     bpy.ops.wm.open_mainfile(filepath=IN_BLEND)
+    finetune = load_manual_finetune()
 
     centers = []
     for side in ("L", "R"):
@@ -113,7 +125,7 @@ def main():
         unparent_eye(eye)
         apply_eye_color(eye, EYE_COLOR, EYE_BLOODLINE)
         corneal_dist = measure_corneal_dist(eye)
-        target, rim_y = compute_eye_position(side, corneal_dist)
+        target, rim_y = compute_eye_position(side, corneal_dist, finetune)
         eye.location = target
         centers.append(target)
         print(f"place {side}: 角膜顶点距={corneal_dist*1000:.2f}mm(自动测量) "
