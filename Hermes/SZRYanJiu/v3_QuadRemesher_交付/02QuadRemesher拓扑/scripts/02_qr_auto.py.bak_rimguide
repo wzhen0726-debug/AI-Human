@@ -23,8 +23,8 @@ print("=" * 60)
 print(f"Engine: {ENGINE}")
 print(f"Engine exists: {os.path.exists(ENGINE)}")
 
-# 1. 打开高模(rim预锐化版, 2026-08-24 倒角让QR检测折角)
-blend_path = os.path.join(DELIVERY, "01A眼窝与眼球", "models", "01_1_eye_socket_rim_sharp.blend")
+# 1. 打开高模(含眼窝版, 2026-08-21起用01A眼窝输出)
+blend_path = os.path.join(DELIVERY, "01A眼窝与眼球", "models", "01_1_eye_socket.blend")
 print(f"\n1. Loading: {blend_path}")
 bpy.ops.wm.open_mainfile(filepath=blend_path)
 
@@ -84,7 +84,7 @@ with open(settingsFile, "w") as f:
     f.write('CurvatureAdaptivness=80\n')
     f.write('ExactQuadCount=0\n')
     f.write('UseVertexColorMap=0\n')
-    f.write('UseMaterialIds=1\n')   # 启用材质边界→rim锐利 (2026-08-24)
+    f.write('UseMaterialIds=0\n')
     f.write('UseIndexedNormals=0\n')
     f.write('AutoDetectHardEdges=1\n')
     # 不写SymAxis：模型纹理不对称，强制对称拓扑会导致纹理错位

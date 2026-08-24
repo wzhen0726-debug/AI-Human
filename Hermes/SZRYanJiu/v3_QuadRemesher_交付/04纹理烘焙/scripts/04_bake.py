@@ -2,8 +2,8 @@ import bpy, os
 import numpy as np
 
 DELIVERY = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付"
-UV_BLEND = os.path.join(DELIVERY, "03自动UV", "03_auto_uv.blend")
-HIGH_POLY = os.path.join(DELIVERY, "01高模修复与黏连检测", "models", "01_highpoly_repair.blend")
+UV_BLEND = os.path.join(DELIVERY, "03自动UV_rim_bevel", "03_auto_uv.blend")
+HIGH_POLY = os.path.join(DELIVERY, "01A眼窝与眼球", "models", "01_1_eye_socket.blend")
 FIXED_TEX = os.path.join(DELIVERY, "01高模修复与黏连检测", "models", "01_original_tex_fixed.png")
 OUT_04 = os.path.join(DELIVERY, "04纹理烘焙")
 os.makedirs(OUT_04, exist_ok=True)
@@ -92,8 +92,8 @@ bpy.context.scene.render.bake.use_pass_indirect = False
 bpy.context.scene.render.bake.use_pass_color = True
 bpy.context.scene.render.bake.margin = 16
 bpy.context.scene.render.bake.use_selected_to_active = True
-bpy.context.scene.render.bake.cage_extrusion = 0.01   # 原0.005，增大避免黑色斑块
-bpy.context.scene.render.bake.max_ray_distance = 0.05  # 原0.01，增大投射距离
+bpy.context.scene.render.bake.cage_extrusion = 0.02   # 增大避免黑色斑块
+bpy.context.scene.render.bake.max_ray_distance = 0.1   # 增大投射距离捕捉rim折角
 
 bpy.ops.object.select_all(action='DESELECT')
 high_poly.select_set(True)

@@ -1,0 +1,54 @@
+Traceback (most recent call last):
+  File "D:\Program Files\Blender Foundation\Blender 5.1\5.1\scripts\modules\addon_utils.py", line 515, in enable
+    mod.register()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py", line 42, in register
+    from .exporter import register_exporter
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\exporter.py", line 2, in <module>
+    import bpy_types
+ModuleNotFoundError: No module named 'bpy_types'
+00:01.703  blend            | Read blend: "E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\03自动UV\03_auto_uv.blend"
+E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\04纹理烘焙\scripts\04_bake.py:48: DeprecationWarning: 'Material.use_nodes' is expected to be removed in Blender 6.0
+  if mat and mat.use_nodes:
+E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\04纹理烘焙\scripts\04_bake.py:74: DeprecationWarning: 'Material.use_nodes' is expected to be removed in Blender 6.0
+  mat.use_nodes = True
+Exception in module register(): C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py
+Reloading external rigs...
+Reloading external metarigs...
+Extra Pies: Register built-in pies for use with non-standard Keymap.
+register_class(...):
+警告: 'List_View' 不包含带有前缀和后缀的 '_UL_'
+Registered B2RUVL 0.1.6.
+Registered MACHIN3tools 1.13.8.DeusEx with 2 tools, 0 pie menus
+ARP首选项已成功加载！
+更新骨架预设…
+Zen UV Library: REGISTERED.
+=== Step 4: Bake 4K (修复贴图) ===
+低模: tripo_node_89f96507-4268-42bd-8c27-bf6892366069_QR, 143308面
+对齐检查: 中心偏差=0.19mm, 尺寸偏差=0.16%
+使用高模自带贴图: 3d模型写实人像_basecolor.002 (8192x8192)
+使用高模内嵌贴图（无外部替换）
+烘焙Diffuse中 (4K, cage=0.01, ray=0.05)...
+信息: 循环依赖的图像 "MVP_Diffuse_4K" 来自物体 "tripo_node_89f96507-4268-42bd-8c27-bf6892366069_QR"
+信息: 将烘焙贴图保存为内部、外部图像文件或将其打包
+Diffuse贴图: min=0.000, max=1.000, mean=0.365
+\n烘焙Normal中 (4K)...
+信息: 循环依赖的图像 "MVP_Normal_4K" 来自物体 "tripo_node_89f96507-4268-42bd-8c27-bf6892366069_QR"
+信息: 将烘焙贴图保存为内部、外部图像文件或将其打包
+Normal贴图已保存
+
+FBX export starting... 'E:\\WangZhen_Project\\AI\\ShuZiRen\\Hermes\\SZRYanJiu\\v3_QuadRemesher_交付\\04纹理烘焙\\05_for_mixamo.fbx'
+export finished in 0.6169 sec.
+信息: 已另存为 "04_bake.blend"
+
+=== 完成 ===
+贴图(4K): E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\04纹理烘焙\04_diffuse_4k.png
+FBX: E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\04纹理烘焙\05_for_mixamo.fbx
+Blend: E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\04纹理烘焙\04_bake.blend
+DONE
+Unregistered B2RUVL 0.1.6.
+Unregistered MACHIN3tools 1.13.8.DeusEx.
+Zen UV Library: UNREGISTERED.
+Blender 5.1.0 (hash adfe2921d5f3 built 2026-03-17 01:37:32)
+
+Blender quit
