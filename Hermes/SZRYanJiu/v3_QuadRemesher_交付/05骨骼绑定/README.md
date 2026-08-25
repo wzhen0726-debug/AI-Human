@@ -1,74 +1,54 @@
-# 05骨骼绑定 — 半自动打点方案（参照 01a 模式）
+# 05骨骼绑定 — 文件夹说明
 
-**日期**: 2026-08-24  |  **状态**: ✅ 已交付
+**日期**: 2026-08-25 整理 | **目标**: 半自动打点 → Mixamo 22+骨骼 → GLB
 
-## 用户操作（参照 01a 的 place_eyelid_markers.py）
+## 两套流程分离（重要）
 
-1. **双击打开** `06_rig_markers.blend`（Blender 5.2）
-2. 在 3D 视图中 **选中标记点（彩色小球）** → 按 **G** 拖动到正确关节位置
-   - 标记点自动吸附在模型表面（Shrinkwrap 约束）
-   - 穿模可见（show_in_front）
-3. 全部放好后 → **Ctrl+S** 保存
+| 目录 | 内容 | 谁用 |
+|---|---|---|
+| `A_半自动打点/` | 打点模板、测量数据、镜像脚本 | **用户打点阶段** |
+| `B_骨骼绑定/` | 骨骼生成、权重、导出 | **生成阶段** |
+| `C_诊断工具/` | 模型分析、参考图、验证脚本 | 辅助 |
 
-> 对比 01a 的眼裂轮廓标记：同样用 Empty 球体 + Shrinkwrap + show_in_front，用户操作完全一致。
+## A_半自动打点（照 01A 眼窝模板逻辑）
 
-## 13 个标记点
+流程：`measure_joints.py`(测量) → `rig_semiauto_setup.py`(放标记) → 用户微调 → `mirror_rig_markers.py`(镜像L侧)
 
-| 分组 | 标记点 | 颜色 | 初始位置（自动预置） |
-|------|--------|------|---------------------|
-| 中线 | 头顶、颈根、会阴 | 🟡 黄色 | 头顶 Z=1.79 / 颈根 Z=1.48 / 会阴 Z=0.90 |
-| 左臂 | 左肩、左肘、左腕 | 🔴 红色 | Z=1.43（手臂水平） |
-| 右臂 | 右肩、右肘、右腕 | 🔵 蓝色 | Z=1.43（手臂水平） |
-| 左腿 | 左膝、左踝 | 🟢 绿色 | 膝 Z=0.36 / 踝 Z=0.09 |
-| 右腿 | 右膝、右踝 | 🟠 橙色 | 膝 Z=0.36 / 踝 Z=0.09 |
+- `measure_joints.py` — 几何测量关节位置(身高分布+手臂厚度剖面+腿宽剖面)，写入 `joints_measured.json`
+- `rig_semiauto_setup.py` — 用测量数据放 R 侧 8 点 + 中线，空 `LM_L` 集合
+- `06_rig_markers.blend` — 打点模板（用户在此微调）
+- `joints_measured.json` — 测量结果
+- `mirror_rig_markers.py` — R 侧镜像到 L 侧
 
-标记点命名: `LM_<id>_<中文名>`（如 `LM_Shoulder_L_左肩`），位于集合 `LM_Rig` 中。
+## B_骨骼绑定
 
-## 生成骨骼
+- `rig_from_markers.py` — 读标记 → 生成 Mixamo 骨架(22+手指30+脚) → 自动权重 → 姿态纯净检查 → 导出
+- `06_rig_final.blend` — 绑定结果（已清理标记点，保持 rest pose）
+- `06_rig_final.glb` — 导出（含骨骼+权重+贴图）
 
-标记点调好后，运行读取脚本（参照 01a 的 read_eyelid_markers.py）：
+### 关键防护：姿态纯净检查（根因修复 2026-08-25）
 
-```bash
-set B="D:\Program Files\Blender Foundation\Blender 5.2\blender.exe"
+教训：验证测试的 pose 残留被保存进交付文件 → 头骨 28.6° 前倾把眼珠带歪（虹膜朝下）。
+规则：**交付文件永远保持 rest pose**，检测到的残留姿态一律清零。
+**验证测试必须在临时副本上做，不能动交付文件。**
 
-%B% --background --factory-startup --python scripts/rig_from_markers.py ^
-  -- --markers 06_rig_markers.blend --output 06_rig_final.glb
+## C_诊断工具
+
+- `analyze_model.py` — 模型几何/姿态分析
+- `render_shoulder_ref_v2.py` — 肩部打点参考图(PIL标注)
+- `check_markers.py` / `diagnose_bones.py` / `verify_rig.py` / `verify_glb.py` / `validate_and_export.py` — 各环节验证
+- `pose_test.py` — ⚠️ 姿态测试，**只能在临时副本跑**
+
+## 运行顺序（完整重做一遍）
+
+```
+1. blender -b --python A_半自动打点/measure_joints.py
+2. blender -b --python A_半自动打点/rig_semiauto_setup.py
+3. [用户] 打开 A_半自动打点/06_rig_markers.blend 微调标记 → Ctrl+S
+4. blender -b --python A_半自动打点/mirror_rig_markers.py
+5. blender -b --python B_骨骼绑定/rig_from_markers.py -- --markers A_半自动打点/06_rig_markers.blend --output B_骨骼绑定/06_rig_final.glb
 ```
 
-从标记点位置自动构建 22 骨骼 Mixamo 标准骨架 + 自动权重 + 导出 GLB。
+## 已知取舍（2026-08-25）
 
-## 脚本
-
-| 脚本 | 功能 | 参照 01a |
-|------|------|----------|
-| `rig_semiauto_setup.py` | 初始化：加载模型+眼球+预置标记点 | `place_eyelid_markers.py` |
-| `rig_from_markers.py` | 读取标记点→生成骨骼+权重+GLB | `read_eyelid_markers.py` |
-| `check_markers.py` | 检查标记点完整性 | - |
-| `analyze_model.py` | 模型几何分析 | - |
-| `diagnose_bones.py` | 骨骼位置诊断 | - |
-
-## 输出
-
-| 文件 | 说明 | 大小 |
-|------|------|------|
-| `06_rig_markers.blend` | 交互式打点文件（打开即用） | 8.5 MB |
-| `06_rig_final.blend` | 绑定后文件（骨骼+权重） | 7.7 MB |
-| `06_rig_final.glb` | 最终 GLB | 34.9 MB |
-
-## 全自动 vs 半自动对比
-
-| 指标 | 全自动（几何检测） | 半自动（标记点） |
-|------|-------------------|-----------------|
-| 胯部 | Z=0.725（40%，错：找到臀部） | Z=0.900（50%，✅ 正确） |
-| 手臂 | 锯齿形（肘低 9cm） | 水平直线 ✅ |
-| 膝盖 | 硬编码 0.22H | 用户标记 ✅ |
-| 用户操作 | 0 步（全自动） | 0-13 步（微调标记点） |
-| 精度 | 厘米级误差 | 目视毫米级 |
-
-## 技术要点
-
-- **Shrinkwrap 约束**：标记点自动吸附在模型表面，拖动时始终贴合（`NEAREST_SURFACE`，`distance=0.0`）
-- **show_in_front**：标记点穿模可见，即使被身体挡住也能看到
-- **集合管理**：所有标记点在 `LM_Rig` 集合中，方便批量操作
-- **无插件依赖**：纯 blend 文件，不需要安装任何 addon
-- **Blender 5.2**：`--factory-startup` 避免 better_fbx/FMT-V3 崩溃
+- 当前用**手写 Mixamo 骨架**方案，未用已安装的 Auto-Rig Pro 3.74.60。ARP 有 Smart 自动检测+手指/脚部完善绑定，但需要下载 AI 模型文件且绑定逻辑为 GUI 驱动，脚本化调用风险较高。待与用户确认是否改用。
