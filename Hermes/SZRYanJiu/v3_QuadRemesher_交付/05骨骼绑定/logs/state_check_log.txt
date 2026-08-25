@@ -1,0 +1,109 @@
+Traceback (most recent call last):
+  File "D:\Program Files\Blender Foundation\Blender 5.1\5.1\scripts\modules\addon_utils.py", line 515, in enable
+    mod.register()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py", line 42, in register
+    from .exporter import register_exporter
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\exporter.py", line 2, in <module>
+    import bpy_types
+ModuleNotFoundError: No module named 'bpy_types'
+Error in bpy.app.handlers.load_pre[1]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33282, in cleanup_line_fx
+    bpy.types.SpaceView3D.draw_handler_remove(handles_lines[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33286, in cleanup_line_fx
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+Error in bpy.app.handlers.load_pre[2]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5295, in cleanup
+    bpy.types.SpaceView3D.draw_handler_remove(handles[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5299, in cleanup
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+Error in bpy.app.handlers.load_pre[1]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33282, in cleanup_line_fx
+    bpy.types.SpaceView3D.draw_handler_remove(handles_lines[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33286, in cleanup_line_fx
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+Error in bpy.app.handlers.load_pre[2]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5295, in cleanup
+    bpy.types.SpaceView3D.draw_handler_remove(handles[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5299, in cleanup
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+00:01.766  blend            | Read blend: "E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\A_半自动打点\06_rig_markers.blend"
+Exception in module register(): C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py
+Reloading external rigs...
+Reloading external metarigs...
+Extra Pies: Register built-in pies for use with non-standard Keymap.
+register_class(...):
+警告: 'List_View' 不包含带有前缀和后缀的 '_UL_'
+Registered B2RUVL 0.1.6.
+Registered MACHIN3tools 1.13.8.DeusEx with 2 tools, 0 pie menus
+ARP首选项已成功加载！
+更新骨架预设…
+Zen UV Library: REGISTERED.
+Unregistered B2RUVL 0.1.6.
+Unregistered MACHIN3tools 1.13.8.DeusEx.
+Zen UV Library: UNREGISTERED.
+addon_utils.disable: bl_ext.lab_blender_org.mcp not enabled
+=== 工作区视口状态 ===
+  UV编辑/UV Editing: shading=MATERIAL, dist=3.0, loc=[0.0, 0.0, 0.9]
+  几何节点/Geometry Nodes: shading=MATERIAL, dist=3.0, loc=[0.0, 0.0, 0.9]
+  动画/Animation: shading=MATERIAL, dist=3.0, loc=[0.0, 0.0, 0.9]
+  动画/Animation: shading=MATERIAL, dist=3.0, loc=[0.0, 0.0, 0.9]
+  布局/Layout: shading=MATERIAL, dist=3.0, loc=[0.0, 0.0, 0.9]
+  建模/Modeling: shading=MATERIAL, dist=3.0, loc=[0.0, 0.0, 0.9]
+  着色/Shading: shading=MATERIAL, dist=3.0, loc=[0.0, 0.0, 0.9]
+  纹理绘制/Texture Paint: shading=MATERIAL, dist=3.0, loc=[0.0, 0.0, 0.9]
+  脚本/Scripting: shading=MATERIAL, dist=3.0, loc=[0.0, 0.0, 0.9]
+  雕刻/Sculpting: shading=MATERIAL, dist=3.0, loc=[0.0, 0.0, 0.9]
+=== 标记点 ===
+  LM_01_头顶_headtop @ [0.0, 0.003, 1.801] 约束=['SHRINKWRAP']
+  LM_02_颈根_neckbase @ [-0.001, 0.002, 1.576] 约束=['SHRINKWRAP']
+  LM_03_会阴_crotch @ [0.0, -0.002, 0.712] 约束=['SHRINKWRAP']
+  LM_04_右肩_shoulder_R @ [0.185, 0.035, 1.428] 约束=['SHRINKWRAP']
+  LM_05_右肘_elbow_R @ [0.51, 0.035, 1.428] 约束=['SHRINKWRAP']
+  LM_06_右腕_wrist_R @ [0.69, 0.035, 1.428] 约束=['SHRINKWRAP']
+  LM_07_右膝_knee_R @ [0.133, 0.049, 0.432] 约束=['SHRINKWRAP']
+  LM_08_右踝_ankle_R @ [0.139, 0.063, 0.126] 约束=['SHRINKWRAP']
+=== 其他对象 ===
+  Eye002_L: MESH
+  Eye002_R: MESH
+  tripo_node_89f96507-4268-42bd-8c27-bf6892366069_QR: MESH
+STATE_CHECK_DONE
+Blender 5.1.0 (hash adfe2921d5f3 built 2026-03-17 01:37:32)
+
+Blender quit

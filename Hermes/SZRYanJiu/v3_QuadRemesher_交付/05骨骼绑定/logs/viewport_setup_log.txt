@@ -1,0 +1,16 @@
+Traceback (most recent call last):
+  File "D:\Program Files\Blender Foundation\Blender 5.1\5.1\scripts\modules\addon_utils.py", line 515, in enable
+    mod.register()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py", line 42, in register
+    from .exporter import register_exporter
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\exporter.py", line 2, in <module>
+    import bpy_types
+ModuleNotFoundError: No module named 'bpy_types'
+00:01.672  blend            | Read blend: "E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\A_半自动打点\06_rig_markers.blend"
+Error   : EXCEPTION_ACCESS_VIOLATION
+Address : 0x00007FF765524570
+Module  : blender.exe
+Thread  : 00004fb4
+Blender 5.1.0 (hash adfe2921d5f3 built 2026-03-17 01:37:32)
+Writing: F:\temp\blender\06_rig_markers.crash.txt
