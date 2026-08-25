@@ -86,7 +86,11 @@ def main():
         e.color = color
         e.show_name = True
         (coll_m if is_mid else coll_r).objects.link(e)
-        # 关节在肢体内部 → 不加Shrinkwrap (与01A眼睑表面点的关键差异)
+        # 照01A模板: Shrinkwrap吸附身体表面, 拖动时点贴着皮肤走 (半自动打点的关键)
+        sw = e.constraints.new(type='SHRINKWRAP')
+        sw.target = body
+        sw.shrinkwrap_type = 'NEAREST_SURFACE'
+        sw.distance = 0.0
         print(f"  LM_{idx:02d}_{cn}_{en}: ({x:.3f}, {y:.3f}, {z:.3f}) ← {GUIDE[mid]}{' [中线,不镜像]' if is_mid else ''}")
 
     # 5. 空L侧集合(等待镜像)
