@@ -1,0 +1,185 @@
+Traceback (most recent call last):
+  File "D:\Program Files\Blender Foundation\Blender 5.1\5.1\scripts\modules\addon_utils.py", line 515, in enable
+    mod.register()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py", line 42, in register
+    from .exporter import register_exporter
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\exporter.py", line 2, in <module>
+    import bpy_types
+ModuleNotFoundError: No module named 'bpy_types'
+Error in bpy.app.handlers.load_pre[1]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33282, in cleanup_line_fx
+    bpy.types.SpaceView3D.draw_handler_remove(handles_lines[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33286, in cleanup_line_fx
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+Error in bpy.app.handlers.load_pre[2]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5295, in cleanup
+    bpy.types.SpaceView3D.draw_handler_remove(handles[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5299, in cleanup
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\B_骨骼绑定\arp_rig.py:79: DeprecationWarning: 'Material.use_nodes' is expected to be removed in Blender 6.0
+  mat.use_nodes = True
+E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\B_骨骼绑定\arp_rig.py:93: DeprecationWarning: 'World.use_nodes' is expected to be removed in Blender 6.0
+  scn.world.use_nodes = True
+00:03.141  render           | Saved: 'C:\Users\Liyunzhong\Documents\AutoRigPro\AI\inference\front1.jpg'
+00:03.297  render           | Saved: 'C:\Users\Liyunzhong\Documents\AutoRigPro\AI\inference\char_side.jpg'
+00:03.453  render           | Saved: 'C:\Users\Liyunzhong\Documents\AutoRigPro\AI\inference\char_top.jpg'
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 507, in execute
+    _set_markers_from_keypoints(self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 1951, in _set_markers_from_keypoints
+    arm_angle=(shoulder_loc - hand_loc).angle(Vector((0,0,1)))
+ValueError: Vector.angle(other): zero length vectors have no valid angle
+00:07.500  bpy.rna          | ERROR Python script error in ARP_OT_guess_markers.execute
+00:07.937  anim.driver      | WARNING Invalid driver - pose.bones["arm_pole_line.l"].custom_shape_scale[0]
+00:07.937  anim.driver      | WARNING Invalid driver - pose.bones["arm_pole_line.r"].custom_shape_scale[0]
+00:07.937  anim.driver      | WARNING Invalid driver - pose.bones["leg_pole_line.r"].custom_shape_scale[0]
+00:07.937  anim.driver      | WARNING Invalid driver - pose.bones["leg_pole_line.l"].custom_shape_scale[0]
+00:07.937  anim.driver      | WARNING Invalid driver - pose.bones["c_thigh_ik.r"].custom_shape_scale[0]
+00:07.937  anim.driver      | WARNING Invalid driver - pose.bones["c_toes_fk.r"].custom_shape_scale[0]
+00:07.937  anim.driver      | WARNING Invalid driver - pose.bones["c_thigh_fk.r"].custom_shape_scale[0]
+00:07.937  anim.driver      | WARNING Invalid driver - pose.bones["c_leg_fk.r"].custom_shape_scale[0]
+00:07.937  anim.driver      | WARNING Invalid driver - pose.bones["c_leg_pole.r"].custom_shape_scale[0]
+00:07.937  anim.driver      | WARNING Invalid driver - pose.bones["c_toes_ik.r"].custom_shape_scale[0]
+00:07.937  anim.driver      | WARNING Invalid driver - pose.bones["c_foot_01.r"].custom_shape_scale[0]
+00:07.937  anim.driver      | WARNING Invalid driver - pose.bones["c_foot_roll_cursor.r"].custom_shape_scale[0]
+00:07.937  anim.driver      | WARNING Invalid driver - pose.bones["c_foot_ik.r"].custom_shape_scale[0]
+00:07.937  anim.driver      | WARNING Invalid driver - pose.bones["c_foot_fk.r"].custom_shape_scale[0]
+00:07.937  anim.driver      | WARNING Invalid driver - pose.bones["c_thigh_ik.l"].custom_shape_scale[0]
+00:07.937  anim.driver      | WARNING Invalid driver - pose.bones["c_hand_ik.l"].custom_shape_scale[0]
+00:07.937  anim.driver      | WARNING Invalid driver - pose.bones["c_arm_ik.l"].custom_shape_scale[0]
+00:07.937  anim.driver      | WARNING Invalid driver - pose.bones["c_hand_fk.r"].custom_shape_scale[0]
+00:07.937  anim.driver      | WARNING Invalid driver - pose.bones["c_forearm_fk.r"].custom_shape_scale[0]
+00:07.937  anim.driver      | WARNING Invalid driver - pose.bones["c_arm_fk.l"].custom_shape_scale[0]
+00:07.937  anim.driver      | WARNING Invalid driver - pose.bones["c_forearm_fk.l"].custom_shape_scale[0]
+00:07.937  anim.driver      | WARNING Invalid driver - pose.bones["c_toes_fk.l"].custom_shape_scale[0]
+00:07.937  anim.driver      | WARNING Invalid driver - pose.bones["c_thigh_fk.l"].custom_shape_scale[0]
+00:07.937  anim.driver      | WARNING Invalid driver - pose.bones["c_leg_fk.l"].custom_shape_scale[0]
+00:07.937  anim.driver      | WARNING Invalid driver - pose.bones["c_foot_fk.l"].custom_shape_scale[0]
+00:07.937  anim.driver      | WARNING Invalid driver - pose.bones["c_foot_roll_cursor.l"].custom_shape_scale[0]
+00:07.937  anim.driver      | WARNING Invalid driver - pose.bones["c_arm_fk.r"].custom_shape_scale[0]
+00:07.937  anim.driver      | WARNING Invalid driver - pose.bones["c_arm_ik.r"].custom_shape_scale[0]
+00:07.937  anim.driver      | WARNING Invalid driver - pose.bones["c_hand_ik.r"].custom_shape_scale[0]
+00:07.937  anim.driver      | WARNING Invalid driver - pose.bones["c_hand_fk.l"].custom_shape_scale[0]
+00:07.937  anim.driver      | WARNING Invalid driver - pose.bones["c_foot_ik.l"].custom_shape_scale[0]
+00:07.937  anim.driver      | WARNING Invalid driver - pose.bones["c_leg_pole.l"].custom_shape_scale[0]
+00:07.937  anim.driver      | WARNING Invalid driver - pose.bones["c_arms_pole.r"].custom_shape_scale[0]
+00:07.937  anim.driver      | WARNING Invalid driver - pose.bones["c_arms_pole.l"].custom_shape_scale[0]
+00:07.937  anim.driver      | WARNING Invalid driver - pose.bones["c_foot_01.l"].custom_shape_scale[0]
+00:07.937  anim.driver      | WARNING Invalid driver - pose.bones["c_toes_ik.l"].custom_shape_scale[0]
+Traceback (most recent call last):
+  File "E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\B_骨骼绑定\arp_rig.py", line 341, in <module>
+    bpy.ops.object.select_all(action='DESELECT')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+RuntimeError: Operator bpy.ops.object.select_all.poll() failed, context is incorrect
+Exception in module register(): C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py
+Reloading external rigs...
+Reloading external metarigs...
+Extra Pies: Register built-in pies for use with non-standard Keymap.
+register_class(...):
+警告: 'List_View' 不包含带有前缀和后缀的 '_UL_'
+Registered B2RUVL 0.1.6.
+Registered MACHIN3tools 1.13.8.DeusEx with 2 tools, 0 pie menus
+ARP首选项已成功加载！
+更新骨架预设…
+Zen UV Library: REGISTERED.
+
+=== ARP绑定开始 ===
+Unregistered B2RUVL 0.1.6.
+Unregistered MACHIN3tools 1.13.8.DeusEx.
+Zen UV Library: UNREGISTERED.
+addon_utils.disable: bl_ext.lab_blender_org.mcp not enabled
+register_class(...):
+Info: Registering operator class: 'ARP_OT_save_prefs', bl_idname 'arp.prefs_save' has been registered before, unregistering previous
+register_class(...):
+Info: Registering operator class: 'ARP_OT_install_ext', bl_idname 'arp.install_ext' has been registered before, unregistering previous
+ARP首选项已成功加载！
+更新骨架预设…
+启用ARP: {'FINISHED'}
+AI路径已设置: C:\Users\Liyunzhong\Documents\AutoRigPro\AI
+popup补丁OK
+截图补丁OK
+身体: tripo_node_89f96507-4268-42bd-8c27-bf6892366069_QR, 143708顶点
+上下文: area=OK, region=OK
+
+--- Step 1: get_selected_objects ---
+Warning: No mesh data to join
+Info: Removed 0 vertices
+
+--- Step 2: guess_markers ---
+  截图: front1.jpg
+  截图: char_side.jpg
+  截图: char_top.jpg
+Running batch: 1
+Running C:\Users\Liyunzhong\Documents\AutoRigPro\AI/inference\inference_front.exe front1.jpg, None None
+Running C:\Users\Liyunzhong\Documents\AutoRigPro\AI/inference\inference_side.exe None None None
+Running C:\Users\Liyunzhong\Documents\AutoRigPro\AI/inference\inference_top.exe None None 0.5
+C:\Users\Liyunzhong\Documents\AutoRigPro\AI/inference\inference_top.exe completed with return code 0
+Output:Detected keypoints: [None, (450, 252), (500, 252), None]
+
+C:\Users\Liyunzhong\Documents\AutoRigPro\AI/inference\inference_side.exe completed with return code 0
+Output:device: cpu
+Detected keypoints: [(264, 168), (268, 96), (228, 76), (272, 96), (272, 112), (272, 476), (264, 168), (268, 432), (228, 264), (276, 108)]
+
+C:\Users\Liyunzhong\Documents\AutoRigPro\AI/inference\inference_front.exe completed with return code 0
+Output:Detected keypoints: [(256, 264), (256, 80), (256, 72), (288, 100), (216, 104), (460, 116), (36, 112), (296, 480), (212, 480), (272, 264), (248, 264), (292, 440), (216, 436), (500, 116), (12, 112), (444, 112), (68, 112)]
+
+Fetch keypoints...
+Error: Python: Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 507, in execute
+    _set_markers_from_keypoints(self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 1951, in _set_markers_from_keypoints
+    arm_angle=(shoulder_loc - hand_loc).angle(Vector((0,0,1)))
+ValueError: Vector.angle(other): zero length vectors have no valid angle
+Location: E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\B_骨骼绑定\arp_rig.py:200
+guess_markers 部分完成后异常(可忽略, 几何修正会覆盖): RuntimeError
+AI标记: 17个
+  chin_loc: (0.000, 0.000, 0.000)
+  elbow_loc: (0.000, 0.000, 0.000)
+  elbow_loc_sym: (0.000, 0.000, 0.000)
+  foot_loc: (0.000, 0.000, 0.000)
+  foot_loc_sym: (0.000, 0.000, 0.000)
+几何修正: 肩x=0.138 肘x=0.460 腕x=0.490 臂z=1.486
+
+--- Step 3: go_detect ---
+设置默认设置…
+
+自动检测…
+
+
+[左臂检测…]
+找到手腕…
+
+找不到手腕前部,标记脱离网格
+--最终执行指令…
+检测时出错,删除标记…
+Error: 未找到标记
+恢复集合…
+[ARP Error] 找不到手腕，标记外面了网格?
+Error during detection? True
+go_detect成功
+
+骨架: rig, 339根骨骼
+Blender 5.1.0 (hash adfe2921d5f3 built 2026-03-17 01:37:32)
+
+Blender quit

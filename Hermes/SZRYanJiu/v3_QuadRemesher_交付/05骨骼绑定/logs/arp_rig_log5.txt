@@ -1,0 +1,142 @@
+Traceback (most recent call last):
+  File "D:\Program Files\Blender Foundation\Blender 5.1\5.1\scripts\modules\addon_utils.py", line 515, in enable
+    mod.register()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py", line 42, in register
+    from .exporter import register_exporter
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\exporter.py", line 2, in <module>
+    import bpy_types
+ModuleNotFoundError: No module named 'bpy_types'
+Error in bpy.app.handlers.load_pre[1]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33282, in cleanup_line_fx
+    bpy.types.SpaceView3D.draw_handler_remove(handles_lines[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33286, in cleanup_line_fx
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+Error in bpy.app.handlers.load_pre[2]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5295, in cleanup
+    bpy.types.SpaceView3D.draw_handler_remove(handles[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5299, in cleanup
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\B_骨骼绑定\arp_rig.py:78: DeprecationWarning: 'Material.use_nodes' is expected to be removed in Blender 6.0
+  mat.use_nodes = True
+E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\B_骨骼绑定\arp_rig.py:87: DeprecationWarning: 'World.use_nodes' is expected to be removed in Blender 6.0
+  scn.world.use_nodes = True
+00:03.172  render           | Saved: 'C:\Users\Liyunzhong\Documents\AutoRigPro\AI\inference\front1.jpg'
+00:03.328  render           | Saved: 'C:\Users\Liyunzhong\Documents\AutoRigPro\AI\inference\char_side.jpg'
+00:03.453  render           | Saved: 'C:\Users\Liyunzhong\Documents\AutoRigPro\AI\inference\char_top.jpg'
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 506, in execute
+    _fetch_keypoints(self)
+    ~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 1337, in _fetch_keypoints
+    with open(kp_path) as f:
+         ~~~~^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'C:\\Users\\Liyunzhong\\Documents\\AutoRigPro\\AI/inference\\front2_kp.py'
+00:07.313  bpy.rna          | ERROR Python script error in ARP_OT_guess_markers.execute
+Traceback (most recent call last):
+  File "E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\B_骨骼绑定\arp_rig.py", line 191, in <module>
+    bpy.ops.arp.guess_markers('EXEC_DEFAULT')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+RuntimeError: Error: Python: Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 506, in execute
+    _fetch_keypoints(self)
+    ~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 1337, in _fetch_keypoints
+    with open(kp_path) as f:
+         ~~~~^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'C:\\Users\\Liyunzhong\\Documents\\AutoRigPro\\AI/inference\\front2_kp.py'
+Location: E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\B_骨骼绑定\arp_rig.py:191
+
+Exception in module register(): C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py
+Reloading external rigs...
+Reloading external metarigs...
+Extra Pies: Register built-in pies for use with non-standard Keymap.
+register_class(...):
+警告: 'List_View' 不包含带有前缀和后缀的 '_UL_'
+Registered B2RUVL 0.1.6.
+Registered MACHIN3tools 1.13.8.DeusEx with 2 tools, 0 pie menus
+ARP首选项已成功加载！
+更新骨架预设…
+Zen UV Library: REGISTERED.
+
+=== ARP绑定开始 ===
+Unregistered B2RUVL 0.1.6.
+Unregistered MACHIN3tools 1.13.8.DeusEx.
+Zen UV Library: UNREGISTERED.
+addon_utils.disable: bl_ext.lab_blender_org.mcp not enabled
+register_class(...):
+Info: Registering operator class: 'ARP_OT_save_prefs', bl_idname 'arp.prefs_save' has been registered before, unregistering previous
+register_class(...):
+Info: Registering operator class: 'ARP_OT_install_ext', bl_idname 'arp.install_ext' has been registered before, unregistering previous
+ARP首选项已成功加载！
+更新骨架预设…
+启用ARP: {'FINISHED'}
+AI路径已设置: C:\Users\Liyunzhong\Documents\AutoRigPro\AI
+popup补丁OK
+截图补丁OK
+身体: tripo_node_89f96507-4268-42bd-8c27-bf6892366069_QR, 143708顶点
+上下文: area=OK, region=OK
+
+--- Step 1: get_selected_objects ---
+Warning: No mesh data to join
+Info: Removed 0 vertices
+
+--- Step 2: guess_markers ---
+  截图: front1.jpg
+  截图: char_side.jpg
+  截图: char_top.jpg
+Running batch: 1
+Running C:\Users\Liyunzhong\Documents\AutoRigPro\AI/inference\inference_front.exe front1.jpg,front2.jpg,front3.jpg,front4.jpg,front5.jpg,front6.jpg,front7.jpg,front8.jpg,front9.jpg,front10.jpg, None None
+Running C:\Users\Liyunzhong\Documents\AutoRigPro\AI/inference\inference_side.exe None None None
+Running C:\Users\Liyunzhong\Documents\AutoRigPro\AI/inference\inference_top.exe None None 0.5
+C:\Users\Liyunzhong\Documents\AutoRigPro\AI/inference\inference_top.exe completed with return code 0
+Output:Detected keypoints: [None, None, None, None]
+
+C:\Users\Liyunzhong\Documents\AutoRigPro\AI/inference\inference_side.exe completed with return code 0
+Output:device: cpu
+Detected keypoints: [(0, 508), (508, 0), (0, 0), (508, 0), (0, 508), (508, 508), (508, 508), (508, 0), (0, 508), (508, 508)]
+
+C:\Users\Liyunzhong\Documents\AutoRigPro\AI/inference\inference_front.exe completed with return code 1
+Output:Detected keypoints: [(508, 0), (508, 0), (0, 0), (508, 508), (0, 508), (0, 0), (0, 0), (508, 508), (0, 508), (508, 0), (0, 0), (0, 508), (508, 508), (508, 0), (0, 508), (508, 0), (508, 0)]
+
+Errors:[ WARN:0@0.915] global loadsave.cpp:275 cv::findDecoder imread_('C:\Users\Liyunzhong\Documents\AutoRigPro\AI\inference\front2.jpg'): can't open/read file: check file path/integrity
+Traceback (most recent call last):
+  File "inference_front_release.py", line 131, in <module>
+  File "inference_front_release.py", line 107, in infer
+  File "torchvision\transforms\transforms.py", line 95, in __call__
+  File "torchvision\transforms\transforms.py", line 234, in __call__
+  File "torchvision\transforms\functional.py", line 268, in to_pil_image
+TypeError: pic should be Tensor or ndarray. Got <class 'NoneType'>.
+[PYI-55344:ERROR] Failed to execute script 'inference_front_release' due to unhandled exception!
+
+Fetch keypoints...
+Error: Python: Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 506, in execute
+    _fetch_keypoints(self)
+    ~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 1337, in _fetch_keypoints
+    with open(kp_path) as f:
+         ~~~~^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'C:\\Users\\Liyunzhong\\Documents\\AutoRigPro\\AI/inference\\front2_kp.py'
+Location: E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\B_骨骼绑定\arp_rig.py:191
+Blender 5.1.0 (hash adfe2921d5f3 built 2026-03-17 01:37:32)
+
+Blender quit
