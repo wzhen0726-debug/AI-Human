@@ -47,6 +47,9 @@ if os.path.exists(FONT):
     cu.font_bold = f
 txt = bpy.data.objects.new("打点操作提示", cu)
 txt.location = Vector((0.9, -1.2, 1.5))   # 身体右前方, 不挡模型
+# 根因修复(2026-08-25): 默认(0,0,0)是平躺面朝上, 正面视图看是一条线
+# 正视相机在−Y看向+Y, 文字法线须朝−Y → 绕X转+90° (已用渲染图实测验证方向)
+txt.rotation_euler = (1.5708, 0.0, 0.0)
 bpy.context.scene.collection.objects.link(txt)
 print("文字牌已添加")
 

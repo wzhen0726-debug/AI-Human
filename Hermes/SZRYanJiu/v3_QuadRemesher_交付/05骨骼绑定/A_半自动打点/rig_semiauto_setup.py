@@ -86,11 +86,21 @@ def main():
         e.color = color
         e.show_name = True
         (coll_m if is_mid else coll_r).objects.link(e)
-        # 照01A模板: Shrinkwrap吸附身体表面, 拖动时点贴着皮肤走 (半自动打点的关键)
+        # Shrinkwrap吸附: 中线点用PROJECT投影(只沿前后方向, x锁死=0精确在中线),
+        # 侧点用NEAREST_SURFACE. 根因(2026-08-25): NEAREST_SURFACE把中线点吸到
+        # 不对称表面 → 颈根x=-0.037/会阴x=+0.021偏离中线.
         sw = e.constraints.new(type='SHRINKWRAP')
         sw.target = body
-        sw.shrinkwrap_type = 'NEAREST_SURFACE'
         sw.distance = 0.0
+        if is_mid:
+            sw.shrinkwrap_type = 'PROJECT'
+            if mid == 'HeadTop':
+                sw.use_project_z = True   # 头顶: 沿Z投影到头顶面
+            else:
+                sw.use_project_y = True   # 颈根/会阴: 沿Y前后投影, x=0不动
+            sw.project_axis = 'CLOSEST'
+        else:
+            sw.shrinkwrap_type = 'NEAREST_SURFACE'
         print(f"  LM_{idx:02d}_{cn}_{en}: ({x:.3f}, {y:.3f}, {z:.3f}) ← {GUIDE[mid]}{' [中线,不镜像]' if is_mid else ''}")
 
     # 5. 空L侧集合(等待镜像)
