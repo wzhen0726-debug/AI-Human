@@ -1,140 +1,116 @@
-"""骨骼绑定半自动打点 - 初始化脚本 (01a模式)
-参照: place_eyelid_markers.py
+"""骨骼绑定半自动打点 v2 — 照 01A 眼窝模板逻辑重做 (2026-08-25)
 
-在身体模型上放置13个标记点(Empty球体+Shrinkwrap吸附表面).
-用户打开blend后直接选中标记点→按G拖动→Ctrl+S保存.
-标记点始终贴合模型表面, show_in_front穿模可见.
+01A 逻辑 (正确做法):
+  1. 初始位置 = 程序测量数据 (measure_joints.py 输出), 用户只需微调
+  2. 只标 R 侧 + 中线 (8个点), L 侧由 mirror_rig_markers.py 镜像生成
+  3. Empty球体 + show_in_front + 中英文命名 + 颜色分组
+差异: 关节点在肢体内部 → 不加Shrinkwrap (01A眼睑点在表面才吸附)
 
-用法:
-  blender --background --factory-startup --python rig_semiauto_setup.py
+用法: blender -b --python rig_semiauto_setup.py
 """
-import bpy, os, sys
-from mathutils import Vector
+import bpy, os, json
 
-# 路径: 脚本在 05骨骼绑定/scripts/, 交付根目录 = 上上上级
 BASE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 BODY = os.path.join(BASE, "04纹理烘焙", "04_bake.blend")
 EYEBALL = os.path.join(BASE, "01A眼窝与眼球", "models", "01_2_eyeball_placed.blend")
+JOINTS = os.path.join(BASE, "05骨骼绑定", "landmarks", "joints_measured.json")
 OUT = os.path.join(BASE, "05骨骼绑定", "06_rig_markers.blend")
 
-# 13个标记点: (id, 中文名, 颜色RGBA, 初始位置(x,y,z))
+joints = json.load(open(JOINTS, encoding="utf-8"))
+
+# 初始标记: 中线3个 + R侧5个 (L侧由镜像脚本生成)
+# (标记ID, 中文名, 英文名, 颜色, 位置key)
 MARKERS = [
-    # 中线(黄色)
-    ("HeadTop",  "头顶", (1.0, 0.9, 0.2, 1.0), (0, 0, 1.79)),
-    ("NeckBase", "颈根", (1.0, 0.9, 0.2, 1.0), (0, 0, 1.48)),
-    ("Crotch",   "会阴", (1.0, 0.9, 0.2, 1.0), (0, 0, 0.90)),
-    # 左臂(红色)
-    ("Shoulder_L", "左肩", (1.0, 0.35, 0.35, 1.0), (0.14, 0, 1.43)),
-    ("Elbow_L",    "左肘", (1.0, 0.35, 0.35, 1.0), (0.36, 0, 1.43)),
-    ("Wrist_L",    "左腕", (1.0, 0.35, 0.35, 1.0), (0.59, 0, 1.43)),
-    # 右臂(蓝色)
-    ("Shoulder_R", "右肩", (0.35, 0.5, 1.0, 1.0), (-0.14, 0, 1.43)),
-    ("Elbow_R",    "右肘", (0.35, 0.5, 1.0, 1.0), (-0.36, 0, 1.43)),
-    ("Wrist_R",    "右腕", (0.35, 0.5, 1.0, 1.0), (-0.59, 0, 1.43)),
-    # 左腿(绿色)
-    ("Knee_L",  "左膝", (0.35, 0.9, 0.4, 1.0), (0.14, 0, 0.36)),
-    ("Ankle_L", "左踝", (0.35, 0.9, 0.4, 1.0), (0.14, 0, 0.09)),
-    # 右腿(橙色)
-    ("Knee_R",  "右膝", (0.9, 0.6, 0.3, 1.0), (-0.14, 0, 0.36)),
-    ("Ankle_R", "右踝", (0.9, 0.6, 0.3, 1.0), (-0.14, 0, 0.09)),
+    ("HeadTop",  "头顶", "headtop",  (1.0, 0.9, 0.2, 1.0), "HeadTop"),
+    ("NeckBase", "颈根", "neckbase", (1.0, 0.9, 0.2, 1.0), "NeckBase"),
+    ("Crotch",   "会阴", "crotch",   (1.0, 0.9, 0.2, 1.0), "Crotch"),
+    ("Shoulder_R", "右肩", "shoulder_R", (1.0, 0.35, 0.35, 1.0), "Shoulder_R"),
+    ("Elbow_R",    "右肘", "elbow_R",    (1.0, 0.35, 0.35, 1.0), "Elbow_R"),
+    ("Wrist_R",    "右腕", "wrist_R",    (1.0, 0.35, 0.35, 1.0), "Wrist_R"),
+    ("Knee_R",   "右膝", "knee_R",   (0.35, 0.9, 0.4, 1.0), "Knee_R"),
+    ("Ankle_R",  "右踝", "ankle_R",  (0.35, 0.9, 0.4, 1.0), "Ankle_R"),
 ]
 
+# 每个标记的放置指南(唯一体表标志, 不留歧义)
+GUIDE = {
+    "HeadTop":  "头顶最高点正中",
+    "NeckBase": "头颈交界: 下巴抬起的折痕高度, 喉结上方",
+    "Crotch":   "两腿分叉正中",
+    "Shoulder_R": "右肩: 三角肌中点(手臂外侧肌肉最鼓处中心)",
+    "Elbow_R":    "右肘: 肘关节弯曲皱褶中心",
+    "Wrist_R":    "右腕: 手掌与手臂交界皱褶中心",
+    "Knee_R":   "右膝: 髌骨(膝盖骨)中心",
+    "Ankle_R":  "右踝: 踝骨最高点",
+}
 
 def main():
-    # 1. 加载身体模型
+    # 1. 加载身体
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.wm.open_mainfile(filepath=BODY)
-    obj = [o for o in bpy.context.scene.objects if o.type == 'MESH' and 'eye' not in o.name.lower()]
-    if not obj:
-        print("ERROR: 找不到身体网格")
-        return
-    body = obj[0]
-    print(f"身体网格: {body.name}")
-
-    # 确保模型原点在脚底
-    (x_min, y_min, z_min), (x_max, y_max, z_max) = get_bbox(body)
-    if z_min > 0.001:
-        body.location.z -= z_min
-        bpy.context.view_layer.update()
-        (x_min, y_min, z_min), (x_max, y_max, z_max) = get_bbox(body)
+    cands = [o for o in bpy.context.scene.objects if o.type == 'MESH' and 'eye' not in o.name.lower()]
+    body = max(cands, key=lambda o: len(o.data.polygons))
+    print(f"身体: {body.name}")
 
     # 2. 导入眼球
     if os.path.exists(EYEBALL):
+        before = set(bpy.data.objects.keys())
         with bpy.data.libraries.load(EYEBALL, link=False) as (d_from, d_to):
             d_to.objects = [n for n in d_from.objects if 'eye' in n.lower()]
         for o in d_to.objects:
-            if o:
+            if o and o.name not in before:
                 bpy.context.collection.objects.link(o)
-                print(f"导入眼球: {o.name}")
+                print(f"眼球: {o.name}")
 
-    # 3. 清除旧标记集合
-    if "LM_Rig" in bpy.data.collections:
-        for o in list(bpy.data.collections["LM_Rig"].objects):
-            bpy.data.objects.remove(o, do_unlink=True)
-        bpy.data.collections.remove(bpy.data.collections["LM_Rig"])
+    # 3. 清旧标记集合
+    for cname in ["LM_Rig", "LM_R", "LM_L"]:
+        c = bpy.data.collections.get(cname)
+        if c:
+            for o in list(c.objects):
+                bpy.data.objects.remove(o, do_unlink=True)
+            bpy.data.collections.remove(c)
 
-    coll = bpy.data.collections.new("LM_Rig")
+    # 4. 创建R侧标记 (照01A: LM_编号_中文_英文_侧)
+    coll = bpy.data.collections.new("LM_R")
     bpy.context.scene.collection.children.link(coll)
-
-    # 4. 创建标记点 (参照01a: Empty球体+Shrinkwrap)
-    for mid, cname, color, init_pos in MARKERS:
-        x, y, z = init_pos
-        # 如果初始位置在模型外, 调整到模型附近
-        x = max(x_min, min(x_max, x))
-        y = max(y_min, min(y_max, y))
-        z = max(z_min, min(z_max, z))
-
-        e = bpy.data.objects.new(f"LM_{mid}_{cname}", None)
+    for k, (mid, cn, en, color, key) in enumerate(MARKERS):
+        x, y, z = joints[key]
+        e = bpy.data.objects.new(f"LM_{k+1:02d}_{cn}_{en}", None)
         e.empty_display_type = 'SPHERE'
-        e.empty_display_size = 0.015  # 比01a大(01a是0.0025, 用于眼睛; 身体用0.015)
+        e.empty_display_size = 0.012          # 1.2cm, 身体尺度
         e.location = (x, y, z)
         e.show_in_front = True
         e.color = color
         e.show_name = True
         coll.objects.link(e)
+        # 关节在肢体内部 → 不加Shrinkwrap (与01A眼睑表面点的关键差异)
+        print(f"  LM_{k+1:02d}_{cn}_{en}: ({x:.3f}, {y:.3f}, {z:.3f}) ← {GUIDE[mid]}")
 
-        # Shrinkwrap约束: 吸附到身体表面 (参照01a)
-        sw = e.constraints.new(type='SHRINKWRAP')
-        sw.target = body
-        sw.shrinkwrap_type = 'NEAREST_SURFACE'
-        sw.distance = 0.0
+    # 5. 空L侧集合(等待镜像)
+    lcoll = bpy.data.collections.new("LM_L")
+    bpy.context.scene.collection.children.link(lcoll)
 
-    print(f"创建 {len(MARKERS)} 个标记点, 集合 LM_Rig")
-
-    # 5. 设置视图(正视图+实体模式)
+    # 6. 视图: 正视图+实体
     for area in bpy.context.screen.areas:
         if area.type == 'VIEW_3D':
             for space in area.spaces:
                 if space.type == 'VIEW_3D':
                     space.shading.type = 'SOLID'
-                    space.shading.color_type = 'TEXTURE'
-                    # 切换到正视图
                     space.region_3d.view_perspective = 'ORTHO'
-                    space.region_3d.view_rotation = (1.0, 0.0, 0.0, 0.0)  # 正视图
+                    space.region_3d.view_rotation = (1.0, 0.0, 0.0, 0.0)
             break
 
-    # 6. 保存
-    os.makedirs(os.path.dirname(OUT), exist_ok=True)
+    # 7. 保存
     bpy.ops.wm.save_as_mainfile(filepath=OUT)
-    print(f"保存: {OUT}")
-    print()
-    print("=== 使用说明 ===")
-    print("1. 用 Blender 5.2 打开此 blend 文件")
-    print("2. 在3D视图中选中标记点(彩色小球) → 按 G 拖动到正确关节位置")
-    print("3. (标记点自动吸附在模型表面, 穿模可见)")
-    print("4. 全部放好后 → Ctrl+S 保存")
+    print(f"\n保存: {OUT}")
+    print("=" * 50)
+    print("使用步骤 (照01A流程):")
+    print("1. Blender 5.1 打开 06_rig_markers.blend")
+    print("2. 正视图/侧视图切换, 选中标记点按G微调到指南位置:")
+    for mid, cn, en, _, _ in MARKERS:
+        print(f"   {cn}: {GUIDE[mid]}")
+    print("3. Ctrl+S 保存")
+    print("4. 运行 mirror_rig_markers.py 镜像生成L侧")
     print("5. 运行 rig_from_markers.py 生成骨骼+权重+GLB")
-
-
-def get_bbox(obj):
-    mesh = obj.data
-    world = obj.matrix_world
-    verts = [world @ v.co for v in mesh.vertices]
-    xs = [v.x for v in verts]
-    ys = [v.y for v in verts]
-    zs = [v.z for v in verts]
-    return (min(xs), min(ys), min(zs)), (max(xs), max(ys), max(zs))
-
 
 if __name__ == "__main__":
     main()

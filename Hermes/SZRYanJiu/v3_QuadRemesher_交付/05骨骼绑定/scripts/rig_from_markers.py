@@ -17,16 +17,19 @@ MARKER_IDS = [
 
 
 def find_marker(mid):
-    """在场景中找标记点Empty对象(参照01a: 从collection读取)"""
-    # 方法1: 从LM_Rig集合
-    coll = bpy.data.collections.get("LM_Rig")
-    if coll:
-        for o in coll.objects:
-            if o.name.startswith(f"{PREFIX}{mid}"):
-                return o
-    # 方法2: 从所有对象搜索
+    """在场景中找标记点Empty对象(兼容01a中英文命名 LM_01_头顶_headtop 和旧版 LM_HeadTop)"""
+    # 方法1: 从LM_Rig/LM_R/LM_L集合
+    for cname in ("LM_Rig", "LM_R", "LM_L"):
+        coll = bpy.data.collections.get(cname)
+        if coll:
+            for o in coll.objects:
+                if o.name.startswith(f"{PREFIX}{mid}"):
+                    return o
+    # 方法2: 模糊匹配(中英文命名里含标记ID, 不区分大小写)
+    mid_low = mid.lower().replace("_", "")
     for o in bpy.data.objects:
-        if o.name.startswith(f"{PREFIX}{mid}"):
+        nm_low = o.name.lower().replace("_", "")
+        if nm_low.startswith("lm") and mid_low in nm_low:
             return o
     return None
 
