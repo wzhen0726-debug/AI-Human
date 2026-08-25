@@ -1,0 +1,971 @@
+Traceback (most recent call last):
+  File "D:\Program Files\Blender Foundation\Blender 5.1\5.1\scripts\modules\addon_utils.py", line 515, in enable
+    mod.register()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py", line 42, in register
+    from .exporter import register_exporter
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\exporter.py", line 2, in <module>
+    import bpy_types
+ModuleNotFoundError: No module named 'bpy_types'
+00:01.734  blend            | Read blend: "E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\B_骨骼绑定\06_rig_arp_mixamo.blend"
+find_node_operation: Failed for (BONE_DONE, '')
+Blender 5.1.0 (hash adfe2921d5f3 built 2026-03-17 01:37:32)
+--------------------------------------------------------------------
+Failed to add relation "Copy Scale"
+Could not find op_from: OperationKey(type: BONE, component name: 'c_root.x', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:Hips
+3        Constraint               Copy Scale
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Rotation"
+Could not find op_from: OperationKey(type: BONE, component name: 'foot_ik.l', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:LeftFoot
+3        Constraint               rotIK
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Scale"
+Could not find op_from: OperationKey(type: BONE, component name: 'c_foot_ik.l', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:LeftFoot
+3        Constraint               scaleIK
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Rotation"
+Could not find op_from: OperationKey(type: BONE, component name: 'foot_fk.l', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:LeftFoot
+3        Constraint               rotFK
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Scale"
+Could not find op_from: OperationKey(type: BONE, component name: 'foot_fk.l', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:LeftFoot
+3        Constraint               scaleFK
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Location"
+Could not find op_from: OperationKey(type: BONE, component name: 'leg_ik.l', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:LeftFoot
+3        Constraint               locIK
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Rotation"
+Could not find op_from: OperationKey(type: BONE, component name: 'c_toes_ik.l', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:LeftToeBase
+3        Constraint               ik_rot
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Scale"
+Could not find op_from: OperationKey(type: BONE, component name: 'c_toes_ik.l', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:LeftToeBase
+3        Constraint               ik_scale
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Rotation"
+Could not find op_from: OperationKey(type: BONE, component name: 'c_toes_fk.l', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:LeftToeBase
+3        Constraint               fk_rot
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Scale"
+Could not find op_from: OperationKey(type: BONE, component name: 'c_toes_fk.l', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:LeftToeBase
+3        Constraint               fk_scale
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Rotation"
+Could not find op_from: OperationKey(type: BONE, component name: 'foot_ik.r', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:RightFoot
+3        Constraint               rotIK
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Scale"
+Could not find op_from: OperationKey(type: BONE, component name: 'c_foot_ik.r', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:RightFoot
+3        Constraint               scaleIK
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Location"
+Could not find op_from: OperationKey(type: BONE, component name: 'leg_ik.r', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:RightFoot
+3        Constraint               locIK
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Rotation"
+Could not find op_from: OperationKey(type: BONE, component name: 'foot_fk.r', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:RightFoot
+3        Constraint               rotFK
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Scale"
+Could not find op_from: OperationKey(type: BONE, component name: 'foot_fk.r', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:RightFoot
+3        Constraint               scaleFK
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Rotation"
+Could not find op_from: OperationKey(type: BONE, component name: 'c_toes_ik.r', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:RightToeBase
+3        Constraint               ik_rot
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Scale"
+Could not find op_from: OperationKey(type: BONE, component name: 'c_toes_ik.r', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:RightToeBase
+3        Constraint               ik_scale
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Rotation"
+Could not find op_from: OperationKey(type: BONE, component name: 'c_toes_fk.r', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:RightToeBase
+3        Constraint               fk_rot
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Scale"
+Could not find op_from: OperationKey(type: BONE, component name: 'c_toes_fk.r', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:RightToeBase
+3        Constraint               fk_scale
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Location"
+Could not find op_from: OperationKey(type: BONE, component name: 'c_stretch_leg.l', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:LeftLeg
+3        Constraint               Copy Location
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Rotation"
+Could not find op_from: OperationKey(type: BONE, component name: 'leg.l', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:LeftLeg
+3        Constraint               Copy Rotation
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Location"
+Could not find op_from: OperationKey(type: BONE, component name: 'c_stretch_leg.r', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:RightLeg
+3        Constraint               Copy Location
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Rotation"
+Could not find op_from: OperationKey(type: BONE, component name: 'leg.r', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:RightLeg
+3        Constraint               Copy Rotation
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Location"
+Could not find op_from: OperationKey(type: BONE, component name: 'thigh_twist.l', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:LeftUpLeg
+3        Constraint               Copy Location
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Rotation"
+Could not find op_from: OperationKey(type: BONE, component name: 'thigh.l', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:LeftUpLeg
+3        Constraint               Copy Rotation
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Stretch To"
+Could not find op_from: OperationKey(type: BONE, component name: 'c_stretch_leg.l', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:LeftUpLeg
+3        Constraint               Stretch To
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Location"
+Could not find op_from: OperationKey(type: BONE, component name: 'thigh_twist.r', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:RightUpLeg
+3        Constraint               Copy Location
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Rotation"
+Could not find op_from: OperationKey(type: BONE, component name: 'thigh.r', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:RightUpLeg
+3        Constraint               Copy Rotation
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Stretch To"
+Could not find op_from: OperationKey(type: BONE, component name: 'c_stretch_leg.r', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:RightUpLeg
+3        Constraint               Stretch To
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Location"
+Could not find op_from: OperationKey(type: BONE, component name: 'arm_twist.l', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:LeftArm
+3        Constraint               Copy Location
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Rotation"
+Could not find op_from: OperationKey(type: BONE, component name: 'arm.l', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:LeftArm
+3        Constraint               Copy Rotation
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Stretch To"
+Could not find op_from: OperationKey(type: BONE, component name: 'c_stretch_arm.l', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:LeftArm
+3        Constraint               Stretch To
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Location"
+Could not find op_from: OperationKey(type: BONE, component name: 'arm_twist.r', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:RightArm
+3        Constraint               Copy Location
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Rotation"
+Could not find op_from: OperationKey(type: BONE, component name: 'arm.r', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:RightArm
+3        Constraint               Copy Rotation
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Stretch To"
+Could not find op_from: OperationKey(type: BONE, component name: 'c_stretch_arm.r', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:RightArm
+3        Constraint               Stretch To
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Location"
+Could not find op_from: OperationKey(type: BONE, component name: 'c_stretch_arm.l', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:LeftForeArm
+3        Constraint               Copy Location
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Rotation"
+Could not find op_from: OperationKey(type: BONE, component name: 'forearm.l', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:LeftForeArm
+3        Constraint               Copy Rotation
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Location"
+Could not find op_from: OperationKey(type: BONE, component name: 'c_stretch_arm.r', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:RightForeArm
+3        Constraint               Copy Location
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Rotation"
+Could not find op_from: OperationKey(type: BONE, component name: 'forearm.r', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:RightForeArm
+3        Constraint               Copy Rotation
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Rotation"
+Could not find op_from: OperationKey(type: BONE, component name: 'c_hand_ik.l', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:LeftHand
+3        Constraint               rotIK
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Scale"
+Could not find op_from: OperationKey(type: BONE, component name: 'c_hand_ik.l', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:LeftHand
+3        Constraint               scaleIK
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Location"
+Could not find op_from: OperationKey(type: BONE, component name: 'forearm_ik.l', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:LeftHand
+3        Constraint               locIK
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Rotation"
+Could not find op_from: OperationKey(type: BONE, component name: 'c_hand_fk.l', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:LeftHand
+3        Constraint               rotFK
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Scale"
+Could not find op_from: OperationKey(type: BONE, component name: 'c_hand_fk.l', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:LeftHand
+3        Constraint               scaleFK
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Rotation"
+Could not find op_from: OperationKey(type: BONE, component name: 'pinky_bend_all.l', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:LeftHandPinky2
+3        Constraint               Copy Rotation
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Rotation"
+Could not find op_from: OperationKey(type: BONE, component name: 'ring_bend_all.l', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:LeftHandRing2
+3        Constraint               Copy Rotation
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Rotation"
+Could not find op_from: OperationKey(type: BONE, component name: 'middle_bend_all.l', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:LeftHandMiddle2
+3        Constraint               Copy Rotation
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Rotation"
+Could not find op_from: OperationKey(type: BONE, component name: 'index_bend_all.l', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:LeftHandIndex2
+3        Constraint               Copy Rotation
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Rotation"
+Could not find op_from: OperationKey(type: BONE, component name: 'thumb_bend_all.l', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:LeftHandThumb1
+3        Constraint               Copy Rotation
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Rotation"
+Could not find op_from: OperationKey(type: BONE, component name: 'c_hand_ik.r', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:RightHand
+3        Constraint               rotIK
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Scale"
+Could not find op_from: OperationKey(type: BONE, component name: 'c_hand_ik.r', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:RightHand
+3        Constraint               scaleIK
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Location"
+Could not find op_from: OperationKey(type: BONE, component name: 'forearm_ik.r', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:RightHand
+3        Constraint               locIK
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Rotation"
+Could not find op_from: OperationKey(type: BONE, component name: 'c_hand_fk.r', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:RightHand
+3        Constraint               rotFK
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Scale"
+Could not find op_from: OperationKey(type: BONE, component name: 'c_hand_fk.r', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:RightHand
+3        Constraint               scaleFK
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Rotation"
+Could not find op_from: OperationKey(type: BONE, component name: 'pinky_bend_all.r', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:RightHandPinky2
+3        Constraint               Copy Rotation
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Rotation"
+Could not find op_from: OperationKey(type: BONE, component name: 'ring_bend_all.r', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:RightHandRing2
+3        Constraint               Copy Rotation
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Rotation"
+Could not find op_from: OperationKey(type: BONE, component name: 'middle_bend_all.r', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:RightHandMiddle2
+3        Constraint               Copy Rotation
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Rotation"
+Could not find op_from: OperationKey(type: BONE, component name: 'index_bend_all.r', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:RightHandIndex2
+3        Constraint               Copy Rotation
+
+find_node_operation: Failed for (BONE_DONE, '')
+--------------------------------------------------------------------
+Failed to add relation "Copy Rotation"
+Could not find op_from: OperationKey(type: BONE, component name: 'thumb_bend_all.r', operation code: BONE_DONE)
+
+Trace:
+
+Depth    Type                     Name
+-----    ----                     ----
+1        Object                   rig
+2        Pose Channel             mixamorig:RightHandThumb1
+3        Constraint               Copy Rotation
+
+Exception in module register(): C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py
+Reloading external rigs...
+Reloading external metarigs...
+Extra Pies: Register built-in pies for use with non-standard Keymap.
+register_class(...):
+警告: 'List_View' 不包含带有前缀和后缀的 '_UL_'
+Registered B2RUVL 0.1.6.
+Registered MACHIN3tools 1.13.8.DeusEx with 2 tools, 0 pie menus
+ARP首选项已成功加载！
+更新骨架预设…
+Zen UV Library: REGISTERED.
+删除约束: 77个
+信息: 已另存为 "06_rig_arp_mixamo.blend"
+已保存清理后的rig: E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\B_骨骼绑定\06_rig_arp_mixamo.blend
+INFO Draco mesh compression is available, use library at D:\Program Files\Blender Foundation\Blender 5.1\5.1\scripts\addons_core\io_scene_gltf2\extern_draco.dll
+16:10:07 | INFO: Starting glTF 2.0 export
+16:10:07 | INFO: Extracting primitive: cs_arrow_cross
+16:10:07 | INFO: Primitives created: 0
+16:10:07 | WARNING: Mesh 'cs_arrow_cross' has no primitives and will be omitted.
+16:10:07 | INFO: Extracting primitive: cs_arrow_twist
+16:10:07 | INFO: Primitives created: 0
+16:10:07 | WARNING: Mesh 'cs_arrow_twist' has no primitives and will be omitted.
+16:10:07 | INFO: Extracting primitive: cs_torus_04.001
+16:10:07 | INFO: Primitives created: 0
+16:10:07 | WARNING: Mesh 'cs_torus_04.001' has no primitives and will be omitted.
+16:10:07 | INFO: Extracting primitive: cs_torus_04.005
+16:10:07 | INFO: Primitives created: 0
+16:10:07 | WARNING: Mesh 'cs_torus_04.005' has no primitives and will be omitted.
+16:10:07 | INFO: Extracting primitive: cs_box
+16:10:07 | INFO: Primitives created: 0
+16:10:07 | WARNING: Mesh 'cs_box' has no primitives and will be omitted.
+16:10:07 | INFO: Extracting primitive: cs_circle_head
+16:10:07 | INFO: Primitives created: 0
+16:10:07 | WARNING: Mesh 'cs_circle_head' has no primitives and will be omitted.
+16:10:07 | INFO: Extracting primitive: cs_circle_squashed.001
+16:10:07 | INFO: Primitives created: 0
+16:10:07 | WARNING: Mesh 'cs_circle_squashed.001' has no primitives and will be omitted.
+16:10:07 | INFO: Extracting primitive: cs_plane_1.002
+16:10:07 | INFO: Primitives created: 0
+16:10:07 | WARNING: Mesh 'cs_plane_1.002' has no primitives and will be omitted.
+16:10:07 | INFO: Extracting primitive: cs_foot.l
+16:10:07 | INFO: Primitives created: 0
+16:10:07 | WARNING: Mesh 'cs_foot.l' has no primitives and will be omitted.
+16:10:07 | INFO: Extracting primitive: cs_foot
+16:10:07 | INFO: Primitives created: 0
+16:10:07 | WARNING: Mesh 'cs_foot' has no primitives and will be omitted.
+16:10:07 | INFO: Extracting primitive: cs_torus_04.004
+16:10:07 | INFO: Primitives created: 0
+16:10:07 | WARNING: Mesh 'cs_torus_04.004' has no primitives and will be omitted.
+16:10:07 | INFO: Extracting primitive: cs_circle_01.001
+16:10:07 | INFO: Primitives created: 0
+16:10:07 | WARNING: Mesh 'cs_circle_01.001' has no primitives and will be omitted.
+16:10:07 | INFO: Extracting primitive: cs_foot.002
+16:10:07 | INFO: Primitives created: 0
+16:10:07 | WARNING: Mesh 'cs_foot.002' has no primitives and will be omitted.
+16:10:07 | INFO: Extracting primitive: Plane
+16:10:07 | INFO: Primitives created: 0
+16:10:07 | WARNING: Mesh 'Plane' has no primitives and will be omitted.
+16:10:07 | INFO: Extracting primitive: cs_plane_2.002
+16:10:07 | INFO: Primitives created: 0
+16:10:07 | WARNING: Mesh 'cs_plane_2.002' has no primitives and will be omitted.
+16:10:07 | INFO: Extracting primitive: cs_sphere
+16:10:07 | INFO: Primitives created: 0
+16:10:07 | WARNING: Mesh 'cs_sphere' has no primitives and will be omitted.
+16:10:07 | INFO: Extracting primitive: cs_user_c_spine_01.x
+16:10:07 | INFO: Primitives created: 0
+16:10:07 | WARNING: Mesh 'cs_user_c_spine_01.x' has no primitives and will be omitted.
+16:10:07 | INFO: Extracting primitive: cs_torus_02
+16:10:07 | INFO: Primitives created: 0
+16:10:07 | WARNING: Mesh 'cs_torus_02' has no primitives and will be omitted.
+16:10:07 | INFO: Extracting primitive: cs_torus_03
+16:10:07 | INFO: Primitives created: 0
+16:10:07 | WARNING: Mesh 'cs_torus_03' has no primitives and will be omitted.
+16:10:07 | INFO: Extracting primitive: cs_torus_04
+16:10:07 | INFO: Primitives created: 0
+16:10:07 | WARNING: Mesh 'cs_torus_04' has no primitives and will be omitted.
+16:10:07 | INFO: Extracting primitive: cs_user_c_arm_fk.l
+16:10:07 | INFO: Primitives created: 0
+16:10:07 | WARNING: Mesh 'cs_user_c_arm_fk.l' has no primitives and will be omitted.
+16:10:07 | INFO: Extracting primitive: cs_user_c_arm_fk.r.003
+16:10:07 | INFO: Primitives created: 0
+16:10:07 | WARNING: Mesh 'cs_user_c_arm_fk.r.003' has no primitives and will be omitted.
+16:10:07 | INFO: Extracting primitive: cs_user_c_arm_ik.r
+16:10:07 | INFO: Primitives created: 0
+16:10:07 | WARNING: Mesh 'cs_user_c_arm_ik.r' has no primitives and will be omitted.
+16:10:07 | INFO: Extracting primitive: cs_user_c_leg_fk.l
+16:10:07 | INFO: Primitives created: 0
+16:10:07 | WARNING: Mesh 'cs_user_c_leg_fk.l' has no primitives and will be omitted.
+16:10:07 | INFO: Extracting primitive: cs_user_c_leg_fk.r
+16:10:07 | INFO: Primitives created: 0
+16:10:07 | WARNING: Mesh 'cs_user_c_leg_fk.r' has no primitives and will be omitted.
+16:10:07 | INFO: Extracting primitive: cs_user_c_shoulder.l
+16:10:07 | INFO: Primitives created: 1
+16:10:07 | INFO: Extracting primitive: cs_user_c_shoulder.r
+16:10:07 | INFO: Primitives created: 1
+16:10:07 | INFO: Extracting primitive: cs_user_c_thigh_fk.l
+16:10:07 | INFO: Primitives created: 0
+16:10:07 | WARNING: Mesh 'cs_user_c_thigh_fk.l' has no primitives and will be omitted.
+16:10:07 | INFO: Extracting primitive: cs_user_c_thigh_fk.r
+16:10:07 | INFO: Primitives created: 0
+16:10:07 | WARNING: Mesh 'cs_user_c_thigh_fk.r' has no primitives and will be omitted.
+16:10:07 | INFO: Extracting primitive: mesh
+16:10:08 | INFO: Primitives created: 1
+16:10:08 | WARNING: There are more than 4 joint vertex influences.The 4 with highest weight will be used (and normalized).
+16:10:08 | INFO: Finished glTF 2.0 export in 1.39205002784729 s
+
+GLB重导出完成
+FBX version: 7700
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+删除Hips位移F曲线: 3条
+
+=== 验证 ===
+  mixamorig:Hips: 帧1→18旋转 2.7°
+  mixamorig:Spine: 帧1→18旋转 5.1°
+  mixamorig:LeftArm: 帧1→18旋转 6.2°
+  mixamorig:LeftUpLeg: 帧1→18旋转 21.3°
+  mixamorig:LeftLeg: 帧1→18旋转 40.4°
+  mixamorig:RightUpLeg: 帧1→18旋转 22.1°
+  网格变形顶点(>1cm): 8368/14371, 最大位移22.4cm
+
+结论: 行走动画驱动成功, 无飞走 ✓
+信息: 已另存为 "07_走动画测试.blend"
+保存: E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\B_骨骼绑定\07_走动画测试.blend
+CONSTRAINT_FIX_DONE
+Unregistered B2RUVL 0.1.6.
+Unregistered MACHIN3tools 1.13.8.DeusEx.
+Zen UV Library: UNREGISTERED.
+
+Blender quit
