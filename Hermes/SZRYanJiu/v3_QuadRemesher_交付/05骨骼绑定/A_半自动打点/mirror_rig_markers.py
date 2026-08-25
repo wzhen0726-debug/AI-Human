@@ -16,6 +16,11 @@ r_objs = sorted([o for o in r_coll.objects if o.type == 'EMPTY'], key=lambda o: 
 r_objs = [o for o in r_objs if abs(o.location.x) > 0.01]
 print(f"镜像对象: {len(r_objs)} 个 (已排除中线点)")
 
+# 找身体网格(吸附目标) — 场景里最大的MESH
+body = max((o for o in bpy.data.objects if o.type == 'MESH' and 'eye' not in o.name.lower()),
+           key=lambda o: len(o.data.vertices), default=None)
+print(f"吸附目标: {body.name if body else '无(跳过吸附)'}")
+
 # 清旧L侧
 l_coll = bpy.data.collections.get("LM_L")
 if l_coll:
@@ -38,6 +43,12 @@ for o in r_objs:
     e.color = (0.35, 0.5, 1.0, 1.0)   # L侧蓝色
     e.show_name = True
     l_coll.objects.link(e)
+    # 照01A镜像脚本: L侧点同样加Shrinkwrap吸附 (mirror_markers.py第33-36行)
+    if body:
+        sw = e.constraints.new(type='SHRINKWRAP')
+        sw.target = body
+        sw.shrinkwrap_type = 'NEAREST_SURFACE'
+        sw.distance = 0.0
     print(f"  {name}: (-{rx:.3f}, {ry:.3f}, {rz:.3f})")
 
 bpy.ops.wm.save_as_mainfile(filepath=MARKERS)
