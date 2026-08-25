@@ -1,0 +1,652 @@
+{
+  "mixamorig:Hips": {
+    "parent": null,
+    "depth": 0,
+    "length": 10.8627,
+    "head": [
+      -0.0,
+      99.7919,
+      0.0
+    ]
+  },
+  "mixamorig:Spine": {
+    "parent": "mixamorig:Hips",
+    "depth": 1,
+    "length": 11.732,
+    "head": [
+      -0.0,
+      109.7154,
+      -1.2273
+    ]
+  },
+  "mixamorig:Spine1": {
+    "parent": "mixamorig:Spine",
+    "depth": 2,
+    "length": 13.4588,
+    "head": [
+      -0.0012,
+      121.3608,
+      -2.6496
+    ]
+  },
+  "mixamorig:Spine2": {
+    "parent": "mixamorig:Spine1",
+    "depth": 3,
+    "length": 12.3444,
+    "head": [
+      -0.0023,
+      134.721,
+      -4.2761
+    ]
+  },
+  "mixamorig:Neck": {
+    "parent": "mixamorig:Spine2",
+    "depth": 4,
+    "length": 10.7896,
+    "head": [
+      -0.0036,
+      149.7535,
+      -3.4832
+    ]
+  },
+  "mixamorig:Head": {
+    "parent": "mixamorig:Neck",
+    "depth": 5,
+    "length": 19.6305,
+    "head": [
+      -0.0045,
+      160.0754,
+      -0.3408
+    ]
+  },
+  "mixamorig:HeadTop_End": {
+    "parent": "mixamorig:Head",
+    "depth": 6,
+    "length": 19.6305,
+    "head": [
+      -0.0059,
+      178.55,
+      6.2956
+    ]
+  },
+  "mixamorig:LeftShoulder": {
+    "parent": "mixamorig:Spine2",
+    "depth": 4,
+    "length": 12.9223,
+    "head": [
+      6.1028,
+      143.832,
+      -3.5705
+    ]
+  },
+  "mixamorig:LeftArm": {
+    "parent": "mixamorig:LeftShoulder",
+    "depth": 5,
+    "length": 27.4047,
+    "head": [
+      18.7578,
+      143.5672,
+      -6.1715
+    ]
+  },
+  "mixamorig:LeftForeArm": {
+    "parent": "mixamorig:LeftArm",
+    "depth": 6,
+    "length": 27.6145,
+    "head": [
+      46.1625,
+      143.5696,
+      -6.1715
+    ]
+  },
+  "mixamorig:LeftHand": {
+    "parent": "mixamorig:LeftForeArm",
+    "depth": 7,
+    "length": 10.9801,
+    "head": [
+      73.777,
+      143.5721,
+      -6.1715
+    ]
+  },
+  "mixamorig:LeftHandThumb1": {
+    "parent": "mixamorig:LeftHand",
+    "depth": 8,
+    "length": 4.745,
+    "head": [
+      77.566,
+      141.4053,
+      -3.1685
+    ]
+  },
+  "mixamorig:LeftHandThumb2": {
+    "parent": "mixamorig:LeftHandThumb1",
+    "depth": 9,
+    "length": 4.3821,
+    "head": [
+      81.2416,
+      139.2836,
+      -1.0465
+    ]
+  },
+  "mixamorig:LeftHandThumb3": {
+    "parent": "mixamorig:LeftHandThumb2",
+    "depth": 10,
+    "length": 3.4591,
+    "head": [
+      84.6361,
+      137.3241,
+      0.9133
+    ]
+  },
+  "mixamorig:LeftHandThumb4": {
+    "parent": "mixamorig:LeftHandThumb3",
+    "depth": 11,
+    "length": 3.4591,
+    "head": [
+      87.3156,
+      135.7773,
+      2.4602
+    ]
+  },
+  "mixamorig:LeftHandIndex1": {
+    "parent": "mixamorig:LeftHand",
+    "depth": 8,
+    "length": 3.892,
+    "head": [
+      86.0436,
+      143.3413,
+      -3.3494
+    ]
+  },
+  "mixamorig:LeftHandIndex2": {
+    "parent": "mixamorig:LeftHandIndex1",
+    "depth": 9,
+    "length": 3.4152,
+    "head": [
+      89.9356,
+      143.3417,
+      -3.3494
+    ]
+  },
+  "mixamorig:LeftHandIndex3": {
+    "parent": "mixamorig:LeftHandIndex2",
+    "depth": 10,
+    "length": 3.078,
+    "head": [
+      93.3507,
+      143.342,
+      -3.3494
+    ]
+  },
+  "mixamorig:LeftHandIndex4": {
+    "parent": "mixamorig:LeftHandIndex3",
+    "depth": 11,
+    "length": 3.078,
+    "head": [
+      96.4287,
+      143.3423,
+      -3.3494
+    ]
+  },
+  "mixamorig:LeftHandMiddle1": {
+    "parent": "mixamorig:LeftHand",
+    "depth": 8,
+    "length": 3.614,
+    "head": [
+      86.5525,
+      143.5732,
+      -6.1715
+    ]
+  },
+  "mixamorig:LeftHandMiddle2": {
+    "parent": "mixamorig:LeftHandMiddle1",
+    "depth": 9,
+    "length": 3.4598,
+    "head": [
+      90.1665,
+      143.5735,
+      -6.1715
+    ]
+  },
+  "mixamorig:LeftHandMiddle3": {
+    "parent": "mixamorig:LeftHandMiddle2",
+    "depth": 10,
+    "length": 3.6802,
+    "head": [
+      93.6262,
+      143.5738,
+      -6.1715
+    ]
+  },
+  "mixamorig:LeftHandMiddle4": {
+    "parent": "mixamorig:LeftHandMiddle3",
+    "depth": 11,
+    "length": 3.6802,
+    "head": [
+      97.3064,
+      143.5742,
+      -6.1715
+    ]
+  },
+  "mixamorig:LeftHandRing1": {
+    "parent": "mixamorig:LeftHand",
+    "depth": 8,
+    "length": 3.6012,
+    "head": [
+      85.924,
+      143.5831,
+      -8.3881
+    ]
+  },
+  "mixamorig:LeftHandRing2": {
+    "parent": "mixamorig:LeftHandRing1",
+    "depth": 9,
+    "length": 3.3073,
+    "head": [
+      89.5252,
+      143.5835,
+      -8.3881
+    ]
+  },
+  "mixamorig:LeftHandRing3": {
+    "parent": "mixamorig:LeftHandRing2",
+    "depth": 10,
+    "length": 3.6601,
+    "head": [
+      92.8325,
+      143.5838,
+      -8.3881
+    ]
+  },
+  "mixamorig:LeftHandRing4": {
+    "parent": "mixamorig:LeftHandRing3",
+    "depth": 11,
+    "length": 3.6601,
+    "head": [
+      96.4926,
+      143.5841,
+      -8.3881
+    ]
+  },
+  "mixamorig:LeftHandPinky1": {
+    "parent": "mixamorig:LeftHand",
+    "depth": 8,
+    "length": 4.1367,
+    "head": [
+      84.6852,
+      143.3469,
+      -10.8973
+    ]
+  },
+  "mixamorig:LeftHandPinky2": {
+    "parent": "mixamorig:LeftHandPinky1",
+    "depth": 9,
+    "length": 2.5948,
+    "head": [
+      88.8218,
+      143.3473,
+      -10.8961
+    ]
+  },
+  "mixamorig:LeftHandPinky3": {
+    "parent": "mixamorig:LeftHandPinky2",
+    "depth": 10,
+    "length": 2.9239,
+    "head": [
+      91.4167,
+      143.3475,
+      -10.8973
+    ]
+  },
+  "mixamorig:LeftHandPinky4": {
+    "parent": "mixamorig:LeftHandPinky3",
+    "depth": 11,
+    "length": 2.9239,
+    "head": [
+      94.3405,
+      143.3477,
+      -10.8973
+    ]
+  },
+  "mixamorig:RightShoulder": {
+    "parent": "mixamorig:Spine2",
+    "depth": 4,
+    "length": 12.9223,
+    "head": [
+      -6.1088,
+      143.831,
+      -3.5705
+    ]
+  },
+  "mixamorig:RightArm": {
+    "parent": "mixamorig:RightShoulder",
+    "depth": 5,
+    "length": 27.4047,
+    "head": [
+      -18.7638,
+      143.5639,
+      -6.1714
+    ]
+  },
+  "mixamorig:RightForeArm": {
+    "parent": "mixamorig:RightArm",
+    "depth": 6,
+    "length": 27.6145,
+    "head": [
+      -46.1684,
+      143.5615,
+      -6.1714
+    ]
+  },
+  "mixamorig:RightHand": {
+    "parent": "mixamorig:RightForeArm",
+    "depth": 7,
+    "length": 10.9801,
+    "head": [
+      -73.7829,
+      143.5591,
+      -6.1714
+    ]
+  },
+  "mixamorig:RightHandThumb1": {
+    "parent": "mixamorig:RightHand",
+    "depth": 8,
+    "length": 4.745,
+    "head": [
+      -77.5715,
+      141.3916,
+      -3.1684
+    ]
+  },
+  "mixamorig:RightHandThumb2": {
+    "parent": "mixamorig:RightHandThumb1",
+    "depth": 9,
+    "length": 4.3822,
+    "head": [
+      -81.2468,
+      139.2693,
+      -1.0464
+    ]
+  },
+  "mixamorig:RightHandThumb3": {
+    "parent": "mixamorig:RightHandThumb2",
+    "depth": 10,
+    "length": 3.4591,
+    "head": [
+      -84.641,
+      137.3092,
+      0.9134
+    ]
+  },
+  "mixamorig:RightHandThumb4": {
+    "parent": "mixamorig:RightHandThumb3",
+    "depth": 11,
+    "length": 3.4591,
+    "head": [
+      -87.3202,
+      135.762,
+      2.4603
+    ]
+  },
+  "mixamorig:RightHandIndex1": {
+    "parent": "mixamorig:RightHand",
+    "depth": 8,
+    "length": 3.892,
+    "head": [
+      -86.0495,
+      143.3262,
+      -3.3493
+    ]
+  },
+  "mixamorig:RightHandIndex2": {
+    "parent": "mixamorig:RightHandIndex1",
+    "depth": 9,
+    "length": 3.4152,
+    "head": [
+      -89.9415,
+      143.3259,
+      -3.3493
+    ]
+  },
+  "mixamorig:RightHandIndex3": {
+    "parent": "mixamorig:RightHandIndex2",
+    "depth": 10,
+    "length": 3.078,
+    "head": [
+      -93.3566,
+      143.3256,
+      -3.3493
+    ]
+  },
+  "mixamorig:RightHandIndex4": {
+    "parent": "mixamorig:RightHandIndex3",
+    "depth": 11,
+    "length": 3.078,
+    "head": [
+      -96.4346,
+      143.3253,
+      -3.3493
+    ]
+  },
+  "mixamorig:RightHandMiddle1": {
+    "parent": "mixamorig:RightHand",
+    "depth": 8,
+    "length": 3.614,
+    "head": [
+      -86.5584,
+      143.558,
+      -6.1713
+    ]
+  },
+  "mixamorig:RightHandMiddle2": {
+    "parent": "mixamorig:RightHandMiddle1",
+    "depth": 9,
+    "length": 3.4598,
+    "head": [
+      -90.1724,
+      143.5577,
+      -6.1713
+    ]
+  },
+  "mixamorig:RightHandMiddle3": {
+    "parent": "mixamorig:RightHandMiddle2",
+    "depth": 10,
+    "length": 3.6802,
+    "head": [
+      -93.6322,
+      143.5574,
+      -6.1714
+    ]
+  },
+  "mixamorig:RightHandMiddle4": {
+    "parent": "mixamorig:RightHandMiddle3",
+    "depth": 11,
+    "length": 3.6802,
+    "head": [
+      -97.3124,
+      143.5571,
+      -6.1713
+    ]
+  },
+  "mixamorig:RightHandRing1": {
+    "parent": "mixamorig:RightHand",
+    "depth": 8,
+    "length": 3.6012,
+    "head": [
+      -85.9299,
+      143.5681,
+      -8.388
+    ]
+  },
+  "mixamorig:RightHandRing2": {
+    "parent": "mixamorig:RightHandRing1",
+    "depth": 9,
+    "length": 3.3073,
+    "head": [
+      -89.5311,
+      143.5677,
+      -8.3879
+    ]
+  },
+  "mixamorig:RightHandRing3": {
+    "parent": "mixamorig:RightHandRing2",
+    "depth": 10,
+    "length": 3.6601,
+    "head": [
+      -92.8384,
+      143.5674,
+      -8.388
+    ]
+  },
+  "mixamorig:RightHandRing4": {
+    "parent": "mixamorig:RightHandRing3",
+    "depth": 11,
+    "length": 3.6601,
+    "head": [
+      -96.4985,
+      143.5671,
+      -8.388
+    ]
+  },
+  "mixamorig:RightHandPinky1": {
+    "parent": "mixamorig:RightHand",
+    "depth": 8,
+    "length": 4.1366,
+    "head": [
+      -84.6911,
+      143.332,
+      -10.8972
+    ]
+  },
+  "mixamorig:RightHandPinky2": {
+    "parent": "mixamorig:RightHandPinky1",
+    "depth": 9,
+    "length": 2.5948,
+    "head": [
+      -88.8277,
+      143.3317,
+      -10.8972
+    ]
+  },
+  "mixamorig:RightHandPinky3": {
+    "parent": "mixamorig:RightHandPinky2",
+    "depth": 10,
+    "length": 2.9239,
+    "head": [
+      -91.4226,
+      143.3314,
+      -10.8972
+    ]
+  },
+  "mixamorig:RightHandPinky4": {
+    "parent": "mixamorig:RightHandPinky3",
+    "depth": 11,
+    "length": 2.9238,
+    "head": [
+      -94.3464,
+      143.3312,
+      -10.8972
+    ]
+  },
+  "mixamorig:LeftUpLeg": {
+    "parent": "mixamorig:Hips",
+    "depth": 1,
+    "length": 40.5994,
+    "head": [
+      9.1245,
+      93.1356,
+      -0.0553
+    ]
+  },
+  "mixamorig:LeftLeg": {
+    "parent": "mixamorig:LeftUpLeg",
+    "depth": 2,
+    "length": 42.099,
+    "head": [
+      9.3691,
+      52.5401,
+      -0.5709
+    ]
+  },
+  "mixamorig:LeftFoot": {
+    "parent": "mixamorig:LeftLeg",
+    "depth": 3,
+    "length": 15.7216,
+    "head": [
+      9.1245,
+      10.4922,
+      -2.6301
+    ]
+  },
+  "mixamorig:LeftToeBase": {
+    "parent": "mixamorig:LeftFoot",
+    "depth": 4,
+    "length": 10.0,
+    "head": [
+      9.498,
+      3.2837,
+      11.3365
+    ]
+  },
+  "mixamorig:LeftToe_End": {
+    "parent": "mixamorig:LeftToeBase",
+    "depth": 5,
+    "length": 10.0,
+    "head": [
+      9.3559,
+      3.1084,
+      21.3339
+    ]
+  },
+  "mixamorig:RightUpLeg": {
+    "parent": "mixamorig:Hips",
+    "depth": 1,
+    "length": 40.5995,
+    "head": [
+      -9.1245,
+      93.1355,
+      -0.0553
+    ]
+  },
+  "mixamorig:RightLeg": {
+    "parent": "mixamorig:RightUpLeg",
+    "depth": 2,
+    "length": 42.099,
+    "head": [
+      -9.3691,
+      52.5401,
+      -0.5696
+    ]
+  },
+  "mixamorig:RightFoot": {
+    "parent": "mixamorig:RightLeg",
+    "depth": 3,
+    "length": 15.7216,
+    "head": [
+      -9.1245,
+      10.4922,
+      -2.6302
+    ]
+  },
+  "mixamorig:RightToeBase": {
+    "parent": "mixamorig:RightFoot",
+    "depth": 4,
+    "length": 10.0,
+    "head": [
+      -9.498,
+      3.2837,
+      11.3364
+    ]
+  },
+  "mixamorig:RightToe_End": {
+    "parent": "mixamorig:RightToeBase",
+    "depth": 5,
+    "length": 10.0,
+    "head": [
+      -9.3562,
+      3.1087,
+      21.3339
+    ]
+  }
+}

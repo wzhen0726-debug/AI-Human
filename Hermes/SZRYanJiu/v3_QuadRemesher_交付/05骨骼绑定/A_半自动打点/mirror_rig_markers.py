@@ -8,7 +8,13 @@ bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.wm.open_mainfile(filepath=MARKERS)
 
 r_coll = bpy.data.collections.get("LM_R")
-r_objs = sorted([o for o in r_coll.objects], key=lambda o: o.name)
+if not r_coll or not r_coll.objects:
+    print("ERROR: LM_R集合为空, 请先运行rig_semiauto_setup.py并打点")
+    raise SystemExit(1)
+r_objs = sorted([o for o in r_coll.objects if o.type == 'EMPTY'], key=lambda o: o.name)
+# 安全检查: 排除意外混入的中线点(x≈0)
+r_objs = [o for o in r_objs if abs(o.location.x) > 0.01]
+print(f"镜像对象: {len(r_objs)} 个 (已排除中线点)")
 
 # 清旧L侧
 l_coll = bpy.data.collections.get("LM_L")

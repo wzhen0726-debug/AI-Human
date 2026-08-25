@@ -18,17 +18,17 @@ OUT = os.path.join(BASE, "05骨骼绑定", "A_半自动打点", "06_rig_markers.
 
 joints = json.load(open(JOINTS, encoding="utf-8"))
 
-# 初始标记: 中线3个 + R侧5个 (L侧由镜像脚本生成)
-# (标记ID, 中文名, 英文名, 颜色, 位置key)
+# 初始标记: 中线3个(不镜像) + R侧5个 (L侧由镜像脚本生成)
+# (标记ID, 中文名, 英文名, 颜色, 位置key, 是否中线)
 MARKERS = [
-    ("HeadTop",  "头顶", "headtop",  (1.0, 0.9, 0.2, 1.0), "HeadTop"),
-    ("NeckBase", "颈根", "neckbase", (1.0, 0.9, 0.2, 1.0), "NeckBase"),
-    ("Crotch",   "会阴", "crotch",   (1.0, 0.9, 0.2, 1.0), "Crotch"),
-    ("Shoulder_R", "右肩", "shoulder_R", (1.0, 0.35, 0.35, 1.0), "Shoulder_R"),
-    ("Elbow_R",    "右肘", "elbow_R",    (1.0, 0.35, 0.35, 1.0), "Elbow_R"),
-    ("Wrist_R",    "右腕", "wrist_R",    (1.0, 0.35, 0.35, 1.0), "Wrist_R"),
-    ("Knee_R",   "右膝", "knee_R",   (0.35, 0.9, 0.4, 1.0), "Knee_R"),
-    ("Ankle_R",  "右踝", "ankle_R",  (0.35, 0.9, 0.4, 1.0), "Ankle_R"),
+    ("HeadTop",  "头顶", "headtop",  (1.0, 0.9, 0.2, 1.0), "HeadTop",    True),
+    ("NeckBase", "颈根", "neckbase", (1.0, 0.9, 0.2, 1.0), "NeckBase",   True),
+    ("Crotch",   "会阴", "crotch",   (1.0, 0.9, 0.2, 1.0), "Crotch",     True),
+    ("Shoulder_R", "右肩", "shoulder_R", (1.0, 0.35, 0.35, 1.0), "Shoulder_R", False),
+    ("Elbow_R",    "右肘", "elbow_R",    (1.0, 0.35, 0.35, 1.0), "Elbow_R",    False),
+    ("Wrist_R",    "右腕", "wrist_R",    (1.0, 0.35, 0.35, 1.0), "Wrist_R",    False),
+    ("Knee_R",   "右膝", "knee_R",   (0.35, 0.9, 0.4, 1.0), "Knee_R",   False),
+    ("Ankle_R",  "右踝", "ankle_R",  (0.35, 0.9, 0.4, 1.0), "Ankle_R",  False),
 ]
 
 # 每个标记的放置指南(唯一体表标志, 不留歧义)
@@ -62,28 +62,32 @@ def main():
                 print(f"眼球: {o.name}")
 
     # 3. 清旧标记集合
-    for cname in ["LM_Rig", "LM_R", "LM_L"]:
+    for cname in ["LM_Rig", "LM_R", "LM_L", "LM_M"]:
         c = bpy.data.collections.get(cname)
         if c:
             for o in list(c.objects):
                 bpy.data.objects.remove(o, do_unlink=True)
             bpy.data.collections.remove(c)
 
-    # 4. 创建R侧标记 (照01A: LM_编号_中文_英文_侧)
-    coll = bpy.data.collections.new("LM_R")
-    bpy.context.scene.collection.children.link(coll)
-    for k, (mid, cn, en, color, key) in enumerate(MARKERS):
+    # 4. 创建标记: 中线点→LM_M(黄色,不镜像), R侧点→LM_R(红色,待镜像)
+    coll_m = bpy.data.collections.new("LM_M")
+    coll_r = bpy.data.collections.new("LM_R")
+    bpy.context.scene.collection.children.link(coll_m)
+    bpy.context.scene.collection.children.link(coll_r)
+    idx = 0
+    for mid, cn, en, color, key, is_mid in MARKERS:
+        idx += 1
         x, y, z = joints[key]
-        e = bpy.data.objects.new(f"LM_{k+1:02d}_{cn}_{en}", None)
+        e = bpy.data.objects.new(f"LM_{idx:02d}_{cn}_{en}", None)
         e.empty_display_type = 'SPHERE'
         e.empty_display_size = 0.012          # 1.2cm, 身体尺度
         e.location = (x, y, z)
         e.show_in_front = True
         e.color = color
         e.show_name = True
-        coll.objects.link(e)
+        (coll_m if is_mid else coll_r).objects.link(e)
         # 关节在肢体内部 → 不加Shrinkwrap (与01A眼睑表面点的关键差异)
-        print(f"  LM_{k+1:02d}_{cn}_{en}: ({x:.3f}, {y:.3f}, {z:.3f}) ← {GUIDE[mid]}")
+        print(f"  LM_{idx:02d}_{cn}_{en}: ({x:.3f}, {y:.3f}, {z:.3f}) ← {GUIDE[mid]}{' [中线,不镜像]' if is_mid else ''}")
 
     # 5. 空L侧集合(等待镜像)
     lcoll = bpy.data.collections.new("LM_L")
