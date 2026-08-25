@@ -120,24 +120,26 @@ def build_skeleton(pos):
         el = pos[f"Elbow_{side}"]
         wr = pos[f"Wrist_{side}"]
 
-        add(f"{pre}Shoulder", sh, sh + (el - sh) * 0.3, parent="Spine2")
+        # Mixamo规范: Shoulder从脊柱旁画到肩关节(不是从肩画向肘)
+        sh_head = shoulder_mid + (sh - shoulder_mid) * 0.2
+        add(f"{pre}Shoulder", sh_head, sh, parent="Spine2")
         add(f"{pre}Arm", sh, el, parent=f"{pre}Shoulder")
         add(f"{pre}ForeArm", el, wr, parent=f"{pre}Arm")
         hand_dir = (wr - el).normalized() if (wr - el).length > 0.001 else Vector((0.1 if side == 'L' else -0.1, 0, 0))
         add(f"{pre}Hand", wr, wr + hand_dir * 0.1, parent=f"{pre}ForeArm")
 
-    # 腿
+    # 腿 (本模型右侧=+x: 右膝+0.133/左膝-0.133, 与肩同侧约定)
     for side, pre in [("L", "Left"), ("R", "Right")]:
-        hip_s = hiptop + Vector((0.08 if side == 'L' else -0.08, 0, 0))
+        hip_s = hiptop + Vector((-0.08 if side == 'L' else 0.08, 0, 0))
         kn = pos[f"Knee_{side}"]
         an = pos[f"Ankle_{side}"]
 
         add(f"{pre}UpLeg", hip_s, kn, parent="Hips")
         add(f"{pre}Leg", kn, an, parent=f"{pre}UpLeg")
-        foot_dir = (an - kn).normalized() if (an - kn).length > 0.001 else Vector((0, 0, -1))
-        foot_tip = an + Vector((0.05 if side == 'L' else -0.05, 0, -0.03))
+        # 脚尖朝前(-y, 模型面部朝向), 不是侧向±x
+        foot_tip = an + Vector((0, -0.10, -0.02))
         add(f"{pre}Foot", an, foot_tip, parent=f"{pre}Leg")
-        add(f"{pre}Toe", foot_tip, foot_tip + Vector((0.06 if side == 'L' else -0.06, 0, 0)), parent=f"{pre}Foot")
+        add(f"{pre}Toe", foot_tip, foot_tip + Vector((0, -0.05, 0)), parent=f"{pre}Foot")
 
     bpy.ops.object.mode_set(mode='OBJECT')
     return None
@@ -160,11 +162,22 @@ def bind_weights():
     bpy.ops.object.parent_set(type='ARMATURE_AUTO')
 
     # 眼球parent到Head
-    for o in bpy.data.objects:
-        if o.type == 'MESH' and 'eye' in o.name.lower():
-            o.parent = arm
-            o.parent_type = 'BONE'
-            o.parent_bone = 'Head'
+    # 关键: parent_type=BONE时, Blender的父矩阵 = 骨骼rest矩阵的tail端
+    # (head沿骨骼Y轴到尾端, 与骨骼同朝向), 必须按此换算, 否则眼球飞走
+    head_b = arm.data.bones.get('Head')
+    if head_b:
+        # 复现Blender的BONE父级矩阵: 原点在tail(骨骼局部Y轴末端), 轴向=骨骼rest轴向
+        import mathutils
+        tail_mat = mathutils.Matrix.Translation((0, head_b.length, 0))
+        parent_mat = arm.matrix_world @ head_b.matrix_local @ tail_mat
+        for o in bpy.data.objects:
+            if o.type == 'MESH' and 'eye' in o.name.lower():
+                world_pos = o.matrix_world.translation.copy()
+                o.parent = arm
+                o.parent_type = 'BONE'
+                o.parent_bone = 'Head'
+                o.location = parent_mat.inverted() @ world_pos
+                print(f"眼球 {o.name}: 世界({world_pos.x:.3f},{world_pos.y:.3f},{world_pos.z:.3f}) → Head局部({o.location.x:.3f},{o.location.y:.3f},{o.location.z:.3f})")
     return None
 
 
