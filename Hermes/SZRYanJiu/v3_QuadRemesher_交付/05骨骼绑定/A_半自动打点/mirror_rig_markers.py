@@ -2,7 +2,7 @@
 import bpy, os
 
 BASE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-MARKERS = os.path.join(BASE, "05骨骼绑定", "06_rig_markers.blend")
+MARKERS = os.path.join(BASE, "05骨骼绑定", "A_半自动打点", "06_rig_markers.blend")
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.wm.open_mainfile(filepath=MARKERS)

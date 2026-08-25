@@ -13,8 +13,8 @@ import bpy, os, json
 BASE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 BODY = os.path.join(BASE, "04纹理烘焙", "04_bake.blend")
 EYEBALL = os.path.join(BASE, "01A眼窝与眼球", "models", "01_2_eyeball_placed.blend")
-JOINTS = os.path.join(BASE, "05骨骼绑定", "landmarks", "joints_measured.json")
-OUT = os.path.join(BASE, "05骨骼绑定", "06_rig_markers.blend")
+JOINTS = os.path.join(BASE, "05骨骼绑定", "A_半自动打点", "joints_measured.json")
+OUT = os.path.join(BASE, "05骨骼绑定", "A_半自动打点", "06_rig_markers.blend")
 
 joints = json.load(open(JOINTS, encoding="utf-8"))
 

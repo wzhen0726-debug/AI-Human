@@ -7,7 +7,7 @@ import numpy as np
 
 BASE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 BODY = os.path.join(BASE, "04纹理烘焙", "04_bake.blend")
-OUT_DIR = os.path.join(BASE, "05骨骼绑定", "landmarks")
+OUT_DIR = os.path.join(BASE, "05骨骼绑定", "A_半自动打点")
 os.makedirs(OUT_DIR, exist_ok=True)
 
 bpy.ops.wm.read_factory_settings(use_empty=True)

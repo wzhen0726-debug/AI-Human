@@ -3,7 +3,8 @@
 用法:
   blender --background --factory-startup --python rig_from_markers.py -- --markers <markers.blend> [--output <out.glb>]
 """
-import bpy, os, sys, json
+import bpy, os, sys, json, math, mathutils
+import numpy as np
 from mathutils import Vector
 
 PREFIX = "LM_"
@@ -114,21 +115,46 @@ def build_skeleton(pos):
     add("Neck", s3, neck, parent="Spine2")
     add("Head", neck, head, parent="Neck")
 
-    # 手臂
+    # 手臂 (含手骨: 掌骨+5指各3节, 朝向沿手臂方向延伸)
     for side, pre in [("L", "Left"), ("R", "Right")]:
         sh = pos[f"Shoulder_{side}"]
         el = pos[f"Elbow_{side}"]
         wr = pos[f"Wrist_{side}"]
 
-        # Mixamo规范: Shoulder从脊柱旁画到肩关节(不是从肩画向肘)
+        # Mixamo规范: Shoulder从脊柱旁画到肩关节
         sh_head = shoulder_mid + (sh - shoulder_mid) * 0.2
         add(f"{pre}Shoulder", sh_head, sh, parent="Spine2")
         add(f"{pre}Arm", sh, el, parent=f"{pre}Shoulder")
         add(f"{pre}ForeArm", el, wr, parent=f"{pre}Arm")
+        # 手掌: 沿前臂方向延伸, 长度约9cm(成人手掌)
         hand_dir = (wr - el).normalized() if (wr - el).length > 0.001 else Vector((0.1 if side == 'L' else -0.1, 0, 0))
-        add(f"{pre}Hand", wr, wr + hand_dir * 0.1, parent=f"{pre}ForeArm")
+        palm_end = wr + hand_dir * 0.09
+        add(f"{pre}Hand", wr, palm_end, parent=f"{pre}ForeArm")
+        # 手指: 5指, 每指3节, 沿手臂方向延伸, 绕z轴扇形展开(掌心朝下-z, 拇指朝前)
+        import math
+        # 展开角(度, 正=朝模型前方): 拇指最大, 小指偏后
+        finger_spread = {"Thumb": 25, "Index": 10, "Middle": 3, "Ring": -3, "Pinky": -10}
+        finger_lens = {"Thumb": [0.045, 0.032, 0.028], "Index": [0.040, 0.022, 0.020],
+                       "Middle": [0.045, 0.025, 0.021], "Ring": [0.042, 0.022, 0.019],
+                       "Pinky": [0.035, 0.018, 0.016]}
+        rot_sign = 1.0 if side == 'L' else -1.0   # L臂朝-x, 正旋转朝前; R臂朝+x, 需反向
+        for fname, spread_deg in finger_spread.items():
+            ang = math.radians(spread_deg * rot_sign)
+            fdir = hand_dir.copy()
+            fdir.rotate(mathutils.Euler((0, 0, ang)))
+            if fname == "Thumb":
+                # 拇指额外上翘(掌心朝下, 拇指略向上)
+                fdir.rotate(mathutils.Euler((0, -0.35 * rot_sign, 0)))
+            fdir.normalize()
+            fbase = wr + hand_dir * 0.075 + fdir * 0.015   # 掌骨末端
+            prev = fbase
+            for seg_i, seg_len in enumerate(finger_lens[fname], 1):
+                fseg_end = prev + fdir * seg_len
+                seg_name = f"{pre}Hand{fname}{seg_i}"
+                add(seg_name, prev, fseg_end, parent=f"{pre}Hand" if seg_i == 1 else f"{pre}Hand{fname}{seg_i-1}")
+                prev = fseg_end
 
-    # 腿 (本模型右侧=+x: 右膝+0.133/左膝-0.133, 与肩同侧约定)
+    # 腿 (含脚骨: 脚跟→脚掌→脚趾, 脚尖朝前)
     for side, pre in [("L", "Left"), ("R", "Right")]:
         hip_s = hiptop + Vector((-0.08 if side == 'L' else 0.08, 0, 0))
         kn = pos[f"Knee_{side}"]
@@ -136,10 +162,16 @@ def build_skeleton(pos):
 
         add(f"{pre}UpLeg", hip_s, kn, parent="Hips")
         add(f"{pre}Leg", kn, an, parent=f"{pre}UpLeg")
-        # 脚尖朝前(-y, 模型面部朝向), 不是侧向±x
-        foot_tip = an + Vector((0, -0.10, -0.02))
-        add(f"{pre}Foot", an, foot_tip, parent=f"{pre}Leg")
-        add(f"{pre}Toe", foot_tip, foot_tip + Vector((0, -0.05, 0)), parent=f"{pre}Foot")
+        # 脚: 踝→脚跟(后下方)→脚掌(前)→脚趾(前)
+        # 脚跟: 踝后方下方
+        heel = an + Vector((0, 0.04, -0.04))
+        # 脚掌: 踝前方(脚长~25cm, 踝到趾根~18cm)
+        ball = an + Vector((0, -0.16, -0.06))
+        # 脚趾: 脚掌前方(~7cm)
+        toe_tip = an + Vector((0, -0.23, -0.07))
+        add(f"{pre}Foot", an, heel, parent=f"{pre}Leg")
+        add(f"{pre}ToeBase", heel, ball, parent=f"{pre}Foot")
+        add(f"{pre}Toe", ball, toe_tip, parent=f"{pre}ToeBase")
 
     bpy.ops.object.mode_set(mode='OBJECT')
     return None
@@ -213,6 +245,13 @@ def main():
         if arg == "--output" and i + 1 < len(argv):
             output_path = argv[i + 1]
 
+    # 默认路径(2026-08-25整理后目录结构)
+    base_05 = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if not markers_path:
+        markers_path = os.path.join(base_05, "A_半自动打点", "06_rig_markers.blend")
+    if not output_path:
+        output_path = os.path.join(base_05, "B_骨骼绑定", "06_rig_final.glb")
+
     if markers_path:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         bpy.ops.wm.open_mainfile(filepath=markers_path)
@@ -240,6 +279,30 @@ def main():
 
     # 验证
     verify()
+
+    # 保存前: 姿态纯净检查+自动清零(根因修复2026-08-25)
+    # 教训: 验证测试的pose残留被保存进交付文件 → 头骨28.6°前倾导致眼珠虹膜朝下
+    # 规则: 交付文件永远保持rest pose, 检测到的姿态一律清零
+    arm = find_armature()
+    print("\n=== 姿态纯净检查 ===")
+    dirty = []
+    if arm:
+        for pb in arm.pose.bones:
+            r = np.array(pb.rotation_euler)
+            q = np.array(pb.rotation_quaternion)
+            l = np.array(pb.location)
+            rot_bad = (abs(r).max() > 1e-4) or (abs(q - np.array([1.0, 0, 0, 0])).max() > 1e-4)
+            if rot_bad or abs(l).max() > 1e-4:
+                dirty.append(pb.name)
+                # 清零该骨骼的pose变换(恢复rest)
+                pb.rotation_euler = (0, 0, 0)
+                pb.rotation_quaternion = (1, 0, 0, 0)
+                pb.location = (0, 0, 0)
+        if dirty:
+            print(f"警告: 检测到并清零残留姿态: {dirty}")
+            print("(交付文件必须保持rest pose; 验证测试请在临时副本上做)")
+        else:
+            print("姿态纯净 ✓ (所有pose bone为单位变换)")
 
     # 保存
     blend_out = output_path.replace('.glb', '.blend') if output_path else "06_rig_final.blend"
