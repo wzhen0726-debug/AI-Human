@@ -21,7 +21,9 @@ else:
 
 for o in r_objs:
     rx, ry, rz = o.location
+    # 名称: 后缀_R→_L, 中文"右"→"左"
     name = o.name.replace("_R", "_L") if "_R" in o.name else o.name + "_L"
+    name = name.replace("右", "左")
     e = bpy.data.objects.new(name, None)
     e.empty_display_type = 'SPHERE'
     e.empty_display_size = 0.012
