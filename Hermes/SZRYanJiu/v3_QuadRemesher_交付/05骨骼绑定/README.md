@@ -1,54 +1,35 @@
-# 05骨骼绑定 — 文件夹说明
+# 05骨骼绑定 — 交付目录
 
-**日期**: 2026-08-25 整理 | **目标**: 半自动打点 → Mixamo 22+骨骼 → GLB
+**日期**: 2026-08-26 | **两套方案**: 手写版(54骨骼) / ARP版(65骨骼)
 
-## 两套流程分离（重要）
+## 手写版交付（推荐先用）
 
-| 目录 | 内容 | 谁用 |
+| 文件 | 内容 | 用途 |
 |---|---|---|
-| `A_半自动打点/` | 打点模板、测量数据、镜像脚本 | **用户打点阶段** |
-| `B_骨骼绑定/` | 骨骼生成、权重、导出 | **生成阶段** |
-| `C_诊断工具/` | 模型分析、验证脚本 | 辅助 |
+| `01_打点模板.blend` | 8个标记点(3中线+5右), L侧自动镜像 | 你打点用的模板 |
+| `02_骨骼绑定.blend` | 54骨骼+100%权重+mixamorig前缀 | 最终骨骼绑定 |
+| `03_最终输出.glb` | 35.9MB, Godot可直接导入 | 游戏引擎用 |
+| `04_行走动画测试.blend` | 行走动画已绑定到模型 | 验证动画驱动 |
 
-## A_半自动打点（照 01A 眼窝模板逻辑）
+**特点**: 54骨骼、100%权重、行走动画通过、Mixamo命名对齐
 
-流程：`measure_joints.py`(测量) → `rig_semiauto_setup.py`(放标记) → 用户微调 → `mirror_rig_markers.py`(镜像L侧)
+## ARP版交付（半成品，待蒙皮）
 
-- `measure_joints.py` — 几何测量关节位置(身高分布+手臂厚度剖面+腿宽剖面)，写入 `joints_measured.json`
-- `rig_semiauto_setup.py` — 用测量数据放 R 侧 8 点 + 中线，空 `LM_L` 集合
-- `06_rig_markers.blend` — 打点模板（用户在此微调）
-- `joints_measured.json` — 测量结果
-- `mirror_rig_markers.py` — R 侧镜像到 L 侧
+| 文件 | 内容 | 用途 |
+|---|---|---|
+| `01_原始绑定.blend` | ARP生成339骨骼(含控制器) | 原始状态 |
+| `02_Mixamo命名.blend` | 65骨骼+mixamorig前缀 | 命名对齐 |
+| `03_去控制器后.blend` | 删除控制器后(无权重) | 半成品 |
+| `04_最终输出.glb` | 21MB, 无权重 | 暂不可用 |
 
-## B_骨骼绑定
+**问题**: ARP生成的是控制器骨架, 需要额外蒙皮权重传递步骤才能驱动网格
 
-- `rig_from_markers.py` — 读标记 → 生成 Mixamo 骨架(22+手指30+脚) → 自动权重 → 姿态纯净检查 → 导出
-- `06_rig_final.blend` — 绑定结果（已清理标记点，保持 rest pose）
-- `06_rig_final.glb` — 导出（含骨骼+权重+贴图）
+## 当前状态
 
-### 关键防护：姿态纯净检查（根因修复 2026-08-25）
+- ✅ **手写版**: 完整可用, 推荐先用
+- ⚠️ **ARP版**: 骨骼已生成但网格无权重, 需要你在Blender GUI里手动跑蒙皮绑定
 
-教训：验证测试的 pose 残留被保存进交付文件 → 头骨 28.6° 前倾把眼珠带歪（虹膜朝下）。
-规则：**交付文件永远保持 rest pose**，检测到的残留姿态一律清零。
-**验证测试必须在临时副本上做，不能动交付文件。**
+## 下一步
 
-## C_诊断工具
-
-- `analyze_model.py` — 模型几何/姿态分析
-- `打点提示_全部位.md`（在A_半自动打点/）— 8个点位简明文字提示（替代抽象图）
-- `check_markers.py` / `diagnose_bones.py` / `verify_rig.py` / `verify_glb.py` / `validate_and_export.py` — 各环节验证
-- `pose_test.py` — ⚠️ 姿态测试，**只能在临时副本跑**
-
-## 运行顺序（完整重做一遍）
-
-```
-1. blender -b --python A_半自动打点/measure_joints.py
-2. blender -b --python A_半自动打点/rig_semiauto_setup.py
-3. [用户] 打开 A_半自动打点/06_rig_markers.blend 微调标记 → Ctrl+S
-4. blender -b --python A_半自动打点/mirror_rig_markers.py
-5. blender -b --python B_骨骼绑定/rig_from_markers.py -- --markers A_半自动打点/06_rig_markers.blend --output B_骨骼绑定/06_rig_final.glb
-```
-
-## 已知取舍（2026-08-25）
-
-- 当前用**手写 Mixamo 骨架**方案，未用已安装的 Auto-Rig Pro 3.74.60。ARP 有 Smart 自动检测+手指/脚部完善绑定，但需要下载 AI 模型文件且绑定逻辑为 GUI 驱动，脚本化调用风险较高。待与用户确认是否改用。
+1. 你检查手写版 `02_骨骼绑定.blend` 和 `04_行走动画测试.blend`
+2. 如需ARP版, 我提供GUI蒙皮指引, 或你直接用手写版

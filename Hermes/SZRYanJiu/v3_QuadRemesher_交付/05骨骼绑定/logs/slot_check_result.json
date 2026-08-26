@@ -1,0 +1,13 @@
+{
+  "slot_belongs": true,
+  "slot_id": "OBSlot",
+  "slot_handle": 929201142,
+  "action_slots": [
+    {
+      "id": "OBSlot",
+      "handle": 929201142
+    }
+  ],
+  "hips_moved": 4.6582,
+  "rig_name": "Armature"
+}
