@@ -1,0 +1,10 @@
+action: Walk_noroot
+绑定的slot: id=OBwalk_rig_slot, handle=929201143
+action里的全部slots: [('OBSlot', 929201142), ('OBwalk_rig_slot', 929201143)]
+
+layer[0] strip[0] type=KEYFRAME
+  channelbag: slot_handle=929201142, fcurves=517
+  数据路径骨骼名(前5): ['mixamorig:Head', 'mixamorig:Hips', 'mixamorig:LeftArm', 'mixamorig:LeftFoot', 'mixamorig:LeftForeArm']
+  路径总数: 52
+
+动画引用的骨骼数: 52, 其中骨架里不存在的: 0

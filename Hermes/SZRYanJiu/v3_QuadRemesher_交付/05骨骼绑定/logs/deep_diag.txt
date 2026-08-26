@@ -1,0 +1,8 @@
+action: Walk_noroot, slot: OBSlot
+帧=18
+Hips rotation_euler(原始): (0.0, 0.0, 0.0)
+Hips rotation_quaternion: (0.999, -0.018, 0.042, 0.018)
+Hips matrix_translation: (0.0, -0.091, 0.836)
+mesh变形(直接): 0/2000
+mesh变形(evaluated): 1952/2000
+NLA轨道数: 0

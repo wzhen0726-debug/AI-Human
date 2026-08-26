@@ -1,0 +1,6 @@
+mesh变形: 0/2000 顶点移动>1cm, 最大 0.0cm
+帧18 mixamorig:LeftUpLeg: 旋转 (0.0, 0.0, 0.0)
+帧18 mixamorig:RightArm: 旋转 (0.0, 0.0, 0.0)
+帧18 mixamorig:Spine: 旋转 (0.0, 0.0, 0.0)
+骨骼位置与交付版偏差>5mm: 0根
+VERIFY_DONE

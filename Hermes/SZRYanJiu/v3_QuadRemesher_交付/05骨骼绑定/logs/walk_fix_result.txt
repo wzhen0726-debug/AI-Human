@@ -1,0 +1,5 @@
+有数据的slot: OBSlot (handle=929201142, fcurves=517)
+已改绑: action_slot → OBSlot
+改绑后mesh变形: 0/3000 顶点>1cm, 最大 0.0cm
+已删除参考模型: ['Alpha_Joints', 'Alpha_Surface', 'Armature']
+已保存

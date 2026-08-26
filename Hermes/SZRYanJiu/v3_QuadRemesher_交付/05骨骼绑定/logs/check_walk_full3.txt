@@ -70,6 +70,13 @@ Traceback (most recent call last):
     for action_setup in obj.data.rigify_action_slots:
                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 AttributeError: 'Armature' object has no attribute 'rigify_action_slots'
+Traceback (most recent call last):
+  File "E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\C_诊断工具\check_walk_anim.py", line 22, in <module>
+    fc = count_fcurves(act)
+  File "E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\C_诊断工具\check_walk_anim.py", line 13, in count_fcurves
+    for bag in strip.channelbag:
+               ^^^^^^^^^^^^^^^^
+TypeError: 'bpy_func' object is not iterable
 Exception in module register(): C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py
 Reloading external rigs...
 Reloading external metarigs...

@@ -1,0 +1,13 @@
+=== 有动画的骨架 ===
+Armature: action=Armature|mixamo.com|Layer0, fcurves=520, slot_id=OBSlot
+MixamoSkeleton: action=Walk_noroot, fcurves=517, slot_id=OBwalk_rig_slot
+
+=== 所有骨架 ===
+Armature: bones=65, 有动画=True
+MixamoSkeleton: bones=54, 有动画=True
+
+=== 有armature修改器的mesh ===
+Alpha_Joints: armature=Armature, 顶点组=45
+Alpha_Surface: armature=Armature, 顶点组=51
+tripo_node_89f96507-4268-42bd-8c27-bf6892366069_QR: armature=MixamoSkeleton, 顶点组=54
+CHECK_WALK_ANIM_DONE

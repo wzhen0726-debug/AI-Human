@@ -70,6 +70,11 @@ Traceback (most recent call last):
     for action_setup in obj.data.rigify_action_slots:
                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 AttributeError: 'Armature' object has no attribute 'rigify_action_slots'
+Traceback (most recent call last):
+  File "E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\B_骨骼绑定\fix_walk_slot.py", line 54, in <module>
+    out.append(f"已删除参考模型: {[o.name for o in to_del]}")
+                                   ^^^^^^
+ReferenceError: StructRNA of type Object has been removed
 Exception in module register(): C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py
 Reloading external rigs...
 Reloading external metarigs...

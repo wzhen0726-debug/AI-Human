@@ -63,13 +63,18 @@ Traceback (most recent call last):
     if bpy.context.scene.arp_debug_mode:
        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
-00:01.828  blend            | Read blend: "E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\B_骨骼绑定\walk_test_手写版.blend"
+00:01.813  blend            | Read blend: "E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\B_骨骼绑定\walk_test_手写版.blend"
 Error in bpy.app.handlers.load_post[2]:
 Traceback (most recent call last):
   File "D:\Program Files\Blender Foundation\Blender 5.1\5.1\scripts\addons_core\rigify\utils\action_layers.py", line 439, in versioning_5_0
     for action_setup in obj.data.rigify_action_slots:
                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 AttributeError: 'Armature' object has no attribute 'rigify_action_slots'
+Traceback (most recent call last):
+  File "E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\C_诊断工具\check_walk_anim.py", line 13, in <module>
+    out.append(f"{o.name}: action={act.name}, fcurves={len(act.fcurves)}")
+                                                           ^^^^^^^^^^^
+AttributeError: 'Action' object has no attribute 'fcurves'
 Exception in module register(): C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py
 Reloading external rigs...
 Reloading external metarigs...
