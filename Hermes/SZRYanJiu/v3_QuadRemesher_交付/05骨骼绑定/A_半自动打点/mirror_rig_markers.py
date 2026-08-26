@@ -45,7 +45,22 @@ for o in r_objs:
     l_coll.objects.link(e)
     # 关节点不加Shrinkwrap(2026-08-25): 肩肘腕膝踝是肢体内部解剖点,
     # 吸附会阻止放到关节中心导致骨旋转轴心偏移. 与R侧保持一致(无约束).
-    print(f"  {name}: (-{rx:.3f}, {ry:.3f}, {rz:.3f})")
+    # 实时镜像驱动(2026-08-26根因修复): 静态副本会与R侧脱节形成"两套点",
+    # 改用驱动器让L侧实时跟随R侧 (x取反, y/z同步), 用户只操作R侧即可
+    for i, (axis, sign) in enumerate([("X", -1), ("Y", 1), ("Z", 1)]):
+        fcurve = e.driver_add("location", i)
+        drv = fcurve.driver
+        drv.type = 'SCRIPTED'
+        drv.expression = "-val" if sign < 0 else "val"
+        var = drv.variables.new()
+        var.name = "val"
+        var.type = 'TRANSFORMS'
+        tgt = var.targets[0]
+        tgt.id = o            # 对应R侧点
+        tgt.transform_type = 'LOC_' + axis
+        tgt.transform_space = 'LOCAL_SPACE'
+    e.hide_select = True      # 锁定不可选中, 防误碰(只操作R侧)
+    print(f"  {name} ←实时镜像← {o.name}")
 
 bpy.ops.wm.save_as_mainfile(filepath=MARKERS)
 print(f"镜像完成: R侧{len(r_objs)}点 → L侧")

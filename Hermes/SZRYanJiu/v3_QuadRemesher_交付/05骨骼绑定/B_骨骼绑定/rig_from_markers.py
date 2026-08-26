@@ -63,7 +63,10 @@ def read_markers():
         if m is None:
             print(f"WARNING: 找不到标记点 {mid}")
             continue
-        pos[mid] = m.location.copy()
+        # 根因修复(2026-08-26): 必须读约束求值后的matrix_world(用户所见即所得),
+        # 不能读location原始坐标 — 中线点有SHRINKWRAP+LIMIT_LOCATION约束,
+        # 原始坐标与显示位置脱节(会阴原始-0.078但显示0.000)导致Hips建在偏左位置.
+        pos[mid] = m.matrix_world.translation.copy()
         print(f"  {mid}: ({pos[mid].x:.4f}, {pos[mid].y:.4f}, {pos[mid].z:.4f})")
     return pos
 

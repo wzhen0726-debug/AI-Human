@@ -1,0 +1,184 @@
+Traceback (most recent call last):
+  File "D:\Program Files\Blender Foundation\Blender 5.1\5.1\scripts\modules\addon_utils.py", line 515, in enable
+    mod.register()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py", line 42, in register
+    from .exporter import register_exporter
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\exporter.py", line 2, in <module>
+    import bpy_types
+ModuleNotFoundError: No module named 'bpy_types'
+Error in bpy.app.handlers.load_pre[1]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33282, in cleanup_line_fx
+    bpy.types.SpaceView3D.draw_handler_remove(handles_lines[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33286, in cleanup_line_fx
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+Error in bpy.app.handlers.load_pre[2]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5295, in cleanup
+    bpy.types.SpaceView3D.draw_handler_remove(handles[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5299, in cleanup
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+Error in bpy.app.handlers.load_pre[1]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33282, in cleanup_line_fx
+    bpy.types.SpaceView3D.draw_handler_remove(handles_lines[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33286, in cleanup_line_fx
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+Error in bpy.app.handlers.load_pre[2]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5295, in cleanup
+    bpy.types.SpaceView3D.draw_handler_remove(handles[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5299, in cleanup
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+00:01.937  blend            | Read blend: "E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\A_半自动打点\06_rig_markers.blend"
+Exception in module register(): C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py
+Reloading external rigs...
+Reloading external metarigs...
+Extra Pies: Register built-in pies for use with non-standard Keymap.
+register_class(...):
+警告: 'List_View' 不包含带有前缀和后缀的 '_UL_'
+Registered B2RUVL 0.1.6.
+Registered MACHIN3tools 1.13.8.DeusEx with 2 tools, 0 pie menus
+ARP首选项已成功加载！
+更新骨架预设…
+Zen UV Library: REGISTERED.
+Unregistered B2RUVL 0.1.6.
+Unregistered MACHIN3tools 1.13.8.DeusEx.
+Zen UV Library: UNREGISTERED.
+addon_utils.disable: bl_ext.lab_blender_org.mcp not enabled
+=== 读取标记点 ===
+  HeadTop: (0.0041, 0.0030, 1.8103)
+  NeckBase: (-0.0038, 0.0056, 1.5386)
+  Crotch: (-0.0775, -0.0688, 0.8427)
+  Shoulder_L: (-0.2028, 0.0516, 1.4348)
+  Elbow_L: (-0.4721, 0.0593, 1.4296)
+  Wrist_L: (-0.7077, 0.0266, 1.4357)
+  Shoulder_R: (0.2028, 0.0516, 1.4348)
+  Elbow_R: (0.4721, 0.0593, 1.4296)
+  Wrist_R: (0.7077, 0.0266, 1.4357)
+  Knee_L: (-0.1300, 0.0300, 0.4814)
+  Ankle_L: (-0.1417, 0.0623, 0.1044)
+  Knee_R: (0.1300, 0.0300, 0.4814)
+  Ankle_R: (0.1417, 0.0623, 0.1044)
+
+=== 构建骨骼 ===
+
+=== 绑定权重 ===
+眼球 Eye002_L: 世界(-0.036,-0.093,1.671) → Head局部(-0.033,-0.139,0.098)
+眼球 Eye002_R: 世界(0.036,-0.093,1.671) → Head局部(0.038,-0.137,0.096)
+
+=== 骨骼 (54根) ===
+  Hips           head=( -0.078, -0.069,  0.843)
+  Spine          head=( -0.078, -0.069,  0.843)
+  Spine1         head=( -0.052, -0.029,  1.038)
+  Spine2         head=( -0.026,  0.011,  1.233)
+  Neck           head=(  0.000,  0.052,  1.435)
+  Head           head=( -0.004,  0.006,  1.539)
+  LeftShoulder   head=( -0.041,  0.052,  1.435)
+  LeftArm        head=( -0.203,  0.052,  1.435)
+  LeftForeArm    head=( -0.472,  0.059,  1.430)
+  LeftHand       head=( -0.708,  0.027,  1.436)
+  LeftHandThumb1 head=( -0.794,  0.008,  1.434)
+  LeftHandThumb2 head=( -0.830, -0.016,  1.422)
+  LeftHandThumb3 head=( -0.855, -0.034,  1.413)
+  LeftHandIndex1 head=( -0.796,  0.012,  1.438)
+  LeftHandIndex2 head=( -0.834, -0.001,  1.439)
+  LeftHandIndex3 head=( -0.855, -0.007,  1.440)
+  LeftHandMiddle1 head=( -0.797,  0.013,  1.438)
+  LeftHandMiddle2 head=( -0.841,  0.005,  1.439)
+  LeftHandMiddle3 head=( -0.865,  0.000,  1.440)
+  LeftHandRing1  head=( -0.797,  0.015,  1.438)
+  LeftHandRing2  head=( -0.839,  0.011,  1.439)
+  LeftHandRing3  head=( -0.861,  0.009,  1.440)
+  LeftHandPinky1 head=( -0.797,  0.017,  1.438)
+  LeftHandPinky2 head=( -0.832,  0.018,  1.439)
+  LeftHandPinky3 head=( -0.850,  0.019,  1.439)
+  RightShoulder  head=(  0.041,  0.052,  1.435)
+  RightArm       head=(  0.203,  0.052,  1.435)
+  RightForeArm   head=(  0.472,  0.059,  1.430)
+  RightHand      head=(  0.708,  0.027,  1.436)
+  RightHandThumb1 head=(  0.794,  0.008,  1.434)
+  RightHandThumb2 head=(  0.830, -0.016,  1.422)
+  RightHandThumb3 head=(  0.855, -0.034,  1.413)
+  RightHandIndex1 head=(  0.796,  0.012,  1.438)
+  RightHandIndex2 head=(  0.834, -0.001,  1.439)
+  RightHandIndex3 head=(  0.855, -0.007,  1.440)
+  RightHandMiddle1 head=(  0.797,  0.013,  1.438)
+  RightHandMiddle2 head=(  0.841,  0.005,  1.439)
+  RightHandMiddle3 head=(  0.865,  0.000,  1.440)
+  RightHandRing1 head=(  0.797,  0.015,  1.438)
+  RightHandRing2 head=(  0.839,  0.011,  1.439)
+  RightHandRing3 head=(  0.861,  0.009,  1.440)
+  RightHandPinky1 head=(  0.797,  0.017,  1.438)
+  RightHandPinky2 head=(  0.832,  0.018,  1.439)
+  RightHandPinky3 head=(  0.850,  0.019,  1.439)
+  LeftUpLeg      head=( -0.158, -0.069,  0.843)
+  LeftLeg        head=( -0.130,  0.030,  0.481)
+  LeftFoot       head=( -0.142,  0.062,  0.104)
+  LeftToeBase    head=( -0.142,  0.102,  0.064)
+  LeftToe        head=( -0.142, -0.098,  0.044)
+  RightUpLeg     head=(  0.002, -0.069,  0.843)
+  RightLeg       head=(  0.130,  0.030,  0.481)
+  RightFoot      head=(  0.142,  0.062,  0.104)
+  RightToeBase   head=(  0.142,  0.102,  0.064)
+  RightToe       head=(  0.142, -0.098,  0.044)
+权重覆盖: 143708/143708 (100.0%)
+
+=== 姿态纯净检查 ===
+姿态纯净 ✓ (所有pose bone为单位变换)
+Info: Saved as "06_rig_final.blend"
+
+Saved: E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\B_骨骼绑定\06_rig_final.blend
+INFO Draco mesh compression is available, use library at D:\Program Files\Blender Foundation\Blender 5.1\5.1\scripts\addons_core\io_scene_gltf2\extern_draco.dll
+11:30:02 | INFO: Starting glTF 2.0 export
+11:30:02 | INFO: Extracting primitive: 打点操作提示_curve.001
+11:30:02 | INFO: Primitives created: 1
+11:30:02 | INFO: Extracting primitive: mesh
+11:30:03 | INFO: Primitives created: 1
+11:30:03 | WARNING: There are more than 4 joint vertex influences.The 4 with highest weight will be used (and normalized).
+11:30:03 | INFO: Extracting primitive: Mesh.002
+11:30:04 | WARNING: More than one shader node tex image used for a texture. The resulting glTF sampler will behave like the first shader node tex image.
+11:30:05 | INFO: Primitives created: 3
+11:30:05 | INFO: Extracting primitive: Mesh.003
+11:30:06 | WARNING: More than one shader node tex image used for a texture. The resulting glTF sampler will behave like the first shader node tex image.
+11:30:07 | INFO: Primitives created: 3
+11:30:07 | INFO: Finished glTF 2.0 export in 4.962473392486572 s
+
+GLB: E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\B_骨骼绑定\06_rig_final.glb (35.9 MB)
+Done.
+Blender 5.1.0 (hash adfe2921d5f3 built 2026-03-17 01:37:32)
+
+Blender quit
