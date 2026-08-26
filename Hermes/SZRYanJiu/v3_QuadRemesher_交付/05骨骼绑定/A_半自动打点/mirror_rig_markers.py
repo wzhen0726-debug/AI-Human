@@ -43,12 +43,8 @@ for o in r_objs:
     e.color = (0.35, 0.5, 1.0, 1.0)   # L侧蓝色
     e.show_name = True
     l_coll.objects.link(e)
-    # 照01A镜像脚本: L侧点同样加Shrinkwrap吸附 (mirror_markers.py第33-36行)
-    if body:
-        sw = e.constraints.new(type='SHRINKWRAP')
-        sw.target = body
-        sw.shrinkwrap_type = 'NEAREST_SURFACE'
-        sw.distance = 0.0
+    # 关节点不加Shrinkwrap(2026-08-25): 肩肘腕膝踝是肢体内部解剖点,
+    # 吸附会阻止放到关节中心导致骨旋转轴心偏移. 与R侧保持一致(无约束).
     print(f"  {name}: (-{rx:.3f}, {ry:.3f}, {rz:.3f})")
 
 bpy.ops.wm.save_as_mainfile(filepath=MARKERS)

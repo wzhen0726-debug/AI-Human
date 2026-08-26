@@ -1,0 +1,146 @@
+Traceback (most recent call last):
+  File "D:\Program Files\Blender Foundation\Blender 5.1\5.1\scripts\modules\addon_utils.py", line 515, in enable
+    mod.register()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py", line 42, in register
+    from .exporter import register_exporter
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\exporter.py", line 2, in <module>
+    import bpy_types
+ModuleNotFoundError: No module named 'bpy_types'
+Error in bpy.app.handlers.load_pre[1]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33282, in cleanup_line_fx
+    bpy.types.SpaceView3D.draw_handler_remove(handles_lines[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33286, in cleanup_line_fx
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+Error in bpy.app.handlers.load_pre[2]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5295, in cleanup
+    bpy.types.SpaceView3D.draw_handler_remove(handles[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5299, in cleanup
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+Error in bpy.app.handlers.load_pre[1]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33282, in cleanup_line_fx
+    bpy.types.SpaceView3D.draw_handler_remove(handles_lines[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33286, in cleanup_line_fx
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+Error in bpy.app.handlers.load_pre[2]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5295, in cleanup
+    bpy.types.SpaceView3D.draw_handler_remove(handles[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5299, in cleanup
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+00:01.860  blend            | Read blend: "E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\B_骨骼绑定\06_rig_final.blend"
+Error in bpy.app.handlers.load_post[2]:
+Traceback (most recent call last):
+  File "D:\Program Files\Blender Foundation\Blender 5.1\5.1\scripts\addons_core\rigify\utils\action_layers.py", line 439, in versioning_5_0
+    for action_setup in obj.data.rigify_action_slots:
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Armature' object has no attribute 'rigify_action_slots'
+Exception in module register(): C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py
+Reloading external rigs...
+Reloading external metarigs...
+Extra Pies: Register built-in pies for use with non-standard Keymap.
+register_class(...):
+警告: 'List_View' 不包含带有前缀和后缀的 '_UL_'
+Registered B2RUVL 0.1.6.
+Registered MACHIN3tools 1.13.8.DeusEx with 2 tools, 0 pie menus
+ARP首选项已成功加载！
+更新骨架预设…
+Zen UV Library: REGISTERED.
+Unregistered B2RUVL 0.1.6.
+Unregistered MACHIN3tools 1.13.8.DeusEx.
+Zen UV Library: UNREGISTERED.
+addon_utils.disable: bl_ext.lab_blender_org.mcp not enabled
+骨架: MixamoSkeleton, 骨骼数: 54
+  Hips: head(-0.078,-0.069,0.843) tail(-0.078,-0.069,0.893)
+  Spine: head(-0.078,-0.069,0.843) tail(-0.052,-0.029,1.038)
+  Spine1: head(-0.052,-0.029,1.038) tail(-0.026,0.011,1.233)
+  Spine2: head(-0.026,0.011,1.233) tail(0.000,0.052,1.435)
+  Neck: head(0.000,0.052,1.435) tail(-0.004,0.006,1.539)
+  Head: head(-0.004,0.006,1.539) tail(0.004,0.003,1.810)
+  LeftShoulder: head(-0.041,0.052,1.435) tail(-0.203,0.052,1.435)
+  LeftArm: head(-0.203,0.052,1.435) tail(-0.472,0.059,1.430)
+  LeftForeArm: head(-0.472,0.059,1.430) tail(-0.708,0.027,1.436)
+  LeftHand: head(-0.708,0.027,1.436) tail(-0.797,0.014,1.438)
+  LeftHandThumb1: head(-0.794,0.008,1.434) tail(-0.830,-0.016,1.422)
+  LeftHandThumb2: head(-0.830,-0.016,1.422) tail(-0.855,-0.034,1.413)
+  LeftHandThumb3: head(-0.855,-0.034,1.413) tail(-0.878,-0.049,1.406)
+  LeftHandIndex1: head(-0.796,0.012,1.438) tail(-0.834,-0.001,1.439)
+  LeftHandIndex2: head(-0.834,-0.001,1.439) tail(-0.855,-0.007,1.440)
+  LeftHandIndex3: head(-0.855,-0.007,1.440) tail(-0.874,-0.014,1.440)
+  LeftHandMiddle1: head(-0.797,0.013,1.438) tail(-0.841,0.005,1.439)
+  LeftHandMiddle2: head(-0.841,0.005,1.439) tail(-0.865,0.000,1.440)
+  LeftHandMiddle3: head(-0.865,0.000,1.440) tail(-0.886,-0.004,1.440)
+  LeftHandRing1: head(-0.797,0.015,1.438) tail(-0.839,0.011,1.439)
+  LeftHandRing2: head(-0.839,0.011,1.439) tail(-0.861,0.009,1.440)
+  LeftHandRing3: head(-0.861,0.009,1.440) tail(-0.880,0.008,1.440)
+  LeftHandPinky1: head(-0.797,0.017,1.438) tail(-0.832,0.018,1.439)
+  LeftHandPinky2: head(-0.832,0.018,1.439) tail(-0.850,0.019,1.439)
+  LeftHandPinky3: head(-0.850,0.019,1.439) tail(-0.866,0.019,1.440)
+  RightShoulder: head(0.041,0.052,1.435) tail(0.203,0.052,1.435)
+  RightArm: head(0.203,0.052,1.435) tail(0.472,0.059,1.430)
+  RightForeArm: head(0.472,0.059,1.430) tail(0.708,0.027,1.436)
+  RightHand: head(0.708,0.027,1.436) tail(0.797,0.014,1.438)
+  RightHandThumb1: head(0.794,0.008,1.434) tail(0.830,-0.016,1.422)
+  RightHandThumb2: head(0.830,-0.016,1.422) tail(0.855,-0.034,1.413)
+  RightHandThumb3: head(0.855,-0.034,1.413) tail(0.878,-0.049,1.406)
+  RightHandIndex1: head(0.796,0.012,1.438) tail(0.834,-0.001,1.439)
+  RightHandIndex2: head(0.834,-0.001,1.439) tail(0.855,-0.007,1.440)
+  RightHandIndex3: head(0.855,-0.007,1.440) tail(0.874,-0.014,1.440)
+  RightHandMiddle1: head(0.797,0.013,1.438) tail(0.841,0.005,1.439)
+  RightHandMiddle2: head(0.841,0.005,1.439) tail(0.865,0.000,1.440)
+  RightHandMiddle3: head(0.865,0.000,1.440) tail(0.886,-0.004,1.440)
+  RightHandRing1: head(0.797,0.015,1.438) tail(0.839,0.011,1.439)
+  RightHandRing2: head(0.839,0.011,1.439) tail(0.861,0.009,1.440)
+  RightHandRing3: head(0.861,0.009,1.440) tail(0.880,0.008,1.440)
+  RightHandPinky1: head(0.797,0.017,1.438) tail(0.832,0.018,1.439)
+  RightHandPinky2: head(0.832,0.018,1.439) tail(0.850,0.019,1.439)
+  RightHandPinky3: head(0.850,0.019,1.439) tail(0.866,0.019,1.440)
+  LeftUpLeg: head(-0.158,-0.069,0.843) tail(-0.130,0.030,0.481)
+  LeftLeg: head(-0.130,0.030,0.481) tail(-0.142,0.062,0.104)
+  LeftFoot: head(-0.142,0.062,0.104) tail(-0.142,0.102,0.064)
+  LeftToeBase: head(-0.142,0.102,0.064) tail(-0.142,-0.098,0.044)
+  LeftToe: head(-0.142,-0.098,0.044) tail(-0.142,-0.168,0.034)
+  RightUpLeg: head(0.002,-0.069,0.843) tail(0.130,0.030,0.481)
+  RightLeg: head(0.130,0.030,0.481) tail(0.142,0.062,0.104)
+  RightFoot: head(0.142,0.062,0.104) tail(0.142,0.102,0.064)
+  RightToeBase: head(0.142,0.102,0.064) tail(0.142,-0.098,0.044)
+  RightToe: head(0.142,-0.098,0.044) tail(0.142,-0.168,0.034)
+VERIFY_HANDWRITE_DONE
+Blender 5.1.0 (hash adfe2921d5f3 built 2026-03-17 01:37:32)
+
+Blender quit

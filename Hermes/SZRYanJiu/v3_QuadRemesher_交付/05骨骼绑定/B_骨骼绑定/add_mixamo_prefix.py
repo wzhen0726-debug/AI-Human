@@ -1,10 +1,32 @@
-"""修复骨骼前缀: 加mixamorig:前缀, 使行走动画F曲线能驱动."""
-import bpy, os
+"""修复骨骼前缀: 加mixamorig:前缀, 使行走动画F曲线能驱动.
+用法: blender -b --python add_mixamo_prefix.py -- --input <blend> [--output <blend> --glb <glb>]
+默认处理ARP版."""
+import bpy, os, sys
 
 DELIVERY = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付"
 IN_BLEND = os.path.join(DELIVERY, "05骨骼绑定", "B_骨骼绑定", "06_rig_arp_mixamo.blend")
 OUT_BLEND = os.path.join(DELIVERY, "05骨骼绑定", "B_骨骼绑定", "06_rig_arp_mixamo.blend")
 OUT_GLB = os.path.join(DELIVERY, "05骨骼绑定", "B_骨骼绑定", "06_rig_arp_mixamo.glb")
+
+# 解析CLI参数
+argv = sys.argv
+if "--" in argv:
+    args = argv[argv.index("--") + 1:]
+else:
+    args = []
+for i, a in enumerate(args):
+    if a == "--input" and i + 1 < len(args):
+        IN_BLEND = args[i + 1]
+    if a == "--output" and i + 1 < len(args):
+        OUT_BLEND = args[i + 1]
+    if a == "--glb" and i + 1 < len(args):
+        OUT_GLB = args[i + 1]
+if not OUT_BLEND or OUT_BLEND == os.path.join(DELIVERY, "05骨骼绑定", "B_骨骼绑定", "06_rig_arp_mixamo.blend"):
+    if IN_BLEND != os.path.join(DELIVERY, "05骨骼绑定", "B_骨骼绑定", "06_rig_arp_mixamo.blend"):
+        OUT_BLEND = IN_BLEND
+        if OUT_GLB == os.path.join(DELIVERY, "05骨骼绑定", "B_骨骼绑定", "06_rig_arp_mixamo.glb"):
+            OUT_GLB = IN_BLEND.replace(".blend", ".glb")
+print(f"输入: {IN_BLEND}\n输出: {OUT_BLEND}")
 
 bpy.ops.wm.open_mainfile(filepath=IN_BLEND)
 
