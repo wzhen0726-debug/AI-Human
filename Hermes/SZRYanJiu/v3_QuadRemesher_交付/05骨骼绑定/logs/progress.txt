@@ -1,2 +1,2 @@
-start 10:15:10
-done rc=0
+glb 11:26:46
+glb_done 11:26:54

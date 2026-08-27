@@ -1,0 +1,109 @@
+FBX=Standard Walk.fbx obj_rot=[1.570796251296997, -0.0, 0.0]
+骨骼                               Y差°     Z差°     长度比  我们z / mixamo映射z
+mixamorig:Head                 97.64   97.64   1.324  我们z=(0.00,-0.99,0.13) mixz=(0.00,-0.00,-1.00)
+mixamorig:Hips                 90.00   90.00   0.460  我们z=(0.00,-1.00,0.00) mixz=(-0.00,-0.00,-1.00)
+mixamorig:LeftArm               1.98   90.03   0.983  我们z=(-0.02,-0.00,-1.00) mixz=(0.00,1.00,-0.00)
+mixamorig:LeftFoot             96.74   96.66   1.087  我们z=(-0.05,-0.35,0.94) mixz=(-0.05,-0.89,-0.46)
+mixamorig:LeftForeArm           8.05   90.20   0.861  我们z=(0.03,-0.00,-1.00) mixz=(0.00,1.00,-0.00)
+mixamorig:LeftHand              8.05   90.20   0.820  我们z=(0.03,-0.00,-1.00) mixz=(0.00,1.00,-0.00)
+mixamorig:LeftHandIndex1        8.05   90.20   1.028  我们z=(0.03,-0.00,-1.00) mixz=(0.00,1.00,-0.00)
+mixamorig:LeftHandIndex2        8.05   90.20   0.644  我们z=(0.03,-0.00,-1.00) mixz=(0.00,1.00,-0.00)
+mixamorig:LeftHandIndex3        8.05   90.20   0.650  我们z=(0.03,-0.00,-1.00) mixz=(0.00,1.00,-0.00)
+mixamorig:LeftHandMiddle1       8.05   90.20   1.245  我们z=(0.03,-0.00,-1.00) mixz=(0.00,1.00,-0.00)
+mixamorig:LeftHandMiddle2       8.05   90.20   0.723  我们z=(0.03,-0.00,-1.00) mixz=(0.00,1.00,-0.00)
+mixamorig:LeftHandMiddle3       8.05   90.20   0.571  我们z=(0.03,-0.00,-1.00) mixz=(0.00,1.00,-0.00)
+mixamorig:LeftHandPinky1        8.05   90.20   0.846  我们z=(0.03,-0.00,-1.00) mixz=(0.00,1.00,0.00)
+mixamorig:LeftHandPinky2        8.04   90.20   0.694  我们z=(0.03,-0.00,-1.00) mixz=(0.00,1.00,-0.00)
+mixamorig:LeftHandPinky3        8.05   90.20   0.547  我们z=(0.03,-0.00,-1.00) mixz=(0.00,1.00,0.00)
+mixamorig:LeftHandRing1         8.05   90.20   1.166  我们z=(0.03,-0.00,-1.00) mixz=(0.00,1.00,-0.00)
+mixamorig:LeftHandRing2         8.05   90.20   0.665  我们z=(0.03,-0.00,-1.00) mixz=(0.00,1.00,-0.00)
+mixamorig:LeftHandRing3         8.05   90.20   0.519  我们z=(0.03,-0.00,-1.00) mixz=(0.00,1.00,0.00)
+mixamorig:LeftHandThumb1       57.55   80.44   0.948  我们z=(-0.42,-0.05,-0.91) mixz=(-0.50,0.87,-0.00)
+mixamorig:LeftHandThumb2       57.55   80.44   0.730  我们z=(-0.42,-0.05,-0.91) mixz=(-0.50,0.87,0.00)
+mixamorig:LeftHandThumb3       57.55   80.44   0.809  我们z=(-0.42,-0.05,-0.91) mixz=(-0.50,0.87,0.00)
+mixamorig:LeftLeg              87.91   87.91   0.899  我们z=(0.00,-1.00,-0.09) mixz=(-0.00,0.05,-1.00)
+mixamorig:LeftShoulder         11.67   90.00   1.256  我们z=(0.00,0.00,1.00) mixz=(-0.02,1.00,-0.00)
+mixamorig:LeftToeBase          82.87   82.89   0.707  我们z=(0.00,-0.14,0.99) mixz=(0.02,-1.00,-0.02)
+mixamorig:LeftUpLeg            71.98   72.22   0.932  我们z=(0.04,-0.95,-0.32) mixz=(0.00,0.01,-1.00)
+mixamorig:Neck                 52.74   52.74   1.267  我们z=(0.00,-0.80,-0.61) mixz=(0.00,-0.00,-1.00)
+mixamorig:RightArm              1.97   90.03   0.983  我们z=(0.02,-0.00,-1.00) mixz=(0.00,1.00,-0.00)
+mixamorig:RightFoot            96.74   96.66   1.087  我们z=(0.05,-0.35,0.94) mixz=(0.05,-0.89,-0.46)
+mixamorig:RightForeArm          8.06   90.20   0.861  我们z=(-0.03,-0.00,-1.00) mixz=(0.00,1.00,-0.00)
+mixamorig:RightHand             8.06   90.20   0.820  我们z=(-0.03,-0.00,-1.00) mixz=(0.00,1.00,-0.00)
+mixamorig:RightHandIndex1       8.06   90.20   1.028  我们z=(-0.03,-0.00,-1.00) mixz=(0.00,1.00,0.00)
+mixamorig:RightHandIndex2       8.06   90.20   0.644  我们z=(-0.03,-0.00,-1.00) mixz=(0.00,1.00,-0.00)
+mixamorig:RightHandIndex3       8.06   90.20   0.650  我们z=(-0.03,-0.00,-1.00) mixz=(0.00,1.00,-0.00)
+mixamorig:RightHandMiddle1      8.06   90.20   1.245  我们z=(-0.03,-0.00,-1.00) mixz=(0.00,1.00,-0.00)
+mixamorig:RightHandMiddle2      8.06   90.20   0.723  我们z=(-0.03,-0.00,-1.00) mixz=(0.00,1.00,-0.00)
+mixamorig:RightHandMiddle3      8.06   90.20   0.571  我们z=(-0.03,-0.00,-1.00) mixz=(0.00,1.00,-0.00)
+mixamorig:RightHandPinky1       8.06   90.20   0.846  我们z=(-0.03,-0.00,-1.00) mixz=(0.00,1.00,0.00)
+mixamorig:RightHandPinky2       8.06   90.20   0.694  我们z=(-0.03,-0.00,-1.00) mixz=(0.00,1.00,-0.00)
+mixamorig:RightHandPinky3       8.06   90.20   0.547  我们z=(-0.03,-0.00,-1.00) mixz=(0.00,1.00,0.00)
+mixamorig:RightHandRing1        8.06   90.20   1.166  我们z=(-0.03,-0.00,-1.00) mixz=(0.00,1.00,-0.00)
+mixamorig:RightHandRing2        8.06   90.20   0.665  我们z=(-0.03,-0.00,-1.00) mixz=(0.00,1.00,0.00)
+mixamorig:RightHandRing3        8.06   90.20   0.519  我们z=(-0.03,-0.00,-1.00) mixz=(0.00,1.00,-0.00)
+mixamorig:RightHandThumb1      57.56   80.44   0.948  我们z=(0.42,-0.05,-0.91) mixz=(0.50,0.87,0.00)
+mixamorig:RightHandThumb2      57.56   80.44   0.730  我们z=(0.42,-0.05,-0.91) mixz=(0.50,0.87,0.00)
+mixamorig:RightHandThumb3      57.56   80.44   0.809  我们z=(0.42,-0.05,-0.91) mixz=(0.50,0.87,0.00)
+mixamorig:RightLeg             87.92   87.91   0.899  我们z=(-0.00,-1.00,-0.09) mixz=(0.00,0.05,-1.00)
+mixamorig:RightShoulder        11.67   90.00   1.256  我们z=(0.00,0.00,1.00) mixz=(0.02,1.00,-0.00)
+mixamorig:RightToeBase         82.87   82.89   0.707  我们z=(0.00,-0.14,0.99) mixz=(-0.02,-1.00,-0.02)
+mixamorig:RightUpLeg           71.98   72.22   0.932  我们z=(-0.04,-0.95,-0.32) mixz=(-0.00,0.01,-1.00)
+mixamorig:Spine                96.47   96.47   1.731  我们z=(0.00,-0.97,0.23) mixz=(-0.00,-0.12,-0.99)
+mixamorig:Spine1               96.49   96.49   1.509  我们z=(0.00,-0.97,0.23) mixz=(-0.00,-0.12,-0.99)
+mixamorig:Spine2              103.11  103.11   1.695  我们z=(0.00,-0.97,0.23) mixz=(-0.00,-0.01,-1.00)
+
+问题骨: 52
+  mixamorig:Head
+  mixamorig:Hips
+  mixamorig:LeftArm
+  mixamorig:LeftFoot
+  mixamorig:LeftForeArm
+  mixamorig:LeftHand
+  mixamorig:LeftHandIndex1
+  mixamorig:LeftHandIndex2
+  mixamorig:LeftHandIndex3
+  mixamorig:LeftHandMiddle1
+  mixamorig:LeftHandMiddle2
+  mixamorig:LeftHandMiddle3
+  mixamorig:LeftHandPinky1
+  mixamorig:LeftHandPinky2
+  mixamorig:LeftHandPinky3
+  mixamorig:LeftHandRing1
+  mixamorig:LeftHandRing2
+  mixamorig:LeftHandRing3
+  mixamorig:LeftHandThumb1
+  mixamorig:LeftHandThumb2
+  mixamorig:LeftHandThumb3
+  mixamorig:LeftLeg
+  mixamorig:LeftShoulder
+  mixamorig:LeftToeBase
+  mixamorig:LeftUpLeg
+  mixamorig:Neck
+  mixamorig:RightArm
+  mixamorig:RightFoot
+  mixamorig:RightForeArm
+  mixamorig:RightHand
+  mixamorig:RightHandIndex1
+  mixamorig:RightHandIndex2
+  mixamorig:RightHandIndex3
+  mixamorig:RightHandMiddle1
+  mixamorig:RightHandMiddle2
+  mixamorig:RightHandMiddle3
+  mixamorig:RightHandPinky1
+  mixamorig:RightHandPinky2
+  mixamorig:RightHandPinky3
+  mixamorig:RightHandRing1
+  mixamorig:RightHandRing2
+  mixamorig:RightHandRing3
+  mixamorig:RightHandThumb1
+  mixamorig:RightHandThumb2
+  mixamorig:RightHandThumb3
+  mixamorig:RightLeg
+  mixamorig:RightShoulder
+  mixamorig:RightToeBase
+  mixamorig:RightUpLeg
+  mixamorig:Spine
+  mixamorig:Spine1
+  mixamorig:Spine2
+MAPPING_DONE

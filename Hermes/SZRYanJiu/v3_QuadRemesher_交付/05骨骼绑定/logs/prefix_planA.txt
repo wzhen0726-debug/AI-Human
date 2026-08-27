@@ -1,0 +1,128 @@
+Traceback (most recent call last):
+  File "D:\Program Files\Blender Foundation\Blender 5.1\5.1\scripts\modules\addon_utils.py", line 515, in enable
+    mod.register()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py", line 42, in register
+    from .exporter import register_exporter
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\exporter.py", line 2, in <module>
+    import bpy_types
+ModuleNotFoundError: No module named 'bpy_types'
+00:01.687  blend            | Read blend: "E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\B_骨骼绑定\06_rig_arp_mixamo.blend"
+Exception in module register(): C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py
+Reloading external rigs...
+Reloading external metarigs...
+Extra Pies: Register built-in pies for use with non-standard Keymap.
+register_class(...):
+警告: 'List_View' 不包含带有前缀和后缀的 '_UL_'
+Registered B2RUVL 0.1.6.
+Registered MACHIN3tools 1.13.8.DeusEx with 2 tools, 0 pie menus
+ARP首选项已成功加载！
+更新骨架预设…
+Zen UV Library: REGISTERED.
+输入: E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\B_骨骼绑定\06_rig_arp_mixamo.blend
+输出: E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\B_骨骼绑定\06_rig_arp_mixamo.blend
+重命名骨骼: 0
+重命名顶点组: 0
+信息: 已另存为 "06_rig_arp_mixamo.blend"
+保存: E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\B_骨骼绑定\06_rig_arp_mixamo.blend
+INFO Draco mesh compression is available, use library at D:\Program Files\Blender Foundation\Blender 5.1\5.1\scripts\addons_core\io_scene_gltf2\extern_draco.dll
+11:22:35 | INFO: Starting glTF 2.0 export
+11:22:35 | INFO: Extracting primitive: cs_arrow_cross
+11:22:35 | INFO: Primitives created: 0
+11:22:35 | WARNING: Mesh 'cs_arrow_cross' has no primitives and will be omitted.
+11:22:35 | INFO: Extracting primitive: cs_arrow_twist
+11:22:35 | INFO: Primitives created: 0
+11:22:35 | WARNING: Mesh 'cs_arrow_twist' has no primitives and will be omitted.
+11:22:35 | INFO: Extracting primitive: cs_torus_04.001
+11:22:35 | INFO: Primitives created: 0
+11:22:35 | WARNING: Mesh 'cs_torus_04.001' has no primitives and will be omitted.
+11:22:35 | INFO: Extracting primitive: cs_torus_04.005
+11:22:35 | INFO: Primitives created: 0
+11:22:35 | WARNING: Mesh 'cs_torus_04.005' has no primitives and will be omitted.
+11:22:35 | INFO: Extracting primitive: cs_box
+11:22:35 | INFO: Primitives created: 0
+11:22:35 | WARNING: Mesh 'cs_box' has no primitives and will be omitted.
+11:22:35 | INFO: Extracting primitive: cs_circle_head
+11:22:35 | INFO: Primitives created: 0
+11:22:35 | WARNING: Mesh 'cs_circle_head' has no primitives and will be omitted.
+11:22:35 | INFO: Extracting primitive: cs_circle_squashed.001
+11:22:35 | INFO: Primitives created: 0
+11:22:35 | WARNING: Mesh 'cs_circle_squashed.001' has no primitives and will be omitted.
+11:22:35 | INFO: Extracting primitive: cs_plane_1.002
+11:22:35 | INFO: Primitives created: 0
+11:22:35 | WARNING: Mesh 'cs_plane_1.002' has no primitives and will be omitted.
+11:22:35 | INFO: Extracting primitive: cs_foot.l
+11:22:35 | INFO: Primitives created: 0
+11:22:35 | WARNING: Mesh 'cs_foot.l' has no primitives and will be omitted.
+11:22:35 | INFO: Extracting primitive: cs_foot
+11:22:35 | INFO: Primitives created: 0
+11:22:35 | WARNING: Mesh 'cs_foot' has no primitives and will be omitted.
+11:22:35 | INFO: Extracting primitive: cs_torus_04.004
+11:22:35 | INFO: Primitives created: 0
+11:22:35 | WARNING: Mesh 'cs_torus_04.004' has no primitives and will be omitted.
+11:22:35 | INFO: Extracting primitive: cs_circle_01.001
+11:22:35 | INFO: Primitives created: 0
+11:22:35 | WARNING: Mesh 'cs_circle_01.001' has no primitives and will be omitted.
+11:22:35 | INFO: Extracting primitive: cs_foot.002
+11:22:35 | INFO: Primitives created: 0
+11:22:35 | WARNING: Mesh 'cs_foot.002' has no primitives and will be omitted.
+11:22:35 | INFO: Extracting primitive: Plane
+11:22:35 | INFO: Primitives created: 0
+11:22:35 | WARNING: Mesh 'Plane' has no primitives and will be omitted.
+11:22:35 | INFO: Extracting primitive: cs_plane_2.002
+11:22:35 | INFO: Primitives created: 0
+11:22:35 | WARNING: Mesh 'cs_plane_2.002' has no primitives and will be omitted.
+11:22:35 | INFO: Extracting primitive: cs_sphere
+11:22:35 | INFO: Primitives created: 0
+11:22:35 | WARNING: Mesh 'cs_sphere' has no primitives and will be omitted.
+11:22:35 | INFO: Extracting primitive: cs_user_c_spine_01.x
+11:22:35 | INFO: Primitives created: 0
+11:22:35 | WARNING: Mesh 'cs_user_c_spine_01.x' has no primitives and will be omitted.
+11:22:35 | INFO: Extracting primitive: cs_torus_02
+11:22:35 | INFO: Primitives created: 0
+11:22:35 | WARNING: Mesh 'cs_torus_02' has no primitives and will be omitted.
+11:22:35 | INFO: Extracting primitive: cs_torus_03
+11:22:35 | INFO: Primitives created: 0
+11:22:35 | WARNING: Mesh 'cs_torus_03' has no primitives and will be omitted.
+11:22:35 | INFO: Extracting primitive: cs_torus_04
+11:22:35 | INFO: Primitives created: 0
+11:22:35 | WARNING: Mesh 'cs_torus_04' has no primitives and will be omitted.
+11:22:35 | INFO: Extracting primitive: cs_user_c_arm_fk.l
+11:22:35 | INFO: Primitives created: 0
+11:22:35 | WARNING: Mesh 'cs_user_c_arm_fk.l' has no primitives and will be omitted.
+11:22:35 | INFO: Extracting primitive: cs_user_c_arm_fk.r.003
+11:22:35 | INFO: Primitives created: 0
+11:22:35 | WARNING: Mesh 'cs_user_c_arm_fk.r.003' has no primitives and will be omitted.
+11:22:35 | INFO: Extracting primitive: cs_user_c_arm_ik.r
+11:22:35 | INFO: Primitives created: 0
+11:22:35 | WARNING: Mesh 'cs_user_c_arm_ik.r' has no primitives and will be omitted.
+11:22:35 | INFO: Extracting primitive: cs_user_c_leg_fk.l
+11:22:35 | INFO: Primitives created: 0
+11:22:35 | WARNING: Mesh 'cs_user_c_leg_fk.l' has no primitives and will be omitted.
+11:22:35 | INFO: Extracting primitive: cs_user_c_leg_fk.r
+11:22:35 | INFO: Primitives created: 0
+11:22:35 | WARNING: Mesh 'cs_user_c_leg_fk.r' has no primitives and will be omitted.
+11:22:35 | INFO: Extracting primitive: cs_user_c_shoulder.l
+11:22:35 | INFO: Primitives created: 1
+11:22:35 | INFO: Extracting primitive: cs_user_c_shoulder.r
+11:22:35 | INFO: Primitives created: 1
+11:22:35 | INFO: Extracting primitive: cs_user_c_thigh_fk.l
+11:22:35 | INFO: Primitives created: 0
+11:22:35 | WARNING: Mesh 'cs_user_c_thigh_fk.l' has no primitives and will be omitted.
+11:22:35 | INFO: Extracting primitive: cs_user_c_thigh_fk.r
+11:22:35 | INFO: Primitives created: 0
+11:22:35 | WARNING: Mesh 'cs_user_c_thigh_fk.r' has no primitives and will be omitted.
+11:22:35 | INFO: Extracting primitive: mesh
+11:22:36 | INFO: Primitives created: 1
+11:22:36 | WARNING: There are more than 4 joint vertex influences.The 4 with highest weight will be used (and normalized).
+11:22:36 | INFO: Finished glTF 2.0 export in 1.472877025604248 s
+
+GLB: E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\B_骨骼绑定\06_rig_arp_mixamo.glb
+最终: 65骨骼, 前缀=mixamorig:
+PREFIX_DONE
+Unregistered B2RUVL 0.1.6.
+Unregistered MACHIN3tools 1.13.8.DeusEx.
+Zen UV Library: UNREGISTERED.
+Blender 5.1.0 (hash adfe2921d5f3 built 2026-03-17 01:37:32)
+
+Blender quit

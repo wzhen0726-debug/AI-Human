@@ -1,0 +1,59 @@
+我们的骨架: 52骨 | Mixamo: 65骨 | FBX=Standard Walk.fbx
+
+骨骼                               位置差m     方向差°     Z轴差°
+同名骨: 52
+mixamorig:Head                  0.067     0.00     0.00
+mixamorig:Hips                  0.186     0.00     0.00
+mixamorig:LeftArm               0.018     0.00     0.00
+mixamorig:LeftFoot              0.062     0.00     0.00
+mixamorig:LeftForeArm           0.012     0.00     0.00
+mixamorig:LeftHand              0.046     0.00     0.00
+mixamorig:LeftHandIndex1        0.079     0.00     0.00
+mixamorig:LeftHandIndex2        0.078     0.00     0.00
+mixamorig:LeftHandIndex3        0.090     0.00     0.00
+mixamorig:LeftHandMiddle1       0.093     0.00     0.00
+mixamorig:LeftHandMiddle2       0.089     0.00     0.00
+mixamorig:LeftHandMiddle3       0.099     0.00     0.00
+mixamorig:LeftHandPinky1        0.148     0.00     0.00
+mixamorig:LeftHandPinky2        0.155     0.00     0.00
+mixamorig:LeftHandPinky3        0.161     0.00     0.00
+mixamorig:LeftHandRing1         0.117     0.00     0.00
+mixamorig:LeftHandRing2         0.118     0.00     0.00
+mixamorig:LeftHandRing3         0.127     0.00     0.00
+mixamorig:LeftHandThumb1        0.052     0.00     0.00
+mixamorig:LeftHandThumb2        0.054     0.00     0.00
+mixamorig:LeftHandThumb3        0.066     0.00     0.00
+mixamorig:LeftLeg               0.062     0.00     0.00
+mixamorig:LeftShoulder          0.026     0.00     0.00
+mixamorig:LeftToeBase           0.051     0.00     0.00
+mixamorig:LeftUpLeg             0.216     0.00     0.00
+mixamorig:Neck                  0.065     0.00     0.00
+mixamorig:RightArm              0.018     0.00     0.00
+mixamorig:RightFoot             0.062     0.00     0.00
+mixamorig:RightForeArm          0.012     0.00     0.00
+mixamorig:RightHand             0.046     0.00     0.00
+mixamorig:RightHandIndex1       0.079     0.00     0.00
+mixamorig:RightHandIndex2       0.078     0.00     0.00
+mixamorig:RightHandIndex3       0.091     0.00     0.00
+mixamorig:RightHandMiddle1      0.093     0.00     0.00
+mixamorig:RightHandMiddle2      0.089     0.00     0.00
+mixamorig:RightHandMiddle3      0.099     0.00     0.00
+mixamorig:RightHandPinky1       0.148     0.00     0.00
+mixamorig:RightHandPinky2       0.155     0.00     0.00
+mixamorig:RightHandPinky3       0.161     0.00     0.00
+mixamorig:RightHandRing1        0.117     0.00     0.00
+mixamorig:RightHandRing2        0.118     0.00     0.00
+mixamorig:RightHandRing3        0.127     0.00     0.00
+mixamorig:RightHandThumb1       0.052     0.00     0.00
+mixamorig:RightHandThumb2       0.055     0.00     0.00
+mixamorig:RightHandThumb3       0.066     0.00     0.00
+mixamorig:RightLeg              0.062     0.00     0.00
+mixamorig:RightShoulder         0.026     0.00     0.00
+mixamorig:RightToeBase          0.051     0.00     0.00
+mixamorig:RightUpLeg            0.216     0.00     0.00
+mixamorig:Spine                 0.281     0.00     0.00
+mixamorig:Spine1                0.193     0.00     0.00
+mixamorig:Spine2                0.123     0.00     0.00
+
+问题骨(方向>5°或Z轴>20°): 0
+REST_COMPARE_DONE
