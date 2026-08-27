@@ -1,0 +1,46 @@
+Traceback (most recent call last):
+  File "D:\Program Files\Blender Foundation\Blender 5.1\5.1\scripts\modules\addon_utils.py", line 515, in enable
+    mod.register()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py", line 42, in register
+    from .exporter import register_exporter
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\exporter.py", line 2, in <module>
+    import bpy_types
+ModuleNotFoundError: No module named 'bpy_types'
+00:01.844  blend            | Read blend: "E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\A_半自动打点\07_arp_markers.blend"
+Exception in module register(): C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py
+Reloading external rigs...
+Reloading external metarigs...
+Extra Pies: Register built-in pies for use with non-standard Keymap.
+register_class(...):
+警告: 'List_View' 不包含带有前缀和后缀的 '_UL_'
+Registered B2RUVL 0.1.6.
+Registered MACHIN3tools 1.13.8.DeusEx with 2 tools, 0 pie menus
+ARP首选项已成功加载！
+更新骨架预设…
+Zen UV Library: REGISTERED.
+主标记 10
+  02_下巴: (0.001, -0.113, 1.556)
+  05_肘: (0.475, 0.032, 1.435)
+  10_脚踝: (0.143, 0.006, 0.101)
+  06_手腕: (0.71, -0.002, 1.436)
+  07_指尖: (0.884, -0.003, 1.441)
+  09_膝: (0.132, -0.048, 0.505)
+  03_颈根: (0.002, -0.039, 1.473)
+  01_骨盆中心: (-0.001, -0.116, 0.885)
+  04_肩: (0.194, -0.028, 1.454)
+  08_大腿根上段: (0.082, -0.095, 0.863)
+镜像标记 7
+  04_肩_对侧镜像: (-0.194, -0.028, 1.454)
+  05_肘_对侧镜像: (-0.475, 0.032, 1.435)
+  06_手腕_对侧镜像: (-0.71, -0.002, 1.436)
+  07_指尖_对侧镜像: (-0.884, -0.003, 1.441)
+  08_大腿根上段_对侧镜像: (-0.082, -0.095, 0.863)
+  09_膝_对侧镜像: (-0.132, -0.048, 0.505)
+  10_脚踝_对侧镜像: (-0.143, 0.006, 0.101)
+Unregistered B2RUVL 0.1.6.
+Unregistered MACHIN3tools 1.13.8.DeusEx.
+Zen UV Library: UNREGISTERED.
+Blender 5.1.0 (hash adfe2921d5f3 built 2026-03-17 01:37:32)
+
+Blender quit
