@@ -119,10 +119,15 @@ def build_skeleton(pos):
     add("Head", neck, head, parent="Neck")
 
     # 手臂 (含手骨: 掌骨+5指各3节, 朝向沿手臂方向延伸)
-    for side, pre in [("L", "Left"), ("R", "Right")]:
-        sh = pos[f"Shoulder_{side}"]
-        el = pos[f"Elbow_{side}"]
-        wr = pos[f"Wrist_{side}"]
+    # 根因修复(2026-08-27): 左右命名镜像错误
+    # 模型面朝-y: 模型自身的"左"侧在+X(从面朝-y的模型视角), 用户的"右肩"标记在+X
+    # = Mixamo的Left系. 之前把+X侧标成了Right → 动画左右镜像(手臂交叉/拧转)
+    # 修复: +X侧(用户"右肩"标记, 实为模型左手) → Mixamo Left命名; -X侧 → Right
+    for side, pre in [("R2L", "Left"), ("L2R", "Right")]:  # 标记R侧(+X)→Left骨, 标记L侧(-X)→Right骨
+        src = "R" if side == "R2L" else "L"
+        sh = pos[f"Shoulder_{src}"]
+        el = pos[f"Elbow_{src}"]
+        wr = pos[f"Wrist_{src}"]
 
         # Mixamo规范: Shoulder从脊柱旁画到肩关节
         sh_head = shoulder_mid + (sh - shoulder_mid) * 0.2
@@ -133,48 +138,83 @@ def build_skeleton(pos):
         hand_dir = (wr - el).normalized() if (wr - el).length > 0.001 else Vector((0.1 if side == 'L' else -0.1, 0, 0))
         palm_end = wr + hand_dir * 0.09
         add(f"{pre}Hand", wr, palm_end, parent=f"{pre}ForeArm")
-        # 手指: 5指, 每指3节, 沿手臂方向延伸, 绕z轴扇形展开(掌心朝下-z, 拇指朝前)
-        import math
-        # 展开角(度, 正=朝模型前方): 拇指最大, 小指偏后
-        finger_spread = {"Thumb": 25, "Index": 10, "Middle": 3, "Ring": -3, "Pinky": -10}
-        finger_lens = {"Thumb": [0.045, 0.032, 0.028], "Index": [0.040, 0.022, 0.020],
-                       "Middle": [0.045, 0.025, 0.021], "Ring": [0.042, 0.022, 0.019],
-                       "Pinky": [0.035, 0.018, 0.016]}
-        rot_sign = 1.0 if side == 'L' else -1.0   # L臂朝-x, 正旋转朝前; R臂朝+x, 需反向
-        for fname, spread_deg in finger_spread.items():
-            ang = math.radians(spread_deg * rot_sign)
-            fdir = hand_dir.copy()
-            fdir.rotate(mathutils.Euler((0, 0, ang)))
+        # 根因修复(2026-08-27): 指骨生成重写, 对齐Mixamo参考骨架实测数据
+        # 错误1: 五指指根全挤在同一点(没沿掌宽展开) → 网格手指无法独立控制
+        # 错误2: 拇指翘起朝上(+0.26), Mixamo参考是朝前下(-0.45)
+        # 正确: 指根沿掌宽方向(模型前后=y轴)排开, 指尖方向=手臂方向为主+掌宽扇形
+        # T-pose掌心朝下: 掌宽方向=模型前后(y), 拇指在模型前方(-y), 小指在后(+y)
+        fwd = Vector((0, -1, 0))          # 模型前方(-y)
+        fingers = [
+            ("Thumb",  0.040, -0.048, 0.020, [0.045, 0.032, 0.028]),  # (名, 掌根前偏, 掌根侧偏, 指长[3节])
+            ("Index",  0.075, -0.022, 0.040, [0.040, 0.022, 0.020]),
+            ("Middle", 0.078,  0.000, 0.045, [0.045, 0.025, 0.021]),
+            ("Ring",   0.075,  0.020, 0.042, [0.042, 0.022, 0.019]),
+            ("Pinky",  0.070,  0.038, 0.035, [0.035, 0.018, 0.016]),
+        ]
+        for fname, along, side_off, _tot, lens in fingers:
+            # 指根: 手腕沿手臂方向along + 沿掌宽方向side_off (掌宽方向=模型前后)
+            fbase = wr + hand_dir * along + fwd * side_off
+            # 指向(对齐Mixamo rest实测): 四指沿手臂方向, 仅拇指前伸+下压
+            # Mixamo Thumb1方向=(0.77,-0.45,-0.45): 沿臂+朝前+朝下
             if fname == "Thumb":
-                # 拇指额外上翘(掌心朝下, 拇指略向上)
-                fdir.rotate(mathutils.Euler((0, -0.35 * rot_sign, 0)))
-            fdir.normalize()
-            fbase = wr + hand_dir * 0.075 + fdir * 0.015   # 掌骨末端
+                fdir = (hand_dir + fwd * 0.50 + Vector((0, 0, -0.45))).normalized()
+            else:
+                fdir = hand_dir.copy()
             prev = fbase
-            for seg_i, seg_len in enumerate(finger_lens[fname], 1):
+            for seg_i, seg_len in enumerate(lens, 1):
                 fseg_end = prev + fdir * seg_len
                 seg_name = f"{pre}Hand{fname}{seg_i}"
                 add(seg_name, prev, fseg_end, parent=f"{pre}Hand" if seg_i == 1 else f"{pre}Hand{fname}{seg_i-1}")
                 prev = fseg_end
 
     # 腿 (含脚骨: 脚跟→脚掌→脚趾, 脚尖朝前)
-    for side, pre in [("L", "Left"), ("R", "Right")]:
-        hip_s = hiptop + Vector((-0.08 if side == 'L' else 0.08, 0, 0))
-        kn = pos[f"Knee_{side}"]
-        an = pos[f"Ankle_{side}"]
+    # 同样的左右镜像修复(2026-08-27): +X标记(用户"右膝/右踝")→Mixamo Left, -X→Right
+    for side, pre in [("R2L", "Left"), ("L2R", "Right")]:
+        src = "R" if side == "R2L" else "L"
+        hip_s = hiptop + Vector((-0.08 if src == 'L' else 0.08, 0, 0))
+        kn = pos[f"Knee_{src}"]
+        an = pos[f"Ankle_{src}"]
 
         add(f"{pre}UpLeg", hip_s, kn, parent="Hips")
         add(f"{pre}Leg", kn, an, parent=f"{pre}UpLeg")
-        # 脚: 踝→脚跟(后下方)→脚掌(前)→脚趾(前)
-        # 脚跟: 踝后方下方
-        heel = an + Vector((0, 0.04, -0.04))
-        # 脚掌: 踝前方(脚长~25cm, 踝到趾根~18cm)
-        ball = an + Vector((0, -0.16, -0.06))
-        # 脚趾: 脚掌前方(~7cm)
-        toe_tip = an + Vector((0, -0.23, -0.07))
-        add(f"{pre}Foot", an, heel, parent=f"{pre}Leg")
-        add(f"{pre}ToeBase", heel, ball, parent=f"{pre}Foot")
-        add(f"{pre}Toe", ball, toe_tip, parent=f"{pre}ToeBase")
+        # 脚: 根因修复(2026-08-27): 之前Foot从踝指向脚跟(+y后方) → 骨骼Y轴朝后
+        # Mixamo参考: Foot踝→趾根(朝前-y), ToeBase趾根→趾尖(朝前) — roll约定才能对上
+        fwd = Vector((0, -1, 0))
+        ball = an + fwd * 0.16 + Vector((0, 0, -0.06))   # 趾根: 前方16cm下方6cm
+        toe_tip = an + fwd * 0.23 + Vector((0, 0, -0.07))
+        add(f"{pre}Foot", an, ball, parent=f"{pre}Leg")
+        add(f"{pre}ToeBase", ball, toe_tip, parent=f"{pre}Foot")
+
+    # ===== roll对齐Mixamo约定(2026-08-27 v8, 以T-Pose世界系实测为准) =====
+    # 权威依据=roll_compare.py直接世界系测量(两骨架同朝向: 面-Y/左+X/上+Z):
+    #   Arm/ForeArm/Hand/四指: Z朝下(0,0,-1); UpLeg/Leg: Z朝前(0,-1,0);
+    #   Foot: Z朝上前(±0.05,-0.46,0.89); ToeBase: Z朝上(0,0,1);
+    #   Thumb: Z朝下偏身侧(L:(-0.5,0,-0.87)/R:(0.5,0,-0.87))
+    # (教训: axes_dump按armature对象旋转推导的目标实测错—手臂z1.62偏高; 世界系实测z1.17正确)
+    from mathutils import Vector as _V
+    ROLL_TARGETS = {
+        "Arm": (0, 0, -1), "ForeArm": (0, 0, -1), "Hand": (0, 0, -1),
+        "UpLeg": (0, -1, 0), "Leg": (0, -1, 0),
+        "Foot": (-0.05, -0.46, 0.89), "ToeBase": (0, 0, 1),
+    }
+    for key, target in ROLL_TARGETS.items():
+        for pre in ("Left", "Right"):
+            b = eb.get(f"{pre}{key}")
+            if b:
+                t = _V(target)
+                if key in ("Foot",) and pre == "Right":
+                    t = _V((-target[0], target[1], target[2]))
+                b.align_roll(t)
+    for pre in ("Left", "Right"):
+        for fname in ("Index", "Middle", "Ring", "Pinky"):
+            for i in (1, 2, 3):
+                b = eb.get(f"{pre}Hand{fname}{i}")
+                if b:
+                    b.align_roll(_V((0, 0, -1)))
+        for i in (1, 2, 3):
+            bt = eb.get(f"{pre}HandThumb{i}")
+            if bt:
+                bt.align_roll(_V((-0.5 if pre == "Left" else 0.5, 0, -0.87)))
 
     bpy.ops.object.mode_set(mode='OBJECT')
     return None
@@ -201,18 +241,21 @@ def bind_weights():
     # (head沿骨骼Y轴到尾端, 与骨骼同朝向), 必须按此换算, 否则眼球飞走
     head_b = arm.data.bones.get('Head')
     if head_b:
-        # 复现Blender的BONE父级矩阵: 原点在tail(骨骼局部Y轴末端), 轴向=骨骼rest轴向
+        # BONE父级的完整矩阵: 原点=骨骼tail端, 旋转=骨骼rest旋转
         import mathutils
         tail_mat = mathutils.Matrix.Translation((0, head_b.length, 0))
         parent_mat = arm.matrix_world @ head_b.matrix_local @ tail_mat
         for o in bpy.data.objects:
             if o.type == 'MESH' and 'eye' in o.name.lower():
-                world_pos = o.matrix_world.translation.copy()
+                # 根因修复(2026-08-27): 之前只换算位置没换算旋转 → 虹膜被Head骨
+                # rest旋转带动朝下(实测(0,-0.13,-0.99)). 必须 preserve整个世界矩阵:
+                # matrix_basis = parent⁻¹ × world (位置+旋转一次到位)
+                M = o.matrix_world.copy()
                 o.parent = arm
                 o.parent_type = 'BONE'
                 o.parent_bone = 'Head'
-                o.location = parent_mat.inverted() @ world_pos
-                print(f"眼球 {o.name}: 世界({world_pos.x:.3f},{world_pos.y:.3f},{world_pos.z:.3f}) → Head局部({o.location.x:.3f},{o.location.y:.3f},{o.location.z:.3f})")
+                o.matrix_basis = parent_mat.inverted() @ M
+                print(f"眼球 {o.name}: 世界矩阵已保留(位置+虹膜朝向)")
     return None
 
 
