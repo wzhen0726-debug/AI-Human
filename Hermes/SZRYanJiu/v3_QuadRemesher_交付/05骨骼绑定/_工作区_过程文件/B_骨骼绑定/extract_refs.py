@@ -7,7 +7,7 @@ from mathutils import Vector
 
 BASE = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定"
 RIG = os.path.join(BASE, "_工作区_过程文件", "B_骨骼绑定", "07_arp_rig_v6.blend")
-OUT = os.path.join(BASE, "_工作区_过程文件", "B_骨骼绑定", "10_arp_from_refs.blend")
+OUT = os.path.join(BASE, "_工作区_过程文件", "B_骨骼绑定", "17_arp_fingers_fixed.blend")
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.wm.open_mainfile(filepath=RIG)
@@ -40,17 +40,20 @@ for side, pre in [("l", "Left"), ("r", "Right")]:
         (f"{pre}Shoulder", "Spine2", f"shoulder_ref{s}", f"shoulder_ref{s}"),
         (f"{pre}Arm", f"{pre}Shoulder", f"arm_ref{s}", f"arm_ref{s}"),
         (f"{pre}ForeArm", f"{pre}Arm", f"forearm_ref{s}", f"forearm_ref{s}"),
-        (f"{pre}Hand", f"{pre}ForeArm", f"hand_ref{s}", f"hand_ref{s}"),
+        # Hand尾伸到中指指根(Mixamo约定: 掌骨区归Hand骨), 不再只到掌中
+        # HEAD_前缀=取该参考骨的head(指根), 而非tail(第二关节)
+        (f"{pre}Hand", f"{pre}ForeArm", f"hand_ref{s}", f"HEAD_middle1_ref{s}"),
         # 拇指 (ARP无base, 直接1/2/3)
         (f"{pre}HandThumb1", f"{pre}Hand", f"thumb1_ref{s}", f"thumb1_ref{s}"),
         (f"{pre}HandThumb2", f"{pre}HandThumb1", f"thumb2_ref{s}", f"thumb2_ref{s}"),
         (f"{pre}HandThumb3", f"{pre}HandThumb2", f"thumb3_ref{s}", f"thumb3_ref{s}"),
     ]
-    # 四指: base+1合并为Mixamo第1节
+    # 四指: Mixamo约定 — 掌骨区归Hand骨, 指骨从指根开始.
+    # Finger1只覆盖近节指骨(index1: 指根→第2关节), 不并入掌段base
     for f in ["index", "middle", "ring", "pinky"]:
         F = f.capitalize()
         MAP += [
-            (f"{pre}Hand{F}1", f"{pre}Hand", f"{f}1_base_ref{s}", f"{f}1_ref{s}"),
+            (f"{pre}Hand{F}1", f"{pre}Hand", f"{f}1_ref{s}", f"{f}1_ref{s}"),
             (f"{pre}Hand{F}2", f"{pre}Hand{F}1", f"{f}2_ref{s}", f"{f}2_ref{s}"),
             (f"{pre}Hand{F}3", f"{pre}Hand{F}2", f"{f}3_ref{s}", f"{f}3_ref{s}"),
         ]
@@ -80,7 +83,11 @@ eb = arm_data.edit_bones
 created = {}
 for name, parent, hsrc, tsrc in MAP:
     b = eb.new(name)
-    if hsrc == "SPECIAL_HEADTOP":
+    if tsrc and tsrc.startswith("HEAD_"):
+        # 尾部取该参考骨的head(如中指指根)而非tail
+        b.head = whead(hsrc)
+        b.tail = whead(tsrc[5:])
+    elif hsrc == "SPECIAL_HEADTOP":
         h = wtail("head_ref.x")
         b.head = h
         b.tail = h + Vector((0, 0, 0.10))

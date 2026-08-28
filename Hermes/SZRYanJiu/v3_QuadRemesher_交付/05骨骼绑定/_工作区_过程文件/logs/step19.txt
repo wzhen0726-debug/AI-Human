@@ -1,0 +1,110 @@
+Traceback (most recent call last):
+  File "D:\Program Files\Blender Foundation\Blender 5.1\5.1\scripts\modules\addon_utils.py", line 515, in enable
+    mod.register()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py", line 42, in register
+    from .exporter import register_exporter
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\exporter.py", line 2, in <module>
+    import bpy_types
+ModuleNotFoundError: No module named 'bpy_types'
+Error in bpy.app.handlers.load_pre[1]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33282, in cleanup_line_fx
+    bpy.types.SpaceView3D.draw_handler_remove(handles_lines[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33286, in cleanup_line_fx
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+Error in bpy.app.handlers.load_pre[2]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5295, in cleanup
+    bpy.types.SpaceView3D.draw_handler_remove(handles[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5299, in cleanup
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+Error in bpy.app.handlers.load_pre[1]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33282, in cleanup_line_fx
+    bpy.types.SpaceView3D.draw_handler_remove(handles_lines[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33286, in cleanup_line_fx
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+Error in bpy.app.handlers.load_pre[2]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5295, in cleanup
+    bpy.types.SpaceView3D.draw_handler_remove(handles[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5299, in cleanup
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+00:02.062  blend            | Read blend: "E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\_工作区_过程文件\B_骨骼绑定\18_fingers_roll.blend"
+Error in bpy.app.handlers.load_post[2]:
+Traceback (most recent call last):
+  File "D:\Program Files\Blender Foundation\Blender 5.1\5.1\scripts\addons_core\rigify\utils\action_layers.py", line 439, in versioning_5_0
+    for action_setup in obj.data.rigify_action_slots:
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Armature' object has no attribute 'rigify_action_slots'
+Exception in module register(): C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py
+Reloading external rigs...
+Reloading external metarigs...
+Extra Pies: Register built-in pies for use with non-standard Keymap.
+register_class(...):
+警告: 'List_View' 不包含带有前缀和后缀的 '_UL_'
+Registered B2RUVL 0.1.6.
+Registered MACHIN3tools 1.13.8.DeusEx with 2 tools, 0 pie menus
+ARP首选项已成功加载！
+更新骨架预设…
+Zen UV Library: REGISTERED.
+Unregistered B2RUVL 0.1.6.
+Unregistered MACHIN3tools 1.13.8.DeusEx.
+Zen UV Library: UNREGISTERED.
+addon_utils.disable: bl_ext.lab_blender_org.mcp not enabled
+设use_connect: 41根
+  Spine1, Spine2, Neck, Head, HeadTop_End, LeftArm, LeftForeArm, LeftHand, LeftHandThumb2, LeftHandThumb3, LeftHandIndex2, LeftHandIndex3, LeftHandMiddle1, LeftHandMiddle2, LeftHandMiddle3, LeftHandRing2, LeftHandRing3, LeftHandPinky2, LeftHandPinky3, RightArm
+
+残留间隙>1mm: 13处 (解剖学正常偏移)
+  Spine ← Hips: 0.6cm
+  LeftShoulder ← Spine2: 7.1cm
+  LeftHandThumb1 ← LeftHand: 8.3cm
+  LeftHandIndex1 ← LeftHand: 2.5cm
+  LeftHandRing1 ← LeftHand: 2.4cm
+  LeftHandPinky1 ← LeftHand: 4.5cm
+  RightShoulder ← Spine2: 7.1cm
+  RightHandThumb1 ← RightHand: 8.3cm
+  RightHandIndex1 ← RightHand: 2.5cm
+  RightHandRing1 ← RightHand: 2.4cm
+  RightHandPinky1 ← RightHand: 4.5cm
+  LeftUpLeg ← Hips: 18.4cm
+  RightUpLeg ← Hips: 18.4cm
+Info: Saved "19_arp_final_v2.blend"
+保存: E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\_工作区_过程文件\B_骨骼绑定\19_arp_final_v2.blend
+FINAL_DONE
+Blender 5.1.0 (hash adfe2921d5f3 built 2026-03-17 01:37:32)
+
+Blender quit

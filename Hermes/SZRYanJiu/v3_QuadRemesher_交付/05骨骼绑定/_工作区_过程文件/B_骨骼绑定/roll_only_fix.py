@@ -8,8 +8,8 @@ from mathutils import Vector
 
 BASE = os.path.join(r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定", "_工作区_过程文件")
 SPEC = os.path.join(BASE, "logs", "mixamo_rest_spec.json")
-RIG = os.path.join(BASE, "B_骨骼绑定", "10_arp_from_refs.blend")
-OUT = os.path.join(BASE, "B_骨骼绑定", "14_arp_refs_rollonly.blend")
+RIG = os.path.join(BASE, "B_骨骼绑定", "17_arp_fingers_fixed.blend")
+OUT = os.path.join(BASE, "B_骨骼绑定", "18_fingers_roll.blend")
 
 spec = json.load(open(SPEC, encoding="utf-8"))["bones"]
 print(f"spec骨骼数: {len(spec)}")

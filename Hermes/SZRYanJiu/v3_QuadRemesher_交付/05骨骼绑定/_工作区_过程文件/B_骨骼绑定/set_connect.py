@@ -5,8 +5,8 @@
 import bpy, os
 
 BASE = os.path.join(r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定", "_工作区_过程文件")
-RIG = os.path.join(BASE, "B_骨骼绑定", "14_arp_refs_rollonly.blend")
-OUT = os.path.join(BASE, "B_骨骼绑定", "16_arp_final.blend")
+RIG = os.path.join(BASE, "B_骨骼绑定", "18_fingers_roll.blend")
+OUT = os.path.join(BASE, "B_骨骼绑定", "19_arp_final_v2.blend")
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.wm.open_mainfile(filepath=RIG)

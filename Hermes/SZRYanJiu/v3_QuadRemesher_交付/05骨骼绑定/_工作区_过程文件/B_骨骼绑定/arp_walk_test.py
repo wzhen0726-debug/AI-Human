@@ -7,8 +7,8 @@ import bpy, os
 
 BASE = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定"
 WALK_FBX = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\原始模型\Mixamo动画文件\Standard Walk.fbx"
-RIG = os.path.join(BASE, "_工作区_过程文件", "B_骨骼绑定", "14_arp_refs_rollonly.blend")
-OUT = os.path.join(BASE, "_工作区_过程文件", "B_骨骼绑定", "15_arp_walk_test.blend")
+RIG = os.path.join(BASE, "_工作区_过程文件", "B_骨骼绑定", "19_arp_final_v2.blend")
+OUT = os.path.join(BASE, "_工作区_过程文件", "B_骨骼绑定", "20_arp_walk_v2.blend")
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.wm.open_mainfile(filepath=RIG)
