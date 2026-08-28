@@ -1,0 +1,231 @@
+Traceback (most recent call last):
+  File "D:\Program Files\Blender Foundation\Blender 5.1\5.1\scripts\modules\addon_utils.py", line 515, in enable
+    mod.register()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py", line 42, in register
+    from .exporter import register_exporter
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\exporter.py", line 2, in <module>
+    import bpy_types
+ModuleNotFoundError: No module named 'bpy_types'
+Error in bpy.app.handlers.load_pre[1]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33282, in cleanup_line_fx
+    bpy.types.SpaceView3D.draw_handler_remove(handles_lines[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33286, in cleanup_line_fx
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+Error in bpy.app.handlers.load_pre[2]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5295, in cleanup
+    bpy.types.SpaceView3D.draw_handler_remove(handles[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5299, in cleanup
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+Error in bpy.app.handlers.load_pre[1]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33282, in cleanup_line_fx
+    bpy.types.SpaceView3D.draw_handler_remove(handles_lines[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33286, in cleanup_line_fx
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+Error in bpy.app.handlers.load_pre[2]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5295, in cleanup
+    bpy.types.SpaceView3D.draw_handler_remove(handles[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5299, in cleanup
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+00:02.078  blend            | Read blend: "E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\_工作区_过程文件\B_骨骼绑定\07_arp_rig_v6.blend"
+Error in bpy.app.handlers.load_post[2]:
+Traceback (most recent call last):
+  File "D:\Program Files\Blender Foundation\Blender 5.1\5.1\scripts\addons_core\rigify\utils\action_layers.py", line 439, in versioning_5_0
+    for action_setup in obj.data.rigify_action_slots:
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Armature' object has no attribute 'rigify_action_slots'
+Exception in module register(): C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py
+Reloading external rigs...
+Reloading external metarigs...
+Extra Pies: Register built-in pies for use with non-standard Keymap.
+register_class(...):
+警告: 'List_View' 不包含带有前缀和后缀的 '_UL_'
+Registered B2RUVL 0.1.6.
+Registered MACHIN3tools 1.13.8.DeusEx with 2 tools, 0 pie menus
+ARP首选项已成功加载！
+更新骨架预设…
+Zen UV Library: REGISTERED.
+Unregistered B2RUVL 0.1.6.
+Unregistered MACHIN3tools 1.13.8.DeusEx.
+Zen UV Library: UNREGISTERED.
+addon_utils.disable: bl_ext.lab_blender_org.mcp not enabled
+=== 带权重的变形骨 (权重骨=最终导出的骨) ===
+root.x: head=(0.000,-0.001,1.043) tail=(-0.000,-0.001,0.877) 父=c_root.x
+foot.l: head=(0.235,0.013,0.058) tail=(0.235,-0.073,0.018) 父=leg_fk.l
+toes_01.l: head=(0.235,-0.073,0.018) tail=(0.235,-0.126,0.018) 父=foot.l
+thigh_twist.l: head=(0.095,0.009,0.916) tail=(0.130,-0.003,0.717) 父=c_thigh_b.l
+foot.r: head=(-0.235,0.013,0.058) tail=(-0.235,-0.073,0.018) 父=leg_fk.r
+toes_01.r: head=(-0.235,-0.073,0.018) tail=(-0.235,-0.126,0.018) 父=foot.r
+thigh_twist.r: head=(-0.095,0.009,0.916) tail=(-0.130,-0.003,0.717) 父=c_thigh_b.r
+spine_01.x: head=(0.000,0.012,1.044) tail=(0.000,0.025,1.187) 父=c_spine_01.x
+spine_02.x: head=(0.000,0.025,1.187) tail=(0.000,0.038,1.330) 父=c_spine_02.x
+shoulder.r: head=(-0.038,0.017,1.308) tail=(-0.129,0.014,1.308) 父=c_shoulder.r
+c_arm_twist_offset.r: head=(-0.129,0.014,1.308) tail=(-0.232,0.026,1.267) 父=arm_twist.r
+shoulder.l: head=(0.038,0.017,1.308) tail=(0.129,0.014,1.308) 父=c_shoulder.l
+c_arm_twist_offset.l: head=(0.129,0.014,1.308) tail=(0.232,0.026,1.267) 父=arm_twist.l
+neck.x: head=(0.000,0.001,1.373) tail=(-0.000,-0.019,1.454) 父=c_neck.x
+c_spine_02_bend.x: head=(0.000,0.032,1.258) tail=(0.000,0.025,1.187) 父=c_spine_02.x
+spine_03.x: head=(0.000,0.038,1.330) tail=(0.000,0.051,1.473) 父=c_spine_03.x
+c_spine_03_bend.x: head=(0.000,0.044,1.402) tail=(0.000,0.038,1.330) 父=c_spine_03.x
+c_spine_01_bend.x: head=(0.000,0.019,1.115) tail=(0.000,0.012,1.044) 父=c_spine_01.x
+head.x: head=(-0.000,-0.019,1.454) tail=(0.000,-0.019,1.725) 父=c_head.x
+leg_stretch.l: head=(0.165,-0.015,0.517) tail=(0.200,-0.001,0.288) 父=c_traj
+leg_twist.l: head=(0.200,-0.001,0.288) tail=(0.235,0.013,0.058) 父=leg_stretch.l
+leg_stretch.r: head=(-0.165,-0.015,0.517) tail=(-0.200,-0.001,0.288) 父=c_traj
+leg_twist.r: head=(-0.200,-0.001,0.288) tail=(-0.235,0.013,0.058) 父=leg_stretch.r
+thigh_stretch.l: head=(0.130,-0.003,0.717) tail=(0.165,-0.015,0.517) 父=c_traj
+thigh_stretch.r: head=(-0.130,-0.003,0.717) tail=(-0.165,-0.015,0.517) 父=c_traj
+arm_stretch.l: head=(0.232,0.026,1.267) tail=(0.336,0.037,1.227) 父=c_traj
+arm_stretch.r: head=(-0.232,0.026,1.267) tail=(-0.336,0.037,1.227) 父=c_traj
+forearm_stretch.l: head=(0.336,0.037,1.227) tail=(0.440,0.026,1.187) 父=c_traj
+forearm_twist.l: head=(0.440,0.026,1.187) tail=(0.544,0.014,1.148) 父=forearm_stretch.l
+forearm_stretch.r: head=(-0.336,0.037,1.227) tail=(-0.440,0.026,1.187) 父=c_traj
+forearm_twist.r: head=(-0.440,0.026,1.187) tail=(-0.544,0.014,1.148) 父=forearm_stretch.r
+hand.l: head=(0.544,0.014,1.148) tail=(0.598,0.014,1.148) 父=forearm.l
+c_pinky1_base.l: head=(0.562,0.027,1.150) tail=(0.616,0.042,1.143) 父=hand.l
+pinky1.l: head=(0.616,0.042,1.143) tail=(0.636,0.043,1.139) 父=c_pinky1.l
+c_pinky2.l: head=(0.636,0.043,1.139) tail=(0.648,0.044,1.135) 父=pinky2_rot.l
+c_pinky3.l: head=(0.648,0.044,1.135) tail=(0.659,0.044,1.130) 父=pinky3_rot.l
+c_ring1_base.l: head=(0.562,0.019,1.150) tail=(0.617,0.027,1.149) 父=hand.l
+ring1.l: head=(0.617,0.027,1.149) tail=(0.644,0.029,1.147) 父=c_ring1.l
+c_ring2.l: head=(0.644,0.029,1.147) tail=(0.665,0.029,1.143) 父=ring2_rot.l
+c_ring3.l: head=(0.665,0.029,1.143) tail=(0.682,0.028,1.137) 父=ring3_rot.l
+c_middle1_base.l: head=(0.562,0.013,1.150) tail=(0.619,0.013,1.155) 父=hand.l
+middle1.l: head=(0.619,0.013,1.155) tail=(0.647,0.012,1.151) 父=c_middle1.l
+c_middle2.l: head=(0.647,0.012,1.151) tail=(0.671,0.012,1.147) 父=middle2_rot.l
+c_middle3.l: head=(0.671,0.012,1.147) tail=(0.691,0.012,1.141) 父=middle3_rot.l
+c_index1_base.l: head=(0.562,0.007,1.150) tail=(0.619,-0.005,1.151) 父=hand.l
+index1.l: head=(0.619,-0.005,1.151) tail=(0.644,-0.006,1.149) 父=c_index1.l
+c_index2.l: head=(0.644,-0.006,1.149) tail=(0.663,-0.008,1.146) 父=index2_rot.l
+c_index3.l: head=(0.663,-0.008,1.146) tail=(0.682,-0.008,1.140) 父=index3_rot.l
+thumb1.l: head=(0.559,-0.003,1.148) tail=(0.589,-0.019,1.136) 父=c_thumb1.l
+c_thumb2.l: head=(0.589,-0.019,1.136) tail=(0.619,-0.020,1.130) 父=thumb2_rot.l
+c_thumb3.l: head=(0.619,-0.020,1.130) tail=(0.638,-0.020,1.129) 父=thumb3_rot.l
+hand.r: head=(-0.544,0.014,1.148) tail=(-0.598,0.014,1.148) 父=forearm.r
+c_pinky1_base.r: head=(-0.562,0.027,1.150) tail=(-0.616,0.042,1.143) 父=hand.r
+pinky1.r: head=(-0.616,0.042,1.143) tail=(-0.636,0.043,1.139) 父=c_pinky1.r
+c_pinky2.r: head=(-0.636,0.043,1.139) tail=(-0.648,0.044,1.135) 父=pinky2_rot.r
+c_pinky3.r: head=(-0.648,0.044,1.135) tail=(-0.659,0.044,1.130) 父=pinky3_rot.r
+c_ring1_base.r: head=(-0.562,0.019,1.150) tail=(-0.617,0.027,1.149) 父=hand.r
+ring1.r: head=(-0.617,0.027,1.149) tail=(-0.644,0.029,1.147) 父=c_ring1.r
+c_ring2.r: head=(-0.644,0.029,1.147) tail=(-0.665,0.029,1.143) 父=ring2_rot.r
+c_ring3.r: head=(-0.665,0.029,1.143) tail=(-0.682,0.028,1.137) 父=ring3_rot.r
+c_middle1_base.r: head=(-0.562,0.013,1.150) tail=(-0.619,0.013,1.155) 父=hand.r
+middle1.r: head=(-0.619,0.013,1.155) tail=(-0.647,0.012,1.151) 父=c_middle1.r
+c_middle2.r: head=(-0.647,0.012,1.151) tail=(-0.671,0.012,1.147) 父=middle2_rot.r
+c_middle3.r: head=(-0.671,0.012,1.147) tail=(-0.691,0.012,1.141) 父=middle3_rot.r
+c_index1_base.r: head=(-0.562,0.007,1.150) tail=(-0.619,-0.005,1.151) 父=hand.r
+index1.r: head=(-0.619,-0.005,1.151) tail=(-0.644,-0.006,1.149) 父=c_index1.r
+c_index2.r: head=(-0.644,-0.006,1.149) tail=(-0.663,-0.008,1.146) 父=index2_rot.r
+c_index3.r: head=(-0.663,-0.008,1.146) tail=(-0.682,-0.008,1.140) 父=index3_rot.r
+thumb1.r: head=(-0.559,-0.003,1.148) tail=(-0.589,-0.019,1.136) 父=c_thumb1.r
+c_thumb2.r: head=(-0.589,-0.019,1.136) tail=(-0.619,-0.020,1.130) 父=thumb2_rot.r
+c_thumb3.r: head=(-0.619,-0.020,1.130) tail=(-0.638,-0.020,1.129) 父=thumb3_rot.r
+
+=== 参考骨 (_ref结尾) ===
+root_ref.x: head=(0.000,-0.001,0.901) tail=(0.000,-0.001,1.045)
+thigh_ref.l: head=(0.114,-0.001,0.901) tail=(0.128,-0.013,0.519)
+leg_ref.l: head=(0.128,-0.013,0.519) tail=(0.114,0.068,0.138)
+foot_bank_01_ref.l: head=(0.179,0.141,0.000) tail=(0.191,0.104,0.000)
+foot_bank_02_ref.l: head=(0.076,0.108,0.000) tail=(0.088,0.071,0.000)
+foot_heel_ref.l: head=(0.128,0.125,0.000) tail=(0.139,0.087,0.000)
+foot_ref.l: head=(0.114,0.068,0.138) tail=(0.162,-0.082,0.019)
+toes_ref.l: head=(0.162,-0.082,0.019) tail=(0.182,-0.146,0.000)
+thigh_ref.r: head=(-0.114,-0.001,0.901) tail=(-0.128,-0.013,0.519)
+leg_ref.r: head=(-0.128,-0.013,0.519) tail=(-0.114,0.068,0.138)
+foot_bank_01_ref.r: head=(-0.179,0.141,0.000) tail=(-0.191,0.104,0.000)
+foot_bank_02_ref.r: head=(-0.076,0.108,0.000) tail=(-0.088,0.071,0.000)
+foot_heel_ref.r: head=(-0.128,0.125,0.000) tail=(-0.139,0.087,0.000)
+foot_ref.r: head=(-0.114,0.068,0.138) tail=(-0.162,-0.082,0.019)
+toes_ref.r: head=(-0.162,-0.082,0.019) tail=(-0.182,-0.146,0.000)
+spine_01_ref.x: head=(0.000,0.006,1.045) tail=(0.000,0.021,1.188)
+spine_02_ref.x: head=(0.000,0.021,1.188) tail=(0.000,0.039,1.330)
+spine_03_ref.x: head=(0.000,0.039,1.330) tail=(0.000,0.051,1.473)
+neck_ref.x: head=(0.000,0.051,1.473) tail=(0.000,0.013,1.610)
+head_ref.x: head=(0.000,0.013,1.610) tail=(0.000,0.013,1.799)
+shoulder_ref.r: head=(-0.057,0.068,1.435) tail=(-0.229,0.068,1.435)
+arm_ref.r: head=(-0.229,0.068,1.435) tail=(-0.458,0.081,1.435)
+forearm_ref.r: head=(-0.458,0.081,1.435) tail=(-0.715,0.030,1.435)
+hand_ref.r: head=(-0.715,0.030,1.435) tail=(-0.780,0.018,1.438)
+pinky1_base_ref.r: head=(-0.752,0.053,1.433) tail=(-0.822,0.054,1.429)
+pinky1_ref.r: head=(-0.822,0.054,1.429) tail=(-0.838,0.057,1.427)
+pinky2_ref.r: head=(-0.838,0.057,1.427) tail=(-0.854,0.059,1.425)
+pinky3_ref.r: head=(-0.854,0.059,1.425) tail=(-0.873,0.060,1.425)
+ring1_base_ref.r: head=(-0.753,0.038,1.435) tail=(-0.825,0.033,1.436)
+ring1_ref.r: head=(-0.825,0.033,1.436) tail=(-0.853,0.033,1.434)
+ring2_ref.r: head=(-0.853,0.033,1.434) tail=(-0.874,0.032,1.430)
+ring3_ref.r: head=(-0.874,0.032,1.430) tail=(-0.898,0.029,1.425)
+middle1_base_ref.r: head=(-0.752,0.020,1.437) tail=(-0.823,0.010,1.441)
+middle1_ref.r: head=(-0.823,0.010,1.441) tail=(-0.852,0.006,1.439)
+middle2_ref.r: head=(-0.852,0.006,1.439) tail=(-0.881,0.002,1.433)
+middle3_ref.r: head=(-0.881,0.002,1.433) tail=(-0.903,-0.000,1.428)
+index1_base_ref.r: head=(-0.747,0.002,1.437) tail=(-0.815,-0.014,1.442)
+index1_ref.r: head=(-0.815,-0.014,1.442) tail=(-0.837,-0.020,1.441)
+index2_ref.r: head=(-0.837,-0.020,1.441) tail=(-0.862,-0.025,1.437)
+index3_ref.r: head=(-0.862,-0.025,1.437) tail=(-0.883,-0.029,1.431)
+thumb1_ref.r: head=(-0.743,-0.007,1.428) tail=(-0.771,-0.044,1.421)
+thumb2_ref.r: head=(-0.771,-0.044,1.421) tail=(-0.793,-0.058,1.415)
+thumb3_ref.r: head=(-0.793,-0.058,1.415) tail=(-0.809,-0.072,1.414)
+shoulder_ref.l: head=(0.057,0.068,1.435) tail=(0.229,0.068,1.435)
+arm_ref.l: head=(0.229,0.068,1.435) tail=(0.458,0.081,1.435)
+forearm_ref.l: head=(0.458,0.081,1.435) tail=(0.715,0.030,1.435)
+hand_ref.l: head=(0.715,0.030,1.435) tail=(0.780,0.018,1.438)
+pinky1_base_ref.l: head=(0.752,0.053,1.433) tail=(0.822,0.054,1.429)
+pinky1_ref.l: head=(0.822,0.054,1.429) tail=(0.838,0.057,1.427)
+pinky2_ref.l: head=(0.838,0.057,1.427) tail=(0.854,0.059,1.425)
+pinky3_ref.l: head=(0.854,0.059,1.425) tail=(0.873,0.060,1.425)
+ring1_base_ref.l: head=(0.753,0.038,1.435) tail=(0.825,0.033,1.436)
+ring1_ref.l: head=(0.825,0.033,1.436) tail=(0.853,0.033,1.434)
+ring2_ref.l: head=(0.853,0.033,1.434) tail=(0.874,0.032,1.430)
+ring3_ref.l: head=(0.874,0.032,1.430) tail=(0.898,0.029,1.425)
+middle1_base_ref.l: head=(0.752,0.020,1.437) tail=(0.823,0.010,1.441)
+middle1_ref.l: head=(0.823,0.010,1.441) tail=(0.852,0.006,1.439)
+middle2_ref.l: head=(0.852,0.006,1.439) tail=(0.881,0.002,1.433)
+middle3_ref.l: head=(0.881,0.002,1.433) tail=(0.903,-0.000,1.428)
+index1_base_ref.l: head=(0.747,0.002,1.437) tail=(0.815,-0.014,1.442)
+index1_ref.l: head=(0.815,-0.014,1.442) tail=(0.837,-0.020,1.441)
+index2_ref.l: head=(0.837,-0.020,1.441) tail=(0.862,-0.025,1.437)
+index3_ref.l: head=(0.862,-0.025,1.437) tail=(0.883,-0.029,1.431)
+thumb1_ref.l: head=(0.743,-0.007,1.428) tail=(0.771,-0.044,1.421)
+thumb2_ref.l: head=(0.771,-0.044,1.421) tail=(0.793,-0.058,1.415)
+thumb3_ref.l: head=(0.793,-0.058,1.415) tail=(0.809,-0.072,1.414)
+DUMP_DONE
+Blender 5.1.0 (hash adfe2921d5f3 built 2026-03-17 01:37:32)
+
+Blender quit

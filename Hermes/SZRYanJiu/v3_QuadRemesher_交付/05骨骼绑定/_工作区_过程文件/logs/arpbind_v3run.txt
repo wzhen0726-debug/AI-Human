@@ -1,0 +1,49 @@
+Traceback (most recent call last):
+  File "D:\Program Files\Blender Foundation\Blender 5.1\5.1\scripts\modules\addon_utils.py", line 515, in enable
+    mod.register()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py", line 42, in register
+    from .exporter import register_exporter
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\exporter.py", line 2, in <module>
+    import bpy_types
+ModuleNotFoundError: No module named 'bpy_types'
+00:01.734  blend            | Read blend: "E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\_工作区_过程文件\A_半自动打点\07_arp_markers.blend"
+Exception in module register(): C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py
+Reloading external rigs...
+Reloading external metarigs...
+Extra Pies: Register built-in pies for use with non-standard Keymap.
+register_class(...):
+警告: 'List_View' 不包含带有前缀和后缀的 '_UL_'
+Registered B2RUVL 0.1.6.
+Registered MACHIN3tools 1.13.8.DeusEx with 2 tools, 0 pie menus
+ARP首选项已成功加载！
+更新骨架预设…
+Zen UV Library: REGISTERED.
+骨架规划: 52骨
+roll对齐: 52/52
+信息: 已另存为 "02_ARP绑定.blend"
+Saved: E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\ARP版交付\02_ARP绑定.blend
+INFO Draco mesh compression is available, use library at D:\Program Files\Blender Foundation\Blender 5.1\5.1\scripts\addons_core\io_scene_gltf2\extern_draco.dll
+14:52:50 | INFO: Starting glTF 2.0 export
+14:52:50 | INFO: Extracting primitive: mesh
+14:52:51 | INFO: Primitives created: 1
+14:52:51 | WARNING: There are more than 4 joint vertex influences.The 4 with highest weight will be used (and normalized).
+14:52:51 | INFO: Extracting primitive: Mesh.002
+14:52:51 | WARNING: Image '<bpy_struct, Image("Eye_A.tga") at 0x00000228CF5AC820>' has no size and cannot be exported.
+14:52:51 | WARNING: More than one shader node tex image used for a texture. The resulting glTF sampler will behave like the first shader node tex image.
+14:52:51 | INFO: Primitives created: 3
+14:52:51 | INFO: Extracting primitive: Mesh.003
+14:52:51 | WARNING: Image '<bpy_struct, Image("Eye_A.tga.001") at 0x00000228CF59F920>' has no size and cannot be exported.
+14:52:51 | WARNING: More than one shader node tex image used for a texture. The resulting glTF sampler will behave like the first shader node tex image.
+14:52:51 | INFO: Primitives created: 3
+14:52:51 | INFO: Finished glTF 2.0 export in 1.2469861507415771 s
+
+GLB: 20.1 MB
+权重覆盖: 143708/143708
+ARP_BIND_V3_DONE
+Unregistered B2RUVL 0.1.6.
+Unregistered MACHIN3tools 1.13.8.DeusEx.
+Zen UV Library: UNREGISTERED.
+Blender 5.1.0 (hash adfe2921d5f3 built 2026-03-17 01:37:32)
+
+Blender quit

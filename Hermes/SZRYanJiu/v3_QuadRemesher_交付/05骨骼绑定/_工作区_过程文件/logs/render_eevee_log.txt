@@ -1,0 +1,43 @@
+Traceback (most recent call last):
+  File "D:\Program Files\Blender Foundation\Blender 5.1\5.1\scripts\modules\addon_utils.py", line 515, in enable
+    mod.register()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py", line 42, in register
+    from .exporter import register_exporter
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\exporter.py", line 2, in <module>
+    import bpy_types
+ModuleNotFoundError: No module named 'bpy_types'
+00:01.735  blend            | Read blend: "E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\_工作区_过程文件\A_半自动打点\08_arp打点模板_AI预置.blend"
+E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\_工作区_过程文件\C_诊断工具\render_tpl_v5_eevee.py:23: DeprecationWarning: 'World.use_nodes' is expected to be removed in Blender 6.0
+  scn.world.use_nodes = True
+00:03.219  render           | Saved: 'E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\_工作区_过程文件\screenshots\arp模板v5_eevee.png'
+E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\_工作区_过程文件\C_诊断工具\render_tpl_v5_eevee.py:42: DeprecationWarning: 'Material.use_nodes' is expected to be removed in Blender 6.0
+  if mat and mat.use_nodes:
+Exception in module register(): C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py
+Reloading external rigs...
+Reloading external metarigs...
+Extra Pies: Register built-in pies for use with non-standard Keymap.
+register_class(...):
+警告: 'List_View' 不包含带有前缀和后缀的 '_UL_'
+Registered B2RUVL 0.1.6.
+Registered MACHIN3tools 1.13.8.DeusEx with 2 tools, 0 pie menus
+ARP首选项已成功加载！
+更新骨架预设…
+Zen UV Library: REGISTERED.
+EEVEE_RENDER_DONE
+chin_loc: mat=arp_m_(1.0, 0.9, 0.2) rgb=(1.00,0.90,0.20)
+elbow_loc: mat=arp_m_(1.0, 0.35, 0.35) rgb=(1.00,0.35,0.35)
+foot_loc: mat=arp_m_(0.35, 0.9, 0.4) rgb=(0.35,0.90,0.40)
+hand_loc: mat=arp_m_(1.0, 0.35, 0.35) rgb=(1.00,0.35,0.35)
+hand_tip_loc: mat=arp_m_(1.0, 0.35, 0.35) rgb=(1.00,0.35,0.35)
+knee_loc: mat=arp_m_(0.35, 0.9, 0.4) rgb=(0.35,0.90,0.40)
+neck_loc: mat=arp_m_(1.0, 0.9, 0.2) rgb=(1.00,0.90,0.20)
+root_loc: mat=arp_m_(1.0, 0.9, 0.2) rgb=(1.00,0.90,0.20)
+shoulder_loc: mat=arp_m_(1.0, 0.35, 0.35) rgb=(1.00,0.35,0.35)
+thigh_loc: mat=arp_m_(0.35, 0.9, 0.4) rgb=(0.35,0.90,0.40)
+Unregistered B2RUVL 0.1.6.
+Unregistered MACHIN3tools 1.13.8.DeusEx.
+Zen UV Library: UNREGISTERED.
+Blender 5.1.0 (hash adfe2921d5f3 built 2026-03-17 01:37:32)
+
+Blender quit

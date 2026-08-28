@@ -1,0 +1,161 @@
+Traceback (most recent call last):
+  File "D:\Program Files\Blender Foundation\Blender 5.1\5.1\scripts\modules\addon_utils.py", line 515, in enable
+    mod.register()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py", line 42, in register
+    from .exporter import register_exporter
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\exporter.py", line 2, in <module>
+    import bpy_types
+ModuleNotFoundError: No module named 'bpy_types'
+Error in bpy.app.handlers.load_pre[1]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33282, in cleanup_line_fx
+    bpy.types.SpaceView3D.draw_handler_remove(handles_lines[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33286, in cleanup_line_fx
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+Error in bpy.app.handlers.load_pre[2]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5295, in cleanup
+    bpy.types.SpaceView3D.draw_handler_remove(handles[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5299, in cleanup
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+Error in bpy.app.handlers.load_pre[1]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33282, in cleanup_line_fx
+    bpy.types.SpaceView3D.draw_handler_remove(handles_lines[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33286, in cleanup_line_fx
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+Error in bpy.app.handlers.load_pre[2]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5295, in cleanup
+    bpy.types.SpaceView3D.draw_handler_remove(handles[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5299, in cleanup
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+00:02.047  blend            | Read blend: "E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\_工作区_过程文件\B_骨骼绑定\07_arp_rig_v6.blend"
+Error in bpy.app.handlers.load_post[2]:
+Traceback (most recent call last):
+  File "D:\Program Files\Blender Foundation\Blender 5.1\5.1\scripts\addons_core\rigify\utils\action_layers.py", line 439, in versioning_5_0
+    for action_setup in obj.data.rigify_action_slots:
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Armature' object has no attribute 'rigify_action_slots'
+Exception in module register(): C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py
+Reloading external rigs...
+Reloading external metarigs...
+Extra Pies: Register built-in pies for use with non-standard Keymap.
+register_class(...):
+警告: 'List_View' 不包含带有前缀和后缀的 '_UL_'
+Registered B2RUVL 0.1.6.
+Registered MACHIN3tools 1.13.8.DeusEx with 2 tools, 0 pie menus
+ARP首选项已成功加载！
+更新骨架预设…
+Zen UV Library: REGISTERED.
+Unregistered B2RUVL 0.1.6.
+Unregistered MACHIN3tools 1.13.8.DeusEx.
+Zen UV Library: UNREGISTERED.
+addon_utils.disable: bl_ext.lab_blender_org.mcp not enabled
+参考骨总数: 66
+
+名称 | 父骨 | head | tail
+arm_ref.l | shoulder_ref.l | (0.229,0.068,1.435) | (0.458,0.081,1.435)
+arm_ref.r | shoulder_ref.r | (-0.229,0.068,1.435) | (-0.458,0.081,1.435)
+foot_bank_01_ref.l | leg_ref.l | (0.179,0.141,0.000) | (0.191,0.104,0.000)
+foot_bank_01_ref.r | leg_ref.r | (-0.179,0.141,0.000) | (-0.191,0.104,0.000)
+foot_bank_02_ref.l | leg_ref.l | (0.076,0.108,0.000) | (0.088,0.071,0.000)
+foot_bank_02_ref.r | leg_ref.r | (-0.076,0.108,0.000) | (-0.088,0.071,0.000)
+foot_heel_ref.l | leg_ref.l | (0.128,0.125,0.000) | (0.139,0.087,0.000)
+foot_heel_ref.r | leg_ref.r | (-0.128,0.125,0.000) | (-0.139,0.087,0.000)
+foot_ref.l | leg_ref.l | (0.114,0.068,0.138) | (0.162,-0.082,0.019)
+foot_ref.r | leg_ref.r | (-0.114,0.068,0.138) | (-0.162,-0.082,0.019)
+forearm_ref.l | arm_ref.l | (0.458,0.081,1.435) | (0.715,0.030,1.435)
+forearm_ref.r | arm_ref.r | (-0.458,0.081,1.435) | (-0.715,0.030,1.435)
+hand_ref.l | forearm_ref.l | (0.715,0.030,1.435) | (0.780,0.018,1.438)
+hand_ref.r | forearm_ref.r | (-0.715,0.030,1.435) | (-0.780,0.018,1.438)
+head_ref.x | neck_ref.x | (0.000,0.013,1.610) | (0.000,0.013,1.799)
+index1_base_ref.l | hand_ref.l | (0.747,0.002,1.437) | (0.815,-0.014,1.442)
+index1_base_ref.r | hand_ref.r | (-0.747,0.002,1.437) | (-0.815,-0.014,1.442)
+index1_ref.l | index1_base_ref.l | (0.815,-0.014,1.442) | (0.837,-0.020,1.441)
+index1_ref.r | index1_base_ref.r | (-0.815,-0.014,1.442) | (-0.837,-0.020,1.441)
+index2_ref.l | index1_ref.l | (0.837,-0.020,1.441) | (0.862,-0.025,1.437)
+index2_ref.r | index1_ref.r | (-0.837,-0.020,1.441) | (-0.862,-0.025,1.437)
+index3_ref.l | index2_ref.l | (0.862,-0.025,1.437) | (0.883,-0.029,1.431)
+index3_ref.r | index2_ref.r | (-0.862,-0.025,1.437) | (-0.883,-0.029,1.431)
+leg_ref.l | thigh_ref.l | (0.128,-0.013,0.519) | (0.114,0.068,0.138)
+leg_ref.r | thigh_ref.r | (-0.128,-0.013,0.519) | (-0.114,0.068,0.138)
+middle1_base_ref.l | hand_ref.l | (0.752,0.020,1.437) | (0.823,0.010,1.441)
+middle1_base_ref.r | hand_ref.r | (-0.752,0.020,1.437) | (-0.823,0.010,1.441)
+middle1_ref.l | middle1_base_ref.l | (0.823,0.010,1.441) | (0.852,0.006,1.439)
+middle1_ref.r | middle1_base_ref.r | (-0.823,0.010,1.441) | (-0.852,0.006,1.439)
+middle2_ref.l | middle1_ref.l | (0.852,0.006,1.439) | (0.881,0.002,1.433)
+middle2_ref.r | middle1_ref.r | (-0.852,0.006,1.439) | (-0.881,0.002,1.433)
+middle3_ref.l | middle2_ref.l | (0.881,0.002,1.433) | (0.903,-0.000,1.428)
+middle3_ref.r | middle2_ref.r | (-0.881,0.002,1.433) | (-0.903,-0.000,1.428)
+neck_ref.x | spine_03_ref.x | (0.000,0.051,1.473) | (0.000,0.013,1.610)
+pinky1_base_ref.l | hand_ref.l | (0.752,0.053,1.433) | (0.822,0.054,1.429)
+pinky1_base_ref.r | hand_ref.r | (-0.752,0.053,1.433) | (-0.822,0.054,1.429)
+pinky1_ref.l | pinky1_base_ref.l | (0.822,0.054,1.429) | (0.838,0.057,1.427)
+pinky1_ref.r | pinky1_base_ref.r | (-0.822,0.054,1.429) | (-0.838,0.057,1.427)
+pinky2_ref.l | pinky1_ref.l | (0.838,0.057,1.427) | (0.854,0.059,1.425)
+pinky2_ref.r | pinky1_ref.r | (-0.838,0.057,1.427) | (-0.854,0.059,1.425)
+pinky3_ref.l | pinky2_ref.l | (0.854,0.059,1.425) | (0.873,0.060,1.425)
+pinky3_ref.r | pinky2_ref.r | (-0.854,0.059,1.425) | (-0.873,0.060,1.425)
+ring1_base_ref.l | hand_ref.l | (0.753,0.038,1.435) | (0.825,0.033,1.436)
+ring1_base_ref.r | hand_ref.r | (-0.753,0.038,1.435) | (-0.825,0.033,1.436)
+ring1_ref.l | ring1_base_ref.l | (0.825,0.033,1.436) | (0.853,0.033,1.434)
+ring1_ref.r | ring1_base_ref.r | (-0.825,0.033,1.436) | (-0.853,0.033,1.434)
+ring2_ref.l | ring1_ref.l | (0.853,0.033,1.434) | (0.874,0.032,1.430)
+ring2_ref.r | ring1_ref.r | (-0.853,0.033,1.434) | (-0.874,0.032,1.430)
+ring3_ref.l | ring2_ref.l | (0.874,0.032,1.430) | (0.898,0.029,1.425)
+ring3_ref.r | ring2_ref.r | (-0.874,0.032,1.430) | (-0.898,0.029,1.425)
+root_ref.x | 无 | (0.000,-0.001,0.901) | (0.000,-0.001,1.045)
+shoulder_ref.l | spine_03_ref.x | (0.057,0.068,1.435) | (0.229,0.068,1.435)
+shoulder_ref.r | spine_03_ref.x | (-0.057,0.068,1.435) | (-0.229,0.068,1.435)
+spine_01_ref.x | root_ref.x | (0.000,0.006,1.045) | (0.000,0.021,1.188)
+spine_02_ref.x | spine_01_ref.x | (0.000,0.021,1.188) | (0.000,0.039,1.330)
+spine_03_ref.x | spine_02_ref.x | (0.000,0.039,1.330) | (0.000,0.051,1.473)
+thigh_ref.l | root_ref.x | (0.114,-0.001,0.901) | (0.128,-0.013,0.519)
+thigh_ref.r | root_ref.x | (-0.114,-0.001,0.901) | (-0.128,-0.013,0.519)
+thumb1_ref.l | hand_ref.l | (0.743,-0.007,1.428) | (0.771,-0.044,1.421)
+thumb1_ref.r | hand_ref.r | (-0.743,-0.007,1.428) | (-0.771,-0.044,1.421)
+thumb2_ref.l | thumb1_ref.l | (0.771,-0.044,1.421) | (0.793,-0.058,1.415)
+thumb2_ref.r | thumb1_ref.r | (-0.771,-0.044,1.421) | (-0.793,-0.058,1.415)
+thumb3_ref.l | thumb2_ref.l | (0.793,-0.058,1.415) | (0.809,-0.072,1.414)
+thumb3_ref.r | thumb2_ref.r | (-0.793,-0.058,1.415) | (-0.809,-0.072,1.414)
+toes_ref.l | foot_ref.l | (0.162,-0.082,0.019) | (0.182,-0.146,0.000)
+toes_ref.r | foot_ref.r | (-0.162,-0.082,0.019) | (-0.182,-0.146,0.000)
+
+DUMP_REFS_DONE
+Blender 5.1.0 (hash adfe2921d5f3 built 2026-03-17 01:37:32)
+
+Blender quit

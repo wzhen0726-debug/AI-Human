@@ -1,0 +1,136 @@
+Traceback (most recent call last):
+  File "D:\Program Files\Blender Foundation\Blender 5.1\5.1\scripts\modules\addon_utils.py", line 515, in enable
+    mod.register()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py", line 42, in register
+    from .exporter import register_exporter
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\exporter.py", line 2, in <module>
+    import bpy_types
+ModuleNotFoundError: No module named 'bpy_types'
+Error in bpy.app.handlers.load_pre[1]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33282, in cleanup_line_fx
+    bpy.types.SpaceView3D.draw_handler_remove(handles_lines[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33286, in cleanup_line_fx
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+Error in bpy.app.handlers.load_pre[2]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5295, in cleanup
+    bpy.types.SpaceView3D.draw_handler_remove(handles[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5299, in cleanup
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+00:02.000  blend            | Read blend: "E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\_工作区_过程文件\A_半自动打点\07_arp_markers.blend"
+E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\_工作区_过程文件\B_骨骼绑定\ai_guess_test.py:43: DeprecationWarning: 'Material.use_nodes' is expected to be removed in Blender 6.0
+  mat.use_nodes = True
+E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\_工作区_过程文件\B_骨骼绑定\ai_guess_test.py:55: DeprecationWarning: 'World.use_nodes' is expected to be removed in Blender 6.0
+  scn.world.use_nodes = True
+00:03.500  render           | Saved: 'C:\Users\Liyunzhong\Documents\AutoRigPro\AI\inference\front1.jpg'
+00:03.656  render           | Saved: 'C:\Users\Liyunzhong\Documents\AutoRigPro\AI\inference\char_side.jpg'
+00:03.812  render           | Saved: 'C:\Users\Liyunzhong\Documents\AutoRigPro\AI\inference\char_top.jpg'
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 507, in execute
+    _set_markers_from_keypoints(self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 1951, in _set_markers_from_keypoints
+    arm_angle=(shoulder_loc - hand_loc).angle(Vector((0,0,1)))
+ValueError: Vector.angle(other): zero length vectors have no valid angle
+00:07.765  bpy.rna          | ERROR Python script error in ARP_OT_guess_markers.execute
+Exception in module register(): C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py
+Reloading external rigs...
+Reloading external metarigs...
+Extra Pies: Register built-in pies for use with non-standard Keymap.
+register_class(...):
+警告: 'List_View' 不包含带有前缀和后缀的 '_UL_'
+Registered B2RUVL 0.1.6.
+Registered MACHIN3tools 1.13.8.DeusEx with 2 tools, 0 pie menus
+ARP首选项已成功加载！
+更新骨架预设…
+Zen UV Library: REGISTERED.
+Unregistered B2RUVL 0.1.6.
+Unregistered MACHIN3tools 1.13.8.DeusEx.
+Zen UV Library: UNREGISTERED.
+addon_utils.disable: bl_ext.lab_blender_org.mcp not enabled
+register_class(...):
+Info: Registering operator class: 'ARP_OT_save_prefs', bl_idname 'arp.prefs_save' has been registered before, unregistering previous
+register_class(...):
+Info: Registering operator class: 'ARP_OT_install_ext', bl_idname 'arp.install_ext' has been registered before, unregistering previous
+ARP首选项已成功加载！
+更新骨架预设…
+启用ARP: {'FINISHED'}
+popup补丁OK
+截图补丁OK
+Warning: No mesh data to join
+Info: Removed 0 vertices
+  截图 front1.jpg
+  截图 char_side.jpg
+  截图 char_top.jpg
+Running batch: 1
+Running C:\Users\Liyunzhong\Documents\AutoRigPro\AI/inference\inference_front.exe front1.jpg, None None
+Running C:\Users\Liyunzhong\Documents\AutoRigPro\AI/inference\inference_side.exe None None None
+Running C:\Users\Liyunzhong\Documents\AutoRigPro\AI/inference\inference_top.exe None None 0.5
+C:\Users\Liyunzhong\Documents\AutoRigPro\AI/inference\inference_top.exe completed with return code 0
+Output:Detected keypoints: [(348, 244), (406, 250), (446, 254), (382, 246)]
+
+C:\Users\Liyunzhong\Documents\AutoRigPro\AI/inference\inference_side.exe completed with return code 0
+Output:device: cpu
+Detected keypoints: [(256, 292), (256, 132), (232, 120), (264, 136), (260, 136), (272, 424), (256, 292), (256, 344), (224, 444), (264, 136)]
+
+C:\Users\Liyunzhong\Documents\AutoRigPro\AI/inference\inference_front.exe completed with return code 0
+Output:Detected keypoints: [(252, 240), (256, 128), (256, 120), (296, 140), (212, 144), (412, 148), (84, 144), (284, 424), (224, 424), (272, 240), (240, 236), (284, 372), (224, 372), (444, 144), (68, 144), (388, 144), (124, 144)]
+
+Fetch keypoints...
+Error: Python: Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 507, in execute
+    _set_markers_from_keypoints(self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 1951, in _set_markers_from_keypoints
+    arm_angle=(shoulder_loc - hand_loc).angle(Vector((0,0,1)))
+ValueError: Vector.angle(other): zero length vectors have no valid angle
+Location: E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\_工作区_过程文件\B_骨骼绑定\ai_guess_test.py:113
+guess_markers 异常(可继续): RuntimeError: Error: Python: Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 507, in execute
+    _set_markers_from_keypoints(self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 1951, in _set_markers_from_keypoints
+    arm_angle=(shoulder_loc - hand_loc).angle(Vector((0,0,1)))
+ValueError: Vector.angle(other): zero length vectors have no valid angle
+Location: E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\_工作区_过程文件\B_骨骼绑定\ai_guess_test.py:113
+
+AI标记数: 17
+AI_PT chin_loc: (0.000,0.000,0.000)
+AI_PT elbow_loc: (0.000,0.000,0.000)
+AI_PT elbow_loc_sym: (0.000,0.000,0.000)
+AI_PT foot_loc: (0.000,0.000,0.000)
+AI_PT foot_loc_sym: (0.000,0.000,0.000)
+AI_PT hand_loc: (0.000,0.000,0.000)
+AI_PT hand_loc_sym: (0.000,0.000,0.000)
+AI_PT hand_tip_loc: (0.000,0.000,0.000)
+AI_PT hand_tip_loc_sym: (0.000,0.000,0.000)
+AI_PT knee_loc: (0.000,0.000,0.000)
+AI_PT knee_loc_sym: (0.000,0.000,0.000)
+AI_PT neck_loc: (0.000,0.000,0.000)
+AI_PT root_loc: (0.000,0.000,0.000)
+AI_PT shoulder_loc: (0.000,0.000,0.000)
+AI_PT shoulder_loc_sym: (0.000,0.000,0.000)
+AI_PT thigh_loc: (0.000,0.000,0.000)
+AI_PT thigh_loc_sym: (0.000,0.000,0.000)
+AI_TEST_DONE
+Blender 5.1.0 (hash adfe2921d5f3 built 2026-03-17 01:37:32)
+
+Blender quit

@@ -1,0 +1,16 @@
+[连接] 断裂处=0 ✓全部相连
+[左手] Hand head=(0.710,-0.002,1.436)
+  Thumb3尾: 距腕14.9cm, 前后向-7.9cm
+  Index3尾: 距腕16.4cm, 前后向-3.0cm
+  Middle3尾: 距腕18.2cm, 前后向-1.1cm
+  Ring3尾: 距腕17.4cm, 前后向+0.7cm
+  Pinky3尾: 距腕15.4cm, 前后向+2.2cm
+[Left踝] Leg尾→Foot头: 0.0mm ✓
+[Right踝] Leg尾→Foot头: 0.0mm ✓
+[点位] 骨骼head vs 用户点:
+  Hips: 差0.0mm ✓
+  LeftArm: 差0.0mm ✓
+  LeftForeArm: 差0.0mm ✓
+  LeftHand: 差0.0mm ✓
+  LeftLeg: 差0.0mm ✓
+  LeftFoot: 差0.0mm ✓

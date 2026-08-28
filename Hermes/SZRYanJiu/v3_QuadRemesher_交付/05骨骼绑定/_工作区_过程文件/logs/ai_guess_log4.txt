@@ -1,0 +1,113 @@
+Traceback (most recent call last):
+  File "D:\Program Files\Blender Foundation\Blender 5.1\5.1\scripts\modules\addon_utils.py", line 515, in enable
+    mod.register()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py", line 42, in register
+    from .exporter import register_exporter
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\exporter.py", line 2, in <module>
+    import bpy_types
+ModuleNotFoundError: No module named 'bpy_types'
+Error in bpy.app.handlers.load_pre[1]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33282, in cleanup_line_fx
+    bpy.types.SpaceView3D.draw_handler_remove(handles_lines[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33286, in cleanup_line_fx
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+Error in bpy.app.handlers.load_pre[2]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5295, in cleanup
+    bpy.types.SpaceView3D.draw_handler_remove(handles[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5299, in cleanup
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+00:01.969  blend            | Read blend: "E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\_工作区_过程文件\A_半自动打点\07_arp_markers.blend"
+E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\_工作区_过程文件\B_骨骼绑定\ai_guess_test.py:45: DeprecationWarning: 'Material.use_nodes' is expected to be removed in Blender 6.0
+  mat.use_nodes = True
+E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\_工作区_过程文件\B_骨骼绑定\ai_guess_test.py:57: DeprecationWarning: 'World.use_nodes' is expected to be removed in Blender 6.0
+  scn.world.use_nodes = True
+00:03.485  render           | Saved: 'C:\Users\Liyunzhong\Documents\AutoRigPro\AI\inference\front1.jpg'
+00:03.625  render           | Saved: 'C:\Users\Liyunzhong\Documents\AutoRigPro\AI\inference\char_side.jpg'
+00:03.766  render           | Saved: 'C:\Users\Liyunzhong\Documents\AutoRigPro\AI\inference\char_top.jpg'
+Exception in module register(): C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py
+Reloading external rigs...
+Reloading external metarigs...
+Extra Pies: Register built-in pies for use with non-standard Keymap.
+register_class(...):
+警告: 'List_View' 不包含带有前缀和后缀的 '_UL_'
+Registered B2RUVL 0.1.6.
+Registered MACHIN3tools 1.13.8.DeusEx with 2 tools, 0 pie menus
+ARP首选项已成功加载！
+更新骨架预设…
+Zen UV Library: REGISTERED.
+Unregistered B2RUVL 0.1.6.
+Unregistered MACHIN3tools 1.13.8.DeusEx.
+Zen UV Library: UNREGISTERED.
+addon_utils.disable: bl_ext.lab_blender_org.mcp not enabled
+register_class(...):
+Info: Registering operator class: 'ARP_OT_save_prefs', bl_idname 'arp.prefs_save' has been registered before, unregistering previous
+register_class(...):
+Info: Registering operator class: 'ARP_OT_install_ext', bl_idname 'arp.install_ext' has been registered before, unregistering previous
+ARP首选项已成功加载！
+更新骨架预设…
+启用ARP: {'FINISHED'}
+popup补丁OK
+截图补丁OK
+Warning: No mesh data to join
+Info: Removed 0 vertices
+  截图 front1.jpg
+  截图 char_side.jpg
+  截图 char_top.jpg
+Running batch: 1
+Running C:\Users\Liyunzhong\Documents\AutoRigPro\AI/inference\inference_front.exe front1.jpg, None None
+Running C:\Users\Liyunzhong\Documents\AutoRigPro\AI/inference\inference_side.exe None None None
+Running C:\Users\Liyunzhong\Documents\AutoRigPro\AI/inference\inference_top.exe None None 0.5
+C:\Users\Liyunzhong\Documents\AutoRigPro\AI/inference\inference_top.exe completed with return code 0
+Output:Detected keypoints: [(150, 122), (202, 124), (222, 128), (176, 120)]
+
+C:\Users\Liyunzhong\Documents\AutoRigPro\AI/inference\inference_side.exe completed with return code 0
+Output:device: cpu
+Detected keypoints: [(128, 124), (132, 68), (116, 60), (132, 72), (128, 120), (136, 212), (128, 128), (128, 168), (132, 120), (140, 80)]
+
+C:\Users\Liyunzhong\Documents\AutoRigPro\AI/inference\inference_front.exe completed with return code 0
+Output:Detected keypoints: [(128, 128), (128, 68), (132, 56), (152, 72), (108, 72), (204, 72), (56, 72), (140, 208), (112, 212), (140, 128), (116, 128), (140, 172), (112, 172), (224, 72), (32, 72), (176, 72), (80, 72)]
+
+Fetch keypoints...
+Arm angle: 90.0
+guess_markers 完整成功
+AI标记数: 17
+AI_PT chin_loc: (0.000,-0.114,1.588)
+AI_PT elbow_loc: (0.458,0.095,1.435)
+AI_PT elbow_loc_sym: (-0.458,0.095,1.435)
+AI_PT foot_loc: (0.114,0.076,0.138)
+AI_PT foot_loc_sym: (-0.114,0.076,0.138)
+AI_PT hand_loc: (0.715,0.019,1.435)
+AI_PT hand_loc_sym: (-0.715,0.019,1.435)
+AI_PT hand_tip_loc: (0.906,0.019,1.435)
+AI_PT hand_tip_loc_sym: (-0.906,0.019,1.435)
+AI_PT knee_loc: (0.114,0.000,0.519)
+AI_PT knee_loc_sym: (-0.114,0.000,0.519)
+AI_PT neck_loc: (0.000,0.038,1.473)
+AI_PT root_loc: (0.000,0.000,0.901)
+AI_PT shoulder_loc: (0.229,0.048,1.435)
+AI_PT shoulder_loc_sym: (-0.229,0.048,1.435)
+AI_PT thigh_loc: (0.114,0.000,0.901)
+AI_PT thigh_loc_sym: (-0.114,0.000,0.901)
+AI_TEST_DONE
+Blender 5.1.0 (hash adfe2921d5f3 built 2026-03-17 01:37:32)
+
+Blender quit
