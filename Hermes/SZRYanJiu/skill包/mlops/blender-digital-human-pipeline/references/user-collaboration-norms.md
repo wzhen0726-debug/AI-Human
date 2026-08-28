@@ -25,3 +25,15 @@
 - 交付文件永远干净（无测试姿态残留，见rig-pose-purity-and-bone-parenting.md）
 - 用户验证过的流程=权威，照做勿乱改勿自创新方案
 - 新文件输出不覆盖旧文件，目录清晰易读
+
+## 复刻已验收产物的风格/样式前，先dump真实规格（2026-08-28，用户两次抱怨）
+用户说"参考之前那个手动版的点"这类要求时，**禁止凭记忆猜**那个产物长什么样——
+先用脚本 dump 被参照文件里对象的真实属性，再照抄。
+- 踩坑实录：重建ARP打点模板时反复做成 mesh 材质球，用户两次说"这个球怎么还是
+  这么奇怪，你忘了之前手动版的点是什么样的吗"。dump `01_打点模板.blend` 才发现
+  手动版点是 **EMPTY 空对象 (empty_display_type='SPHERE', size=0.012, show_in_front=True)**，
+  根本不是mesh——两者在视口里观感完全不同，外行一眼就能分辨。
+- 通用做法：`for o in bpy.data.objects: print(o.type, o.empty_display_type,
+  o.empty_display_size, o.show_in_front, [c.type for c in o.constraints],
+  o.display_type)` + 视口 shading/persp，把输出当成唯一权威规格逐字段复刻。
+- 同理适用于：相机参数、视口着色模式、灯光、材质、任何"照抄上次的XX"要求。

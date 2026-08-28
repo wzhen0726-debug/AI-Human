@@ -14,6 +14,16 @@ skeleton even though detection is correct:
 Do NOT try to re-pose or move the generated deform bones manually (constraints/finger
 attachments break → bones disconnect). Extract from the correct ref skeleton instead.
 
+**Status: this is now the standard ARP pipeline, not just a rescue.** The entire chain
+(04-bake body → guess_markers → go_detect → ref extraction → align_roll → use_connect →
+auto weights → walk verification) was consolidated into ONE script and re-validated from
+scratch in a single pass: 55 bones / 55 weight groups / walk test 2793/3000 verts moved,
+swing 8.2cm, foot grounded. Known-good script:
+`05骨骼绑定/_工作区_过程文件/B_骨骼绑定/arp_full_rerun.py` (project repo, committed).
+When re-running from an upstream stage output (e.g. `04_bake.blend`): delete all non-MESH
+objects first (cameras/lights/eye objects live in baked files), keep only the body mesh,
+then run `id.get_selected_objects` on it.
+
 ## Validated rescue pipeline
 
 ### 0) Official marker names (hard requirement)
@@ -74,6 +84,15 @@ fingers scatter. Mixamo retargeting tolerates proportion differences; only the r
 - Set `use_connect` on children whose head == parent.tail (<2mm). Remaining gaps are
   anatomical offsets, identical in Mixamo's own skeleton (clavicle starts beside spine,
   fingers fan from metacarpals, thighs splay from hip sockets) — not errors.
+- **Verify any user-reported "bone disconnected / finger intrudes palm" quantitatively
+  before fixing.** Recipe (EDIT mode): for every bone with a parent, compute
+  `gap = (b.head - b.parent.tail).length`; report all gaps >1mm. Classify:
+  gaps <2mm = connected (chains intact); isolated gaps on limb chains (shoulder→elbow→wrist,
+  hip→knee→ankle) = real break (almost always a script that rewrote `tail` or merged a
+  segment); fan-out gaps on clavicle/finger-roots/hip = anatomical, not errors. In the
+  validated session this single measurement both proved the tail-rewrite bug (15 breaks)
+  and later confirmed the fix (0 chain breaks, only the 13 anatomical offsets). Do NOT
+  hand-move bones to "fix" gaps — that re-breaks constraints; fix the generator instead.
 - Mixamo walk verification harness (works for ANY Mixamo-named rig):
   import `Standard Walk.fbx` → copy action → locate the channelbag with fcurves
   (`action.layers[].strips[].channelbags`, a **property**, not a method) → remove
@@ -102,3 +121,7 @@ One `.blend` per pipeline step in a clean linearly-numbered delivery folder (e.g
 `ARP版交付/01_打点模板.blend → 02_骨骼绑定.blend → 03_行走测试.blend`), each step verified
 by the user before the next runs. Batching several unverified steps and delivering them at
 once is rejected — errors compound invisibly.
+**Backup before any full redo**: when the user asks to re-run the pipeline from an upstream
+step, first snapshot the current deliverables + key intermediates into a dated folder
+(`ARP版备份_20260828_第一版/`) — include the user's input point file, since the user's
+manual work is irreplaceable. Then overwrite the live delivery folder with the fresh run.
