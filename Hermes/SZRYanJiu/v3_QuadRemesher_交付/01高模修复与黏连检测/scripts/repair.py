@@ -52,6 +52,16 @@ def get_bbox(obj):
            (max(xs)-min(xs), max(ys)-min(ys), max(zs)-min(zs))
 
 
+def weld_dist(obj, ratio=1/18000.0):
+    """焊接距离(米), 按模型身高比例推导, 不写死绝对值。
+    参考: 成人身高1.8m→0.1mm(0.0001m), 即 身高/18000。
+    孩童(1.1m)→0.06mm, 避免误焊面部细节; 大体型相应放大。
+    ratio: 身高比, 默认1/18000(成人0.1mm)。"""
+    mn, mx, dims = get_bbox(obj)
+    height = dims[2]  # 站直接地后z向=身高
+    return height * ratio
+
+
 def _get_coords(obj):
     """All vertex coords as numpy (N,3)."""
     n = len(obj.data.vertices)
@@ -223,9 +233,12 @@ def center_model(obj):
 
 
 def dissolve_degenerate(obj):
-    """Dissolve zero-area faces (merges into neighbors, no holes)."""
+    """Dissolve zero-area faces (merges into neighbors, no holes).
+    退化面面积阈值按身高²缩放(参考身高1.8m→1e-10 m²), 不写死。"""
+    mn, mx, dims = get_bbox(obj)
+    degen_area = 1e-10 * (dims[2] / 1.8) ** 2
     bm = bmesh.new(); bm.from_mesh(obj.data)
-    degen = [f for f in bm.faces if f.calc_area() < 1e-10]
+    degen = [f for f in bm.faces if f.calc_area() < degen_area]
     if degen:
         bmesh.ops.dissolve_faces(bm, faces=degen)
     loose = [v for v in bm.verts if len(v.link_edges) == 0]
@@ -236,10 +249,14 @@ def dissolve_degenerate(obj):
     return len(degen), len(loose)
 
 
-def dissolve_floating_faces(obj, max_area=1e-8):
+def dissolve_floating_faces(obj, max_area=None):
     """难题11 (v19): 删除面积 <0.01mm² (1e-8 m²) 的孤立浮动碎面.
+    max_area: None=按身高²自动(参考1.8m→1e-8 m²), 不写死。
 
     只删孤立碎面 (所有邻接面同样极小), 避免误伤正常表面的小三角."""
+    if max_area is None:
+        mn, mx, dims = get_bbox(obj)
+        max_area = 1e-8 * (dims[2] / 1.8) ** 2  # 按身高²缩放
     bm = bmesh.new(); bm.from_mesh(obj.data)
     bm.faces.ensure_lookup_table()
     tiny = [f for f in bm.faces if f.calc_area() < max_area]
@@ -360,7 +377,7 @@ def final_weld_for_qr(obj):
     bm = bmesh.new(); bm.from_mesh(obj.data)
     bm.verts.ensure_lookup_table()
     before = len(bm.verts)
-    bmesh.ops.remove_doubles(bm, verts=list(bm.verts), dist=0.0001)
+    bmesh.ops.remove_doubles(bm, verts=list(bm.verts), dist=weld_dist(obj))
     welded1 = before - len(bm.verts)
 
     filled = 0
@@ -377,7 +394,7 @@ def final_weld_for_qr(obj):
                 pass
 
     before2 = len(bm.verts)
-    bmesh.ops.remove_doubles(bm, verts=list(bm.verts), dist=0.0001)
+    bmesh.ops.remove_doubles(bm, verts=list(bm.verts), dist=weld_dist(obj))
     welded2 = before2 - len(bm.verts)
 
     bm.edges.ensure_lookup_table()
@@ -404,10 +421,10 @@ def repair_pipeline(obj, smooth_iter=2, smooth_factor=0.3, weld_for_qr=True):
     print("\n[2] Center & ground...")
     center_model(obj)
 
-    print("\n[3] Remove doubles (0.05mm)...")
+    print("\n[3] Remove doubles (按身高比例, 成人≈0.05mm)...")
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
-    bpy.ops.mesh.remove_doubles(threshold=0.00005)  # 0.05mm, 避免拉碎AI融合手
+    bpy.ops.mesh.remove_doubles(threshold=weld_dist(obj, ratio=1/36000.0))  # 精焊, 成人0.05mm, 避免拉碎AI融合手
     bpy.ops.object.mode_set(mode='OBJECT')
     stats["after_remove_doubles"] = len(mesh.vertices)
     print(f"  {len(mesh.vertices)} verts")
@@ -439,7 +456,7 @@ def repair_pipeline(obj, smooth_iter=2, smooth_factor=0.3, weld_for_qr=True):
     print("\n[8] Final fill holes + remove doubles...")
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
-    bpy.ops.mesh.remove_doubles(threshold=0.00005)
+    bpy.ops.mesh.remove_doubles(threshold=weld_dist(obj, ratio=1/36000.0))
     bpy.ops.mesh.fill_holes(sides=0)
     # 不做 normals_make_consistent (难题2/4)
     bpy.ops.object.mode_set(mode='OBJECT')

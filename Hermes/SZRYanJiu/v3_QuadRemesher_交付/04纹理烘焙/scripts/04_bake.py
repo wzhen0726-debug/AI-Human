@@ -37,9 +37,12 @@ size_l = [mx_l[i]-mn_l[i] for i in range(3)]
 size_h = [mx_h[i]-mn_h[i] for i in range(3)]
 ctr_dev = max(abs(ctr_l[i]-ctr_h[i]) for i in range(3))
 size_dev = max(abs(size_l[i]-size_h[i])/max(size_h[i], 1e-9) for i in range(3))
-print(f"对齐检查: 中心偏差={ctr_dev*1000:.2f}mm, 尺寸偏差={size_dev*100:.2f}%")
-if ctr_dev > 0.005 or size_dev > 0.01:
-    raise SystemExit(f"ERROR: 低模/高模未对齐 (中心偏差{ctr_dev*1000:.2f}mm, 尺寸偏差{size_dev*100:.2f}%), 烘焙将错位, 中止")
+# 中心偏差阈值: 按高模bbox尺寸比例(0.5%), 不写死绝对mm, 跨体型自适应
+bbox_max = max(size_h)
+ctr_tol = bbox_max * 0.005
+print(f"对齐检查: 中心偏差={ctr_dev*1000:.2f}mm(容差{ctr_tol*1000:.1f}mm), 尺寸偏差={size_dev*100:.2f}%")
+if ctr_dev > ctr_tol or size_dev > 0.01:
+    raise SystemExit(f"ERROR: 低模/高模未对齐 (中心偏差{ctr_dev*1000:.2f}mm>{ctr_tol*1000:.1f}mm, 尺寸偏差{size_dev*100:.2f}%), 烘焙将错位, 中止")
 
 # 高模贴图检查（blend里已内嵌贴图，无需外部替换）
 # 如果存在修复贴图则替换，否则直接使用高模自带贴图
@@ -92,8 +95,10 @@ bpy.context.scene.render.bake.use_pass_indirect = False
 bpy.context.scene.render.bake.use_pass_color = True
 bpy.context.scene.render.bake.margin = 16
 bpy.context.scene.render.bake.use_selected_to_active = True
-bpy.context.scene.render.bake.cage_extrusion = 0.02   # 增大避免黑色斑块
-bpy.context.scene.render.bake.max_ray_distance = 0.1   # 增大投射距离捕捉rim折角
+# cage挤出/射线距离: 按模型bbox尺寸比例, 不写死绝对值(跨体型自适应)
+# 参考: 当前模型bbox_max≈1.8m时 cage=0.02, ray=0.1 → 比例 0.011/0.056
+bpy.context.scene.render.bake.cage_extrusion = bbox_max * 0.011   # 避免黑色斑块
+bpy.context.scene.render.bake.max_ray_distance = bbox_max * 0.056  # 捕捉rim折角
 
 bpy.ops.object.select_all(action='DESELECT')
 high_poly.select_set(True)
@@ -101,7 +106,7 @@ low_poly.select_set(True)
 bpy.context.view_layer.objects.active = low_poly
 nt.nodes.active = tex
 
-print('烘焙Diffuse中 (4K, cage=0.01, ray=0.05)...')
+print(f'烘焙Diffuse中 (cage={bbox_max*0.011:.4f}, ray={bbox_max*0.056:.4f}, 按bbox比例)...')
 bpy.ops.object.bake(type='DIFFUSE')
 
 tex_path = os.path.join(OUT_04, "04_diffuse_4k.png")

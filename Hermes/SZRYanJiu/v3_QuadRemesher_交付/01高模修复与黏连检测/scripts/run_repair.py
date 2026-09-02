@@ -46,7 +46,7 @@ print(f"[0] 网格修复完成 ({__import__('time').time()-t0:.1f}s)")
 print("\n[0] 开始黏连修复...")
 t0 = __import__('time').time()
 adhesion_result = adhesion.adhesion_pipeline(
-    obj, threshold_mm=5.0, push_step_mm=0.5,
+    obj, threshold_mm=None, push_step_mm=None,  # None=按身高自动
     smooth_iter=5, smooth_factor=0.2, max_pairs=5000)
 print(f"[0] 黏连修复完成 ({__import__('time').time()-t0:.1f}s)")
 

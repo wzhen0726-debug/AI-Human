@@ -22,29 +22,59 @@ def get_main_mesh():
     return meshes[0][0]
 
 
-def _in_exclusion_zone(c):
-    """四肢末端排除区: 手腕以远(|X|>0.42) + 脚踝以下(Z<0.10)
-    这些区域AI生成质量差(融合手/薄片脚), 黏连推开会产生碎片"""
-    return abs(c.x) > 0.42 or c.z < 0.10
+def _model_height(obj):
+    """模型身高(站直接地后bbox的z向尺寸), 用于按比例推导阈值"""
+    import mathutils
+    corners = [obj.matrix_world @ mathutils.Vector(c) for c in obj.bound_box]
+    zs = [c.z for c in corners]
+    return max(zs) - min(zs)
 
 
-def detect_adhesion(obj, threshold_mm=5.0, max_pairs=2000):
+def _exclusion_limits(height):
+    """四肢末端排除区阈值, 按身高比例推导(不写死绝对坐标)。
+
+    参考比例(成人身高1.8m实测):
+      手腕以远 |X| > 身高 * WRIST_X_RATIO (0.42/1.8 = 0.233)
+      脚踝以下  Z  < 身高 * ANKLE_Z_RATIO (0.10/1.8 = 0.056)
+    这些区域AI生成质量差(融合手/薄片脚), 黏连推开会产生碎片。
+    跨体型(孩童/女人/老人)按身高线性缩放, 保持相对部位一致。
+    """
+    WRIST_X_RATIO = 0.42 / 1.8   # 手腕|X| / 身高
+    ANKLE_Z_RATIO = 0.10 / 1.8   # 脚踝Z / 身高
+    return height * WRIST_X_RATIO, height * ANKLE_Z_RATIO
+
+
+def _in_exclusion_zone(c, wrist_x, ankle_z):
+    """四肢末端排除区: 手腕以远(|X|>wrist_x) + 脚踝以下(Z<ankle_z)"""
+    return abs(c.x) > wrist_x or c.z < ankle_z
+
+
+def detect_adhesion(obj, threshold_mm=None, max_pairs=2000):
     """Detect true adhesion pairs: close, facing each other, non-adjacent,
     NOT in limb-extremity exclusion zones.
 
     Stricter than proximity-only: requires n·dir > 0.5 (nearly opposing normals)
     to filter out clothing-on-body and normal close surface pairs.
-    Exclusion zones: hands (|X|>0.35) and feet (Z<0.15) — AI hand/foot
-    geometry is unreliable, pushing creates blade artifacts.
+    Exclusion zones按身高比例计算(见_exclusion_limits)。
+
+    threshold_mm: 黏连判定距离。None=按身高自动(身高mm/360, 成人1.8m→5mm)。
     """
     mesh = obj.data
+    # 黏连判定距离按身高比例(成人1.8m→5mm, 孩童1.1m→3mm), 不写死
+    if threshold_mm is None:
+        threshold_mm = _model_height(obj) * 1000 / 360.0
     threshold = threshold_mm / 1000.0
     n_faces = len(mesh.polygons)
-    print(f"  Detecting: {n_faces} faces, threshold={threshold_mm}mm")
+    print(f"  Detecting: {n_faces} faces, threshold={threshold_mm:.2f}mm (按身高自动)")
 
     bm = bmesh.new()
     bm.from_mesh(mesh)
     bm.faces.ensure_lookup_table()
+
+    # 排除区阈值按模型身高比例推导(不写死绝对坐标)
+    height = _model_height(obj)
+    wrist_x, ankle_z = _exclusion_limits(height)
+    print(f"  模型身高{height:.3f}m → 排除区: 手腕|X|>{wrist_x:.3f} 脚踝Z<{ankle_z:.3f}")
 
     centers = []
     normals = []
@@ -53,7 +83,7 @@ def detect_adhesion(obj, threshold_mm=5.0, max_pairs=2000):
         c = f.calc_center_median()
         centers.append(c)
         normals.append(f.normal.normalized())
-        excluded.append(abs(c.x) > 0.42 or c.z < 0.10)
+        excluded.append(_in_exclusion_zone(c, wrist_x, ankle_z))
 
     t0 = time.time()
     # KDTree 只含 active_faces 的点 (排除区不进树)
@@ -242,12 +272,19 @@ def fix_adhesion(obj, adhesion_pairs, push_step_mm=0.3, smooth_iter=3,
             "clamped_vertices": clamped}
 
 
-def adhesion_pipeline(obj, threshold_mm=5.0, push_step_mm=0.3,
+def adhesion_pipeline(obj, threshold_mm=None, push_step_mm=None,
                       smooth_iter=3, smooth_factor=0.15, max_pairs=2000):
-    """Full adhesion detect + fix + verify."""
+    """Full adhesion detect + fix + verify.
+    threshold_mm/push_step_mm: None=按身高自动(threshold=身高mm/360, push_step=threshold/10)"""
     stats = {}
+    # 参数化: 判定距离按身高, 推开步长=判定距离的1/10(联动)
+    if threshold_mm is None:
+        threshold_mm = _model_height(obj) * 1000 / 360.0
+    if push_step_mm is None:
+        push_step_mm = threshold_mm / 10.0
     print(f"\n{'='*60}")
     print(f"ADHESION START: {len(obj.data.vertices)} verts, {len(obj.data.polygons)} faces")
+    print(f"  threshold={threshold_mm:.2f}mm push_step={push_step_mm:.2f}mm (按身高自动)")
 
     pairs = detect_adhesion(obj, threshold_mm, max_pairs)
     stats["pairs_detected"] = len(pairs)
@@ -275,8 +312,8 @@ def adhesion_pipeline(obj, threshold_mm=5.0, push_step_mm=0.3,
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--threshold', type=float, default=5.0)
-    parser.add_argument('--push_step', type=float, default=0.3)
+    parser.add_argument('--threshold', type=float, default=None, help='黏连判定距离mm, 默认按身高自动(身高mm/360)')
+    parser.add_argument('--push_step', type=float, default=None, help='推开步长mm, 默认threshold/10')
     parser.add_argument('--smooth_iter', type=int, default=3)
     parser.add_argument('--smooth_factor', type=float, default=0.15)
     parser.add_argument('--max_pairs', type=int, default=2000)

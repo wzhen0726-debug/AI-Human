@@ -1,0 +1,41 @@
+Traceback (most recent call last):
+  File "D:\Program Files\Blender Foundation\Blender 5.1\5.1\scripts\modules\addon_utils.py", line 515, in enable
+    mod.register()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py", line 42, in register
+    from .exporter import register_exporter
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\exporter.py", line 2, in <module>
+    import bpy_types
+ModuleNotFoundError: No module named 'bpy_types'
+00:01.656  blend            | Read blend: "E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\ARP新版测试_20260831\04_行走测试.blend"
+Exception in module register(): C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py
+Reloading external rigs...
+Reloading external metarigs...
+Extra Pies: Register built-in pies for use with non-standard Keymap.
+register_class(...):
+警告: 'List_View' 不包含带有前缀和后缀的 '_UL_'
+Registered B2RUVL 0.1.6.
+Registered MACHIN3tools 1.13.8.DeusEx with 2 tools, 0 pie menus
+ARP首选项已成功加载！
+更新骨架预设…
+Zen UV Library: REGISTERED.
+帧 | 膝外偏(°) | 脚底贴地z | Hips_z | 步态
+  1 | 小腿dir=(0.03,0.18,-0.98) 膝x=-0.108 | 脚底-0.003 | Hips0.868
+  5 | 小腿dir=(0.06,0.46,-0.88) 膝x=-0.116 | 脚底0.010 | Hips0.842
+  9 | 小腿dir=(0.04,0.69,-0.73) 膝x=-0.143 | 脚底0.010 | Hips0.820
+ 13 | 小腿dir=(-0.03,0.80,-0.60) 膝x=-0.137 | 脚底-0.007 | Hips0.830
+ 17 | 小腿dir=(-0.04,0.61,-0.79) 膝x=-0.129 | 脚底-0.006 | Hips0.863
+ 21 | 小腿dir=(-0.09,-0.09,-0.99) 膝x=-0.127 | 脚底0.000 | Hips0.857
+ 25 | 小腿dir=(-0.09,-0.39,-0.92) 膝x=-0.116 | 脚底0.012 | Hips0.826
+ 29 | 小腿dir=(-0.02,-0.13,-0.99) 膝x=-0.095 | 脚底-0.011 | Hips0.825
+ 33 | 小腿dir=(0.02,0.12,-0.99) 膝x=-0.102 | 脚底-0.007 | Hips0.853
+
+Hips垂直起伏检测:
+  Hips z范围: 0.820 ~ 0.868, 起伏4.8cm
+  (静止0.876, 正常行走起伏2-5cm; 0=完全无起伏会滑步僵硬)
+Unregistered B2RUVL 0.1.6.
+Unregistered MACHIN3tools 1.13.8.DeusEx.
+Zen UV Library: UNREGISTERED.
+Blender 5.1.0 (hash adfe2921d5f3 built 2026-03-17 01:37:32)
+
+Blender quit

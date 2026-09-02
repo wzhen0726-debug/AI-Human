@@ -1,0 +1,64 @@
+Traceback (most recent call last):
+  File "D:\Program Files\Blender Foundation\Blender 5.1\5.1\scripts\modules\addon_utils.py", line 515, in enable
+    mod.register()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py", line 42, in register
+    from .exporter import register_exporter
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\exporter.py", line 2, in <module>
+    import bpy_types
+ModuleNotFoundError: No module named 'bpy_types'
+00:01.672  blend            | Read blend: "E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\ARP新版测试_20260831\04_行走测试.blend"
+Exception in module register(): C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py
+Reloading external rigs...
+Reloading external metarigs...
+Extra Pies: Register built-in pies for use with non-standard Keymap.
+register_class(...):
+警告: 'List_View' 不包含带有前缀和后缀的 '_UL_'
+Registered B2RUVL 0.1.6.
+Registered MACHIN3tools 1.13.8.DeusEx with 2 tools, 0 pie menus
+ARP首选项已成功加载！
+更新骨架预设…
+Zen UV Library: REGISTERED.
+帧 | 全身mesh最低z | 左脚底最低z | 右脚底最低z | L踝z | R踝z
+  1 | -0.002 | L0.032 R-0.002 | L0.194 R0.090
+  2 | 0.001 | L0.029 R0.001 | L0.158 R0.090
+  3 | 0.002 | L0.036 R0.002 | L0.131 R0.090
+  4 | -0.003 | L0.013 R-0.003 | L0.113 R0.084
+  5 | 0.001 | L0.015 R0.001 | L0.119 R0.090
+  6 | -0.004 | L0.024 R-0.004 | L0.130 R0.092
+  7 | -0.007 | L0.028 R-0.007 | L0.136 R0.102
+  8 | -0.003 | L0.023 R-0.003 | L0.130 R0.123
+  9 | 0.008 | L0.014 R0.008 | L0.120 R0.152
+ 10 | 0.005 | L0.005 R0.016 | L0.108 R0.179
+ 11 | 0.003 | L0.003 R0.020 | L0.101 R0.192
+ 12 | 0.005 | L0.005 R0.036 | L0.100 R0.209
+ 13 | -0.000 | L-0.000 R0.047 | L0.095 R0.237
+ 14 | -0.002 | L-0.002 R0.059 | L0.093 R0.252
+ 15 | -0.002 | L-0.002 R0.061 | L0.093 R0.249
+ 16 | -0.002 | L-0.002 R0.055 | L0.093 R0.234
+ 17 | -0.002 | L-0.002 R0.047 | L0.093 R0.210
+ 18 | -0.002 | L-0.002 R0.040 | L0.094 R0.184
+ 19 | -0.002 | L-0.002 R0.042 | L0.094 R0.160
+ 20 | -0.003 | L-0.003 R0.051 | L0.092 R0.142
+ 21 | -0.005 | L-0.005 R0.038 | L0.089 R0.138
+ 22 | -0.009 | L-0.009 R0.040 | L0.086 R0.144
+ 23 | -0.013 | L-0.013 R0.064 | L0.082 R0.172
+ 24 | -0.015 | L-0.015 R0.070 | L0.083 R0.177
+ 25 | -0.017 | L-0.017 R0.060 | L0.089 R0.168
+ 26 | -0.012 | L-0.012 R0.036 | L0.107 R0.143
+ 27 | -0.007 | L-0.007 R0.019 | L0.134 R0.124
+ 28 | -0.000 | L-0.000 R0.010 | L0.166 R0.111
+ 29 | 0.006 | L0.015 R0.006 | L0.197 R0.103
+ 30 | 0.002 | L0.022 R0.002 | L0.237 R0.096
+ 31 | -0.001 | L0.054 R-0.001 | L0.268 R0.091
+ 32 | -0.003 | L0.070 R-0.003 | L0.282 R0.089
+ 33 | -0.004 | L0.065 R-0.004 | L0.276 R0.089
+ 34 | -0.003 | L0.052 R-0.003 | L0.256 R0.090
+ 35 | -0.003 | L0.041 R-0.003 | L0.227 R0.089
+ 36 | -0.001 | L0.032 R-0.001 | L0.194 R0.090
+Unregistered B2RUVL 0.1.6.
+Unregistered MACHIN3tools 1.13.8.DeusEx.
+Zen UV Library: UNREGISTERED.
+Blender 5.1.0 (hash adfe2921d5f3 built 2026-03-17 01:37:32)
+
+Blender quit
