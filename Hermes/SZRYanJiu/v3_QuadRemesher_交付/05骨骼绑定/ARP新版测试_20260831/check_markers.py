@@ -2,10 +2,10 @@
 用法: blender -b <blend文件> --python check_markers.py"""
 import bpy, sys
 
-EXPECTED_Z = {  # 速览表数值(米)
+EXPECTED_Z = {  # 速览表数值(米); root=骨盆上缘(高于胯点6-7cm, 2026-09-02定案)
     "chin_loc": 1.59, "neck_loc": 1.47, "shoulder_loc": 1.435,
     "elbow_loc": 1.435, "hand_loc": 1.435, "hand_tip_loc": 1.435,
-    "root_loc": 0.88, "thigh_loc": 0.88, "knee_loc": 0.52, "foot_loc": 0.14,
+    "root_loc": 0.94, "thigh_loc": 0.88, "knee_loc": 0.52, "foot_loc": 0.14,
 }
 
 def w(o): return o.matrix_world.translation
@@ -78,12 +78,12 @@ if th:
             print(f"[比例] 大腿{thigh*100:.0f}cm/小腿{shank*100:.0f}cm 比值{r:.2f}  ← 异常(应0.75~1.3)")
             warn += 1
 
-# 7. root 应高于 thigh 约6-7cm(Hips骨盆上缘骑在大腿根上方, Mixamo实测差6.7cm)
+# 7. root 应高于 thigh 约6-10cm(骨盆上缘骑在大腿根上方, Mixamo标准差6.7, 体型差异可到10+)
 rt = pts.get("root_loc")
 if rt and th:
     d = (w(rt).z - w(th).z) * 100
-    if not 4 < d < 9:
-        print(f"[结构] root比thigh高{d:.1f}cm  ← 应高6-7cm(骨盆上缘在大腿根上方)")
+    if not 4 < d < 11:
+        print(f"[结构] root比thigh高{d:.1f}cm  ← 应高6-10cm(骨盆上缘在大腿根上方)")
         warn += 1
 
 print(f"\n===== 自检完成: {'全部通过 ✓' if warn == 0 else f'{warn}项提示, 请人工核对上图示位置'} =====")

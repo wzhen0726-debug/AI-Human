@@ -120,6 +120,12 @@ for m in sorted(markers, key=lambda o: o.name):
     print(f"  {m.name}: ({w.x:.3f}, {w.y:.3f}, {w.z:.3f})")
 
 out1 = os.path.join(OUT, "01_AI打点.blend")
+# 保护: 若已有01打点文件(可能含用户手动微调), 先备份再覆盖, 避免丢失人工打点
+if os.path.exists(out1):
+    import shutil, datetime
+    bak = out1.replace(".blend", f"_备份_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.blend")
+    shutil.copy2(out1, bak)
+    print(f"已有01文件, 已备份到: {os.path.basename(bak)}")
 bpy.ops.wm.save_mainfile(filepath=out1)
 print(f"\n保存: {out1}")
 print("========== STEP1_DONE ==========")

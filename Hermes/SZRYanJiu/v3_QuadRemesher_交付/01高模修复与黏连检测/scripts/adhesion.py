@@ -261,8 +261,9 @@ def fix_adhesion(obj, adhesion_pairs, push_step_mm=0.3, smooth_iter=3,
     bpy.ops.object.mode_set(mode='EDIT')
     total = smooth_iter
     for it in range(total):
-        # 渐进: 0.35 → 0.10
-        f = 0.35 - 0.25 * (it / max(total - 1, 1))
+        # 渐进: (smooth_factor+0.20) → smooth_factor, 用传入参数做基准(不写死)
+        # smooth_factor=0.15时 ≈ 0.35→0.15, 与原验证值接近
+        f = smooth_factor + 0.20 * (1 - it / max(total - 1, 1))
         bpy.ops.mesh.vertices_smooth(factor=f, repeat=1)
     bpy.ops.mesh.select_all(action='DESELECT')
     bpy.ops.object.mode_set(mode='OBJECT')
