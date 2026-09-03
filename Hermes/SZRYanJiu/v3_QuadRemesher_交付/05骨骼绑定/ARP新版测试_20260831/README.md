@@ -9,7 +9,7 @@
 | `01_AI打点.blend` | AI 预置 17 个标记点（用户可在 GUI 微调，镜像约束自动跟随） |
 | `02_go_detect骨架.blend` | ARP 生成的 348 骨（含 66 参考骨 + 30 手指） |
 | `03_骨骼绑定.blend` | **最终骨架**：55 骨 Mixamo 命名 + 权重 + 眼球（蒙皮到 Head 骨） |
-| `04_行走测试.blend` | 行走动画验证（贴地 0 腾空、Hips 起伏 4.8cm） |
+| `04_动作测试.blend` | 行走动画验证（贴地 0 腾空、Hips 起伏 4.8cm） |
 | `多动画测试/` | anim_StandardWalk / anim_Running / anim_Jump（各含眼球，支撑期贴地全对） |
 
 ## 脚本（`scripts/`）

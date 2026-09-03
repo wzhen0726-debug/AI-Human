@@ -1,6 +1,6 @@
 """ARP全新测试 — 步骤3+4+5+6+7: 提取55骨→align_roll→use_connect→权重→行走验证
 输入: 02_go_detect骨架.blend
-输出: 03_骨骼绑定.blend, 04_行走测试.blend"""
+输出: 03_骨骼绑定.blend, 04_动作测试.blend"""
 import bpy, sys, os, json
 from mathutils import Vector
 
@@ -350,7 +350,7 @@ print(f"帧18右脚: z={rf18.z:.3f}")
 ok = moved > 500 and lh18.z < 1.8 and (lh18-lh1).length > 0.02
 print(f"行走验证: {'PASS 通过' if ok else 'FAIL 失败'}")
 
-step07 = os.path.join(OUT, "04_行走测试.blend")
+step07 = os.path.join(OUT, "04_动作测试.blend")
 bpy.ops.wm.save_mainfile(filepath=step07)
 print(f"保存: {step07}")
 print("\n========== STEPS_3_TO_7_DONE ==========")

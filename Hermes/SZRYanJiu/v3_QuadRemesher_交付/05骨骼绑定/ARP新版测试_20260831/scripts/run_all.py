@@ -3,7 +3,7 @@
       python run_all.py 3   ← 从步骤3(建骨+行走)续跑
 步骤: 1=AI打点 2=go_detect 3~7=建骨+权重+行走(在step3脚本内连续)
 步骤1后建议用户在GUI确认01点位再继续。
-产物: 01_AI打点.blend / 02_go_detect骨架.blend / 03_骨骼绑定.blend / 04_行走测试.blend
+产物: 01_AI打点.blend / 02_go_detect骨架.blend / 03_骨骼绑定.blend / 04_动作测试.blend
 自检: qa_rig.py(骨架对称/连贯/权重) qa_walk.py(行走起伏) — 跑完自动执行"""
 import subprocess, sys, os
 
