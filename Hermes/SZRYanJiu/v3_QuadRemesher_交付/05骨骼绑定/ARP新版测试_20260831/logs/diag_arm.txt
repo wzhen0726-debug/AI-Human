@@ -1,0 +1,39 @@
+Traceback (most recent call last):
+  File "D:\Program Files\Blender Foundation\Blender 5.1\5.1\scripts\modules\addon_utils.py", line 515, in enable
+    mod.register()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py", line 42, in register
+    from .exporter import register_exporter
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\exporter.py", line 2, in <module>
+    import bpy_types
+ModuleNotFoundError: No module named 'bpy_types'
+00:03.032  blend            | Read blend: "E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\ARP新版测试_20260831\03_骨骼绑定.blend"
+Exception in module register(): C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py
+Reloading external rigs...
+Reloading external metarigs...
+Extra Pies: Register built-in pies for use with non-standard Keymap.
+register_class(...):
+警告: 'List_View' 不包含带有前缀和后缀的 '_UL_'
+Registered B2RUVL 0.1.6.
+Registered MACHIN3tools 1.13.8.DeusEx with 2 tools, 0 pie menus
+ARP首选项已成功加载！
+更新骨架预设…
+Zen UV Library: REGISTERED.
+=== 手臂骨骼静止位置(世界) ===
+LeftArm: head=(0.180,0.048,1.437) tail=(0.473,0.069,1.428) 长=29.3cm
+LeftForeArm: head=(0.473,0.069,1.428) tail=(0.720,0.019,1.437) 长=25.2cm
+LeftHand: head=(0.720,0.019,1.437) tail=(0.823,0.010,1.441) 长=10.4cm
+LeftHandIndex1: head=(0.816,-0.014,1.442) tail=(0.841,-0.021,1.441) 长=2.6cm
+LeftHandMiddle1: head=(0.823,0.010,1.441) tail=(0.851,0.006,1.439) 长=2.8cm
+LeftHandPinky1: head=(0.821,0.053,1.429) tail=(0.840,0.057,1.427) 长=2.0cm
+
+=== mesh范围 ===
+x: -0.904 ~ 0.904  z: 0.000 ~ 1.801  y: -0.156 ~ 0.157
+LeftHand骨骼x=0.720, mesh最大x=0.904
+手臂高度带(z≈1.43, x>0.2)顶点数: 16878
+Error   : EXCEPTION_ACCESS_VIOLATION
+Address : 0x00007FF764ECFB82
+Module  : blender.exe
+Thread  : 00006458
+Blender 5.1.0 (hash adfe2921d5f3 built 2026-03-17 01:37:32)
+Writing: F:\temp\blender\blender.crash.txt

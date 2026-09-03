@@ -206,6 +206,41 @@ bpy.context.view_layer.objects.active = arm
 bpy.ops.object.parent_set(type='ARMATURE_AUTO')
 print(f"权重顶点组: {len(body.vertex_groups)}")
 
+# ============ 步骤6.5: 并入眼球并绑到Head骨 ============
+# 眼球是独立物体不进QR/烘焙, 在绑定阶段并入(01A设计: 只在05绑定/06导出时并入)。
+# 从01A眼球摆入产物link入 Eye002_L/R, 骨骼绑到Head(眼球跟头动)。
+print("\n########## 步骤6.5: 并入眼球 ##########")
+EYE_BLEND = os.path.join(BASE, "..", "01A眼窝与眼球", "models", "01_2_eyeball_placed.blend")
+EYE_BLEND = os.path.normpath(EYE_BLEND)
+head_head = None  # Head骨世界位置
+mw_arm = arm.matrix_world
+head_bone = arm.data.bones.get('Head')
+if head_bone and os.path.exists(EYE_BLEND):
+    # link眼球对象(保持其世界位置)
+    with bpy.data.libraries.load(EYE_BLEND) as (src, dst):
+        dst.objects = [n for n in src.objects if n.startswith('Eye002')]
+    eyes = [o for o in dst.objects if o is not None]
+    for o in eyes:
+        bpy.context.scene.collection.objects.link(o)
+    bpy.context.view_layer.update()
+    for o in eyes:
+        # 眼球蒙皮到Head骨: 顶点组全部指向Head(权重1.0) + Armature修改器
+        # 这样眼球保持世界位置, 跟随Head骨动(不动顶点, 只加修改器)
+        vg = o.vertex_groups.new(name='mixamorig:Head')
+        vg.add(list(range(len(o.data.vertices))), 1.0, 'REPLACE')
+        mod = o.modifiers.new('Armature', 'ARMATURE')
+        mod.object = arm
+        mod.use_deform_preserve_volume = True
+    print(f"并入眼球 {len(eyes)}个 (Head骨蒙皮, 位置不变)")
+    # 验证眼球世界位置
+    bpy.context.view_layer.update()
+    dg = bpy.context.evaluated_depsgraph_get()
+    for o in eyes:
+        p = o.evaluated_get(dg).matrix_world.translation
+        print(f"  {o.name} 绑定后世界位置: ({p.x:.3f},{p.y:.3f},{p.z:.3f})")
+else:
+    print(f"  警告: 眼球blend不存在({EYE_BLEND})或无Head骨, 跳过")
+
 step06 = os.path.join(OUT, "03_骨骼绑定.blend")
 bpy.ops.wm.save_mainfile(filepath=step06)
 print(f"保存: {step06}")
