@@ -1,0 +1,15 @@
+# 大体积生成产物/工作区不入库(录屏用, 可重新生成)
+交付/
+**/输出/
+**/logs/
+*.blend
+*.blend1
+*.fbx
+*.glb
+*.png
+*.json
+
+# 保留控制端与说明
+!控制台.py
+!README.md
+!fix_paths.py
