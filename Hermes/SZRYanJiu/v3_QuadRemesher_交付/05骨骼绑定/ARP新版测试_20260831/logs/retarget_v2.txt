@@ -1,0 +1,333 @@
+Traceback (most recent call last):
+  File "D:\Program Files\Blender Foundation\Blender 5.1\5.1\scripts\modules\addon_utils.py", line 515, in enable
+    mod.register()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py", line 42, in register
+    from .exporter import register_exporter
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\exporter.py", line 2, in <module>
+    import bpy_types
+ModuleNotFoundError: No module named 'bpy_types'
+00:01.719  blend            | Read blend: "E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\ARP新版测试_20260831\03_骨骼绑定.blend"
+00:01.891  reports          | WARNING 新骨骼名称与现有顶点组名称冲突, 顶点组名称保持不变. (Eye002_L::mixamorig:Head)
+Blender 5.1.0 (hash adfe2921d5f3 built 2026-03-17 01:37:32)
+00:01.891  reports          | WARNING 新骨骼名称与现有顶点组名称冲突, 顶点组名称保持不变. (Eye002_R::mixamorig:Head)
+Exception in module register(): C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py
+Reloading external rigs...
+Reloading external metarigs...
+Extra Pies: Register built-in pies for use with non-standard Keymap.
+register_class(...):
+警告: 'List_View' 不包含带有前缀和后缀的 '_UL_'
+Registered B2RUVL 0.1.6.
+Registered MACHIN3tools 1.13.8.DeusEx with 2 tools, 0 pie menus
+ARP首选项已成功加载！
+更新骨架预设…
+Zen UV Library: REGISTERED.
+==================================================
+阶段A: rest归一化 (参考: T-Pose.fbx)
+FBX version: 7700
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+  逐骨局部rest旋转差实测: 最大90.0°(mixamorig:Hips) 平均12.0° >2°需校正:46骨
+    mixamorig:Hips: 90.0°
+    mixamorig:Neck: 25.6°
+    mixamorig:RightHandThumb1: 24.2°
+    mixamorig:LeftHandThumb1: 24.2°
+    mixamorig:Head: 21.8°
+    mixamorig:LeftArm: 21.5°
+    mixamorig:RightArm: 21.5°
+    mixamorig:RightToeBase: 20.6°
+  校正pose: 对46骨设置了旋转
+  应用后局部rest旋转残余差最大: 1.74°(mixamorig:LeftHandRing3) OK
+  蒙皮外观最大位移: 0.00mm OK
+
+==================================================
+动画: Standard Walk (Standard Walk.fbx)
+FBX version: 7700
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supportedTraceback (most recent call last):
+  File "E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\ARP新版测试_20260831\scripts\retarget_mixamo.py", line 222, in <module>
+    assert all_pass, "自查未通过!"
+           ^^^^^^^^
+AssertionError: 自查未通过!
+
+WARNING: User property type 'Short' is not supported
+  腿长比: 0.037 (我们0.033m / 参考0.893m)
+  绑定完成: 帧1-36 (36帧, 完全按参考)
+
+==================================================
+动画: Running (Running.fbx)
+FBX version: 7700
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+  腿长比: 0.035 (我们0.033m / 参考0.955m)
+  绑定完成: 帧1-20 (20帧, 完全按参考)
+
+==================================================
+动画: Jump (Jump.fbx)
+FBX version: 7700
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+  腿长比: 0.035 (我们0.033m / 参考0.955m)
+  绑定完成: 帧1-31 (31帧, 完全按参考)
+
+==================================================
+自查
+  Standard Walk: 36帧 Hips起伏0.2cm 腾空8帧[13, 14, 15, 16, 30, 31] 脚底最低-63.6cm FAIL
+  Running: 20帧 Hips起伏0.3cm 腾空12帧[3, 4, 5, 6, 7, 11] 脚底最低-40.9cm FAIL
+  Jump: 31帧 Hips起伏3.8cm 腾空21帧[3, 4, 5, 6, 7, 8] 脚底最低-36.6cm PASS
+Unregistered B2RUVL 0.1.6.
+Unregistered MACHIN3tools 1.13.8.DeusEx.
+Zen UV Library: UNREGISTERED.
+
+Blender quit

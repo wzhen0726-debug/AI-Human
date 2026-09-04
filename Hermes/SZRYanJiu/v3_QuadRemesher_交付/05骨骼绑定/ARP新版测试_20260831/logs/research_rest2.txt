@@ -1,0 +1,396 @@
+Traceback (most recent call last):
+  File "D:\Program Files\Blender Foundation\Blender 5.1\5.1\scripts\modules\addon_utils.py", line 515, in enable
+    mod.register()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py", line 42, in register
+    from .exporter import register_exporter
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\exporter.py", line 2, in <module>
+    import bpy_types
+ModuleNotFoundError: No module named 'bpy_types'
+Error in bpy.app.handlers.load_pre[1]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33282, in cleanup_line_fx
+    bpy.types.SpaceView3D.draw_handler_remove(handles_lines[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33286, in cleanup_line_fx
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+Error in bpy.app.handlers.load_pre[2]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5295, in cleanup
+    bpy.types.SpaceView3D.draw_handler_remove(handles[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5299, in cleanup
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+Error in bpy.app.handlers.load_pre[1]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33282, in cleanup_line_fx
+    bpy.types.SpaceView3D.draw_handler_remove(handles_lines[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33286, in cleanup_line_fx
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+Error in bpy.app.handlers.load_pre[2]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5295, in cleanup
+    bpy.types.SpaceView3D.draw_handler_remove(handles[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5299, in cleanup
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+Error in bpy.app.handlers.load_pre[1]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33282, in cleanup_line_fx
+    bpy.types.SpaceView3D.draw_handler_remove(handles_lines[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33286, in cleanup_line_fx
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+Error in bpy.app.handlers.load_pre[2]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5295, in cleanup
+    bpy.types.SpaceView3D.draw_handler_remove(handles[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5299, in cleanup
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+Exception in module register(): C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py
+Reloading external rigs...
+Reloading external metarigs...
+Extra Pies: Register built-in pies for use with non-standard Keymap.
+register_class(...):
+警告: 'List_View' 不包含带有前缀和后缀的 '_UL_'
+Registered B2RUVL 0.1.6.
+Registered MACHIN3tools 1.13.8.DeusEx with 2 tools, 0 pie menus
+ARP首选项已成功加载！
+更新骨架预设…
+Zen UV Library: REGISTERED.
+Unregistered B2RUVL 0.1.6.
+Unregistered MACHIN3tools 1.13.8.DeusEx.
+Zen UV Library: UNREGISTERED.
+addon_utils.disable: bl_ext.lab_blender_org.mcp not enabled
+FBX version: 7700
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+Standard Walk.fbx: scale=(0.009999999776482582, 0.009999999776482582, 0.009999999776482582) Hips世界z=0.9979 左脚踝z=0.1049 腿长=0.8930
+FBX version: 7700
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+Running.fbx: scale=(0.009999999776482582, 0.009999999776482582, 0.009999999776482582) Hips世界z=1.0427 左脚踝z=0.0873 腿长=0.9555
+FBX version: 7700
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supportedError in bpy.app.handlers.load_pre[1]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33282, in cleanup_line_fx
+    bpy.types.SpaceView3D.draw_handler_remove(handles_lines[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33286, in cleanup_line_fx
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+Error in bpy.app.handlers.load_pre[2]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5295, in cleanup
+    bpy.types.SpaceView3D.draw_handler_remove(handles[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5299, in cleanup
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+Error in bpy.app.handlers.load_pre[1]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33282, in cleanup_line_fx
+    bpy.types.SpaceView3D.draw_handler_remove(handles_lines[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig.py", line 33286, in cleanup_line_fx
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+Error in bpy.app.handlers.load_pre[2]:
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5295, in cleanup
+    bpy.types.SpaceView3D.draw_handler_remove(handles[0],'WINDOW')
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+ValueError: callback_remove(handler): null handler given, invalid or already removed
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\auto_rig_pro-master\src\auto_rig_smart.py", line 5299, in cleanup
+    if bpy.context.scene.arp_debug_mode:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Scene' object has no attribute 'arp_debug_mode'
+00:02.985  blend            | Read blend: "E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\ARP新版测试_20260831\03_骨骼绑定.blend"
+Error in bpy.app.handlers.load_post[2]:
+Traceback (most recent call last):
+  File "D:\Program Files\Blender Foundation\Blender 5.1\5.1\scripts\addons_core\rigify\utils\action_layers.py", line 439, in versioning_5_0
+    for action_setup in obj.data.rigify_action_slots:
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Armature' object has no attribute 'rigify_action_slots'
+00:03.079  reports          | WARNING New bone name collides with an existing vertex group name, vertex group names are unchanged. (Eye002_L::mixamorig:Head)
+Blender 5.1.0 (hash adfe2921d5f3 built 2026-03-17 01:37:32)
+00:03.079  reports          | WARNING New bone name collides with an existing vertex group name, vertex group names are unchanged. (Eye002_R::mixamorig:Head)
+
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+WARNING: User property type 'Short' is not supported
+Jump.fbx: scale=(0.009999999776482582, 0.009999999776482582, 0.009999999776482582) Hips世界z=1.0427 左脚踝z=0.0873 腿长=0.9555
+归一化后 Walk vs Running.fbx: 旋转最大差359.504° (共65骨)
+归一化后 Walk vs Jump.fbx: 旋转最大差359.504° (共65骨)
+
+我们腿长=0.8601m 参考Walk腿长=0.8930m
+我们骨架 vs 参考(缩放对齐后) 逐骨rest旋转差 TOP12:
+  mixamorig:RightHandThumb3: 34.72°
+  mixamorig:LeftHandThumb3: 34.71°
+  mixamorig:RightHandThumb1: 28.30°
+  mixamorig:LeftHandThumb1: 28.30°
+  mixamorig:Neck: 21.84°
+  mixamorig:RightToe_End: 19.29°
+  mixamorig:RightToeBase: 19.29°
+  mixamorig:LeftToe_End: 19.29°
+  mixamorig:LeftToeBase: 19.29°
+  mixamorig:LeftShoulder: 17.27°
+  mixamorig:RightShoulder: 17.27°
+  mixamorig:LeftHandIndex1: 16.67°
+平均差=11.91°
+DONE
+
+Blender quit

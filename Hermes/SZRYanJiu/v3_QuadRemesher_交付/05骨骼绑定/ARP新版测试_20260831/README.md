@@ -9,7 +9,8 @@
 | `01_AI打点.blend` | AI 预置 17 个标记点（用户可在 GUI 微调，镜像约束自动跟随） |
 | `02_go_detect骨架.blend` | ARP 生成的 348 骨（含 66 参考骨 + 30 手指） |
 | `03_骨骼绑定.blend` | **最终骨架**：55 骨 Mixamo 命名 + 权重 + 眼球（蒙皮到 Head 骨） |
-| `04_动作测试.blend` | **动作测试**：一个文件含 行走/跑步/跳跃 三个动作（动作编辑器下拉切换），含眼球，支撑期贴地全对 |
+| `03_mixamo_rest.blend` | 骨架 rest 朝向归一化为 Mixamo 标准（normalize_rest.py 产物，动画绑定的输入） |
+| `04_动作测试.blend` | **动作测试**：一个文件含 行走/跑步/跳跃 三个动作（动作编辑器下拉切换），含眼球，贴地正常 |
 
 ## 脚本（`scripts/`）
 
@@ -22,7 +23,8 @@
 | `check_markers.py` | 点位自检（对称/高度/链条/比例/root-thigh结构） |
 | `qa_rig.py` | 骨架质量自检（骨数/对称/连贯/权重/零长度骨） |
 | `qa_walk.py` | 行走质量自检（Hips起伏/膝盖轨迹） |
-| `merge_anims.py` | 多动画合并：把 行走/跑步/跳跃 三个Mixamo动画合并进04_动作测试.blend（自动腿长比适配+贴地检测） |
+| `normalize_rest.py` | rest 朝向归一化：把我们骨架的骨骼朝向测量驱动地改成 Mixamo 标准（锚用户 T-Pose.fbx，只改朝向不动位置），产 03_mixamo_rest.blend |
+| `retarget_mixamo.py` | Mixamo 动画绑定：基于归一化骨架直接复制参考动画（帧数完全按参考，不加工循环），产 04_动作测试.blend |
 
 ## 用法
 
