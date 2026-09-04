@@ -1,0 +1,82 @@
+Traceback (most recent call last):
+  File "D:\Program Files\Blender Foundation\Blender 5.1\5.1\scripts\modules\addon_utils.py", line 515, in enable
+    mod.register()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py", line 42, in register
+    from .exporter import register_exporter
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\exporter.py", line 2, in <module>
+    import bpy_types
+ModuleNotFoundError: No module named 'bpy_types'
+00:01.906  blend            | Read blend: "E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\ARP新版测试_20260831\04_动作测试.blend"
+Exception in module register(): C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py
+Reloading external rigs...
+Reloading external metarigs...
+Extra Pies: Register built-in pies for use with non-standard Keymap.
+register_class(...):
+警告: 'List_View' 不包含带有前缀和后缀的 '_UL_'
+Registered B2RUVL 0.1.6.
+Registered MACHIN3tools 1.13.8.DeusEx with 2 tools, 0 pie menus
+ARP首选项已成功加载！
+更新骨架预设…
+Zen UV Library: REGISTERED.
+=== 场景对象(找躺着的Mixamo残留) ===
+  Alpha_Joints type=MESH loc=(0.00,0.00,0.00) scale=(1.00,1.00,1.00)
+  Alpha_Surface type=MESH loc=(0.00,0.00,0.00) scale=(1.00,1.00,1.00)
+  Beta_Joints type=MESH loc=(0.00,0.00,0.00) scale=(1.00,1.00,1.00)
+  Beta_Joints.001 type=MESH loc=(0.00,0.00,0.00) scale=(1.00,1.00,1.00)
+  Beta_Surface type=MESH loc=(0.00,0.00,0.00) scale=(1.00,1.00,1.00)
+  Beta_Surface.001 type=MESH loc=(0.00,0.00,0.00) scale=(1.00,1.00,1.00)
+  char_grp type=EMPTY loc=(0.00,0.00,0.00) scale=(1.00,1.00,1.00)
+  cs_arrow_cross type=MESH loc=(2.08,-0.04,0.04) scale=(0.28,0.28,0.28)
+  cs_arrow_twist type=MESH loc=(5.25,-0.05,0.31) scale=(1.00,1.00,1.00)
+  cs_base_finger type=MESH loc=(-2.67,-0.05,-0.16) scale=(0.10,0.10,0.10)
+  cs_base_finger_end type=MESH loc=(-2.89,-0.05,-0.16) scale=(0.10,0.10,0.10)
+  cs_box type=MESH loc=(-2.35,-0.05,-0.16) scale=(0.70,0.70,0.70)
+  cs_circle_head type=MESH loc=(-5.03,-0.38,0.81) scale=(0.07,0.07,0.07)
+  cs_circle_squashed type=MESH loc=(0.53,-0.05,-0.06) scale=(0.10,0.10,0.10)
+  cs_curve type=MESH loc=(0.42,-0.05,0.52) scale=(0.10,0.10,0.10)
+  cs_foot.l type=MESH loc=(1.97,-0.05,0.47) scale=(0.10,0.10,0.10)
+  cs_foot.r type=MESH loc=(2.07,-0.05,0.47) scale=(0.10,0.10,0.10)
+  cs_foot_roll type=MESH loc=(-1.41,-0.05,-0.16) scale=(0.10,0.10,0.10)
+  cs_grp type=EMPTY loc=(0.00,0.00,0.00) scale=(1.00,1.00,1.00)
+  cs_half_circle type=MESH loc=(0.03,-0.05,-0.09) scale=(0.07,0.07,0.07)
+  cs_hand type=MESH loc=(2.48,0.05,0.48) scale=(0.10,0.10,0.10)
+  cs_line type=MESH loc=(0.00,0.00,0.00) scale=(1.00,1.00,1.00)
+  cs_pos type=MESH loc=(-2.07,-0.05,0.82) scale=(0.10,0.10,0.10)
+  cs_sphere type=MESH loc=(-0.85,-0.05,0.47) scale=(0.08,0.08,0.08)
+  cs_spine type=MESH loc=(0.00,-0.01,1.07) scale=(0.05,0.05,0.05)
+  cs_torus_01 type=MESH loc=(-1.25,-0.05,0.17) scale=(0.10,0.10,0.10)
+  cs_torus_02 type=MESH loc=(-0.84,-0.05,0.16) scale=(0.10,0.10,0.10)
+  cs_torus_03 type=MESH loc=(-0.26,-0.05,0.16) scale=(0.10,0.10,0.10)
+  cs_torus_04 type=MESH loc=(-1.26,-0.05,-0.16) scale=(0.10,0.10,0.10)
+  cs_user_c_arm_fk.l type=MESH loc=(0.24,0.03,1.29) scale=(0.23,0.23,0.23)
+  cs_user_c_arm_fk.r type=MESH loc=(0.13,0.01,1.34) scale=(1.00,1.00,1.00)
+  cs_user_c_arm_ik.r type=MESH loc=(0.13,0.01,1.34) scale=(1.00,1.00,1.00)
+  cs_user_c_leg_fk.l type=MESH loc=(0.17,-0.02,0.53) scale=(0.47,0.47,0.47)
+  cs_user_c_leg_fk.r type=MESH loc=(2.48,0.05,0.48) scale=(1.00,1.00,1.00)
+  cs_user_c_shoulder.l type=MESH loc=(0.08,-0.06,1.40) scale=(0.08,0.08,0.08)
+  cs_user_c_shoulder.r type=MESH loc=(-1.73,0.12,0.13) scale=(1.00,1.00,1.00)
+  cs_user_c_spine_01_bend.x type=MESH loc=(-1.25,-0.05,0.17) scale=(0.10,0.10,0.10)
+  cs_user_c_spine_02_bend.x type=MESH loc=(-1.25,-0.05,0.17) scale=(0.10,0.10,0.10)
+  cs_user_c_spine_03.x type=MESH loc=(0.00,-0.01,1.07) scale=(0.05,0.05,0.05)
+  cs_user_c_spine_03_bend.x type=MESH loc=(-1.25,-0.05,0.17) scale=(0.10,0.10,0.10)
+  cs_user_c_thigh_fk.l type=MESH loc=(0.13,-0.00,0.77) scale=(0.41,0.41,0.41)
+  cs_user_c_thigh_fk.r type=MESH loc=(4.96,-0.07,-0.51) scale=(1.00,1.00,1.00)
+  cs_user_c_waist_bend.x type=MESH loc=(-1.25,-0.05,0.17) scale=(0.10,0.10,0.10)
+  Eye002_L type=MESH loc=(-0.04,-0.09,1.67) scale=(1.00,1.00,1.00)
+  Eye002_R type=MESH loc=(0.04,-0.09,1.67) scale=(1.00,1.00,1.00)
+  MixamoSkeleton type=ARMATURE loc=(0.00,0.00,0.00) scale=(1.00,1.00,1.00)
+  tripo_node_89f96507-4268-42bd-8c27-bf6892366069_QR type=MESH loc=(-0.00,0.00,0.00) scale=(1.00,1.00,1.00)
+
+=== Running 循环断点诊断: 帧20(末帧) vs 帧21/22(循环后) ===
+  mixamorig:LeftFoot: 帧20vs帧1=75.4° 帧21vs帧1=93.0° 帧22vs帧2=30.7°
+  mixamorig:LeftLeg: 帧20vs帧1=2.8° 帧21vs帧1=37.3° 帧22vs帧2=10.2°
+  mixamorig:LeftUpLeg: 帧20vs帧1=16.1° 帧21vs帧1=24.6° 帧22vs帧2=3.3°
+  mixamorig:LeftArm: 帧20vs帧1=18.6° 帧21vs帧1=56.4° 帧22vs帧2=139.6°
+DONE
+Unregistered B2RUVL 0.1.6.
+Unregistered MACHIN3tools 1.13.8.DeusEx.
+Zen UV Library: UNREGISTERED.
+Blender 5.1.0 (hash adfe2921d5f3 built 2026-03-17 01:37:32)
+
+Blender quit
