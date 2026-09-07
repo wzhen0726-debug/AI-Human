@@ -66,12 +66,22 @@ for k, (cn, en) in enumerate(NAMES):
     e.empty_display_size = 0.0025
     e.location = (x, y, z)
     e.show_in_front = True
-    e.color = (0.3, 0.6, 1.0, 1.0)  # 蓝色
+    e.color = (0.3, 1.0, 0.3, 1.0)  # 绿色
     coll.objects.link(e)
-    sw = e.constraints.new(type='SHRINKWRAP')
-    sw.target = obj
-    sw.shrinkwrap_type = 'NEAREST_SURFACE'
-    sw.distance = 0.0
+
+# 面捕捉(原生snap, 拖动时吸附网格表面; 不用Shrinkwrap约束, 约束会把手调位置弹回)
+ts = bpy.context.scene.tool_settings
+ts.use_snap = True
+try:
+    ts.snap_elements = {'FACE'}      # Blender 4.0+
+except TypeError:
+    try:
+        ts.snap_elements_base = {'FACE'}  # 旧版
+    except AttributeError:
+        pass
+for attr in ("use_project", "snap_target_best"):
+    if hasattr(ts, attr):
+        setattr(ts, attr, False if attr == "use_project" else 'CLOSEST')
 
 # 清空L眼集合(如果存在)
 lc = bpy.data.collections.get("LM_L")

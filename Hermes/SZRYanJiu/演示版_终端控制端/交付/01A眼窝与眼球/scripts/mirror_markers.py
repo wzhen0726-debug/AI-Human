@@ -30,10 +30,6 @@ for o in r_objs:
     e.show_in_front = True
     e.color = (1.0, 0.3, 0.3, 1.0)  # 红色
     l_coll.objects.link(e)
-    sw = e.constraints.new(type='SHRINKWRAP')
-    sw.target = obj
-    sw.shrinkwrap_type = 'NEAREST_SURFACE'
-    sw.distance = 0.0
 
 bpy.ops.wm.save_as_mainfile(filepath=MARKERS)
 print(f"镜像完成: R眼{len(r_objs)}点 -> L眼")

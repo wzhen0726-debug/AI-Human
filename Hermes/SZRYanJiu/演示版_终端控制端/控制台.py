@@ -129,8 +129,8 @@ def run_blender(script, tag, label, done_mark=None, args=None, cwd=None):
     return run_bg(cmd, tag, label, cwd=cwd or os.path.dirname(script), done_mark=done_mark)
 
 # ============ GUI 手动调整 ============
-def gui_adjust(blend, prompt, md=None):
-    """打开Blender GUI让用户手动微调, 关闭窗口后继续"""
+def gui_adjust(blend, prompt, md=None, setup=None):
+    """打开Blender GUI让用户手动微调, 关闭窗口后继续. setup=打开时自动执行的视口设置脚本"""
     if md and os.path.exists(md):
         try:
             os.startfile(md); print(f"  {C}📄 点位说明: {os.path.basename(md)}{W}")
@@ -146,7 +146,10 @@ def gui_adjust(blend, prompt, md=None):
     except (EOFError, KeyboardInterrupt):
         print(); return True
     glog = io.open(os.path.join(LOGS, "gui_adjust.txt"), 'w', encoding='utf-8')
-    subprocess.run([BLENDER, blend], stdout=glog, stderr=subprocess.STDOUT)
+    cmd = [BLENDER, blend]
+    if setup and os.path.exists(setup):
+        cmd += ['--python', setup]
+    subprocess.run(cmd, stdout=glog, stderr=subprocess.STDOUT)
     glog.close()
     print(f"  {G}✓ GUI 调整完成{W}")
     return True
@@ -223,9 +226,10 @@ def step_01a():
     # 1. 放点
     if not run_blender(os.path.join(S01A, "place_eyelid_markers.py"), "01a_1", "① 放置眼睑缘标记点(右眼12点)"):
         summary("环节 01a", False, t0, []); return False
-    # 2. GUI手调
+    # 2. GUI手调(自动: 正视图对准眼部+Material Preview显纹理+面捕捉, 无约束回弹)
     markers_blend = os.path.join(M01A, "01A_markers_eyelid.blend")
-    gui_adjust(markers_blend, "手动微调眼裂轮廓标记点(右眼12点, 吸附在眼睑缘)")
+    gui_adjust(markers_blend, "手动微调眼裂轮廓标记点(右眼12点, 拖动时面捕捉吸附表面)",
+               setup=os.path.join(S01A, "setup_marker_gui.py"))
     # 3. 镜像
     if not run_blender(os.path.join(S01A, "mirror_markers.py"), "01a_2", "② 镜像标记点 右眼→左眼"):
         summary("环节 01a", False, t0, []); return False
