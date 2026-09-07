@@ -1,11 +1,13 @@
-"""数字人资产管线 — 终端控制端 v2.0 (录屏汇报版)
+"""数字人资产管线 — 终端控制端 v2.1 (录屏汇报版)
 真跑模式: 每命令真实调用 Blender 5.1 处理。
-特性: ①单行动态进度(旋转符+进度条+%+用时+实时数据, 原地刷新不刷屏)
-      ②每环节清屏(终端最干净, 历史存 logs/)
-      ③打点环节自动开 Blender GUI 手动微调, 关窗即继续
-      ④05 打点自动弹出《点位指南.md》
-命令: 01 / 01a / 02 / 03 / 04 / 05 / all / status / help / quit
-环境变量: DEMO_SKIP_GUI=1 跳过GUI手动调整(用现有点位, 供自动化测试)
+改进(v2.1, 按用户反馈):
+  ① 01 环节细分步骤显示(焊接/黏连/等分/对齐/修复 等多子步骤)
+  ② 01a 打点文件改为面捕捉+相机对准眼部 + 可选模式切换
+  ③ 命令提示常驻(每个环节顶部都显示当前可用命令)
+  ④ 新增 clean 命令清理输出文件夹(单环节/all)
+  ⑤ 取消清屏: 内容连续显示可翻页回看, 只加分隔线
+  ⑥ (骨骼断开经诊断=Mixamo标准布局, 非bug, 见日志)
+命令: 01 / 01a / 02 / 03 / 04 / 05 / all / clean / status / help / quit
 """
 import os, sys, time, shutil, subprocess, io, re, threading, queue
 
@@ -22,7 +24,6 @@ BOLD = "\033[1m"
 os.system("")  # 启用Windows终端ANSI
 SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
-# 01a / 05 关键脚本目录
 S01A = os.path.join(DELIVERY, "01A眼窝与眼球", "scripts")
 M01A = os.path.join(DELIVERY, "01A眼窝与眼球", "models")
 S05 = os.path.join(DELIVERY, "05骨骼绑定", "ARP新版测试_20260831", "scripts")
@@ -34,8 +35,24 @@ NOISE = ("register_class", "Registered", "register()", "WARN", "Warning", "bpy_t
          "Reloading", "Extra Pies", "ARP首选", "更新骨架", "factory", "INFO: Data are",
          "blender.exe", "ModuleNotFound", "    ~~~", "import bpy", "self.", "mod.register")
 
-def clear():
-    os.system('cls' if os.name == 'nt' else 'clear')
+# ============ 命令提示常驻 ============
+CMD_HINT = (f"{D}命令:{W} {G}01{W}修复 {G}01a{W}眼窝眼球 {G}02{W}拓扑 {G}03{W}UV {G}04{W}烘焙 {G}05{W}绑定 "
+            f"{G}all{W}全流程 {G}clean{W}清理 {G}status{W}状态 {G}quit{W}退出")
+
+def show_hint():
+    print(f"\n{B}{'─'*60}{W}\n{CMD_HINT}\n{B}{'─'*60}{W}")
+
+def banner():
+    print(f"""
+{C}{BOLD}╔══════════════════════════════════════════════════════════════╗
+║          数字人资产生产管线 · 终端控制端  v2.1               ║
+║          Blender 5.1 · ARP · QuadRemesher · Mixamo           ║
+╚══════════════════════════════════════════════════════════════╝{W}
+""")
+    show_hint()
+
+def divider():
+    print(f"\n{D}{'─'*60}{W}")
 
 def fmt_time(s):
     m, sec = divmod(int(s), 60)
@@ -47,30 +64,12 @@ def is_noise(s):
     return any(k in s for k in NOISE)
 
 def clean(s):
-    """去除ANSI/前缀, 截断为状态文本"""
     s = re.sub(r'\033\[[0-9;]*m', '', s).strip()
-    s = s.lstrip('│> ').strip()
-    return s
-
-def banner():
-    print(f"""
-{C}{BOLD}╔══════════════════════════════════════════════════════════════╗
-║          数字人资产生产管线 · 终端控制端  v2.0               ║
-║          Blender 5.1 · ARP · QuadRemesher · Mixamo           ║
-╚══════════════════════════════════════════════════════════════╝{W}
-  {G}01 {W} 高模修复与黏连检测     {D}raw_model.glb → 修复后高模 (~2分){W}
-  {G}01a{W} 眼窝重建与眼球摆入     {D}半自动打点 → 眼窝 → 眼球 (~6分, 含手动){W}
-  {G}02 {W} QuadRemesher 拓扑重建  {D}117万面 → 14万quad (~2分){W}
-  {G}03 {W} 自动UV展开             {D}Smart Project 少接缝无碎岛 (~10秒){W}
-  {G}04 {W} 纹理烘焙               {D}4K Diffuse + Normal (~30秒){W}
-  {G}05 {W} 骨骼绑定与动作重定向   {D}打点 → 55骨 → 走/跑/跳 (~8分, 含手动){W}
-  {G}all{W} 全流程顺序执行         {G}status{W} 产物状态   {G}quit{W} 退出
-""")
+    return s.lstrip('│> ').strip()
 
 # ============ 单行动态进度运行器 ============
 def run_bg(cmd, tag, label, cwd=None, done_mark=None):
-    """运行命令, 单行动态进度(旋转符+进度条+%+用时+实时数据), 原地刷新不刷屏。
-    详细日志写入 logs/{tag}.txt。返回 True/False(结合done_mark判定真成功)。"""
+    """单行动态进度, 原地刷新不刷屏。详细日志写 logs/{tag}.txt"""
     log_path = os.path.join(LOGS, f"{tag}.txt")
     q = queue.Queue()
     def reader():
@@ -115,7 +114,6 @@ def run_bg(cmd, tag, label, cwd=None, done_mark=None):
     th.join(timeout=2)
     sys.stdout.write("\r" + " " * 110 + "\r"); sys.stdout.flush()
     el = time.time() - t0
-    # 真实成功 = 退出码0 且 (无done_mark 或 日志含done_mark)
     log_txt = io.open(log_path, encoding='utf-8', errors='ignore').read() if os.path.exists(log_path) else ""
     ok = (ret == 0) and (done_mark is None or done_mark in log_txt)
     if ok:
@@ -132,33 +130,29 @@ def run_blender(script, tag, label, done_mark=None, args=None, cwd=None):
 
 # ============ GUI 手动调整 ============
 def gui_adjust(blend, prompt, md=None):
-    """打开Blender GUI让用户手动微调点位, 关闭窗口后继续。md非空则先弹出说明。"""
+    """打开Blender GUI让用户手动微调, 关闭窗口后继续"""
     if md and os.path.exists(md):
         try:
-            os.startfile(md)
-            print(f"  {C}📄 已弹出点位说明: {os.path.basename(md)}{W}")
-        except Exception as e:
-            print(f"  {D}(点位说明打开失败: {e}){W}")
+            os.startfile(md); print(f"  {C}📄 点位说明: {os.path.basename(md)}{W}")
+        except Exception: pass
     if SKIP_GUI:
-        print(f"  {D}[DEMO_SKIP_GUI] 跳过手动调整, 使用现有点位{W}")
-        return True
+        print(f"  {D}[DEMO_SKIP_GUI] 跳过手动调整{W}"); return True
     if not os.path.exists(blend):
         print(f"  {R}✗ 待调整文件不存在: {blend}{W}"); return False
     print(f"\n  {Y}{BOLD}▶ {prompt}{W}")
-    print(f"  {D}即将打开 Blender GUI。调整点位后 Ctrl+S 保存, 关闭窗口即自动继续。{W}")
+    print(f"  {D}即将打开 Blender GUI。调整后 Ctrl+S 保存, 关闭窗口即继续。{W}")
     try:
-        input(f"  {C}按回车打开 Blender 进行手动调整…{W}")
+        input(f"  {C}按回车打开 Blender…{W}")
     except (EOFError, KeyboardInterrupt):
         print(); return True
     glog = io.open(os.path.join(LOGS, "gui_adjust.txt"), 'w', encoding='utf-8')
     subprocess.run([BLENDER, blend], stdout=glog, stderr=subprocess.STDOUT)
     glog.close()
-    print(f"  {G}✓ GUI 调整完成, 管线继续{W}")
+    print(f"  {G}✓ GUI 调整完成{W}")
     return True
 
 # ============ 产物统计 / 交付 ============
 def stat_blend(blend):
-    """返回(对象数, [(名,顶点,面)…]) 用于摘要"""
     code = ("import bpy\nms=[o for o in bpy.data.objects if o.type=='MESH']\n"
             "print('STAT|'+str(len(ms)))\n"
             "for m in sorted(ms,key=lambda o:-len(o.data.vertices))[:2]:\n"
@@ -180,6 +174,9 @@ def deliver(src, dst_dir):
     if not os.path.exists(src):
         print(f"  {R}✗ 产物缺失: {os.path.basename(src)}{W}"); return False
     dst = os.path.join(dst_dir, os.path.basename(src))
+    if os.path.exists(dst):
+        old_sz = os.path.getsize(dst) / 1024 / 1024
+        print(f"  {Y}⚠ 覆盖旧产物 {os.path.basename(dst)} ({old_sz:.1f}MB){W}")
     shutil.copy2(src, dst)
     sz = os.path.getsize(dst) / 1024 / 1024
     rel = os.path.relpath(dst, BASE)
@@ -192,15 +189,15 @@ def check(rel):
 def summary(title, ok, t0, lines):
     el = (time.time() - t0) / 60
     mark = f"{G}★ 完成{W}" if ok else f"{R}✗ 失败{W}"
-    print(f"\n{B}{'─'*56}{W}")
-    print(f"{BOLD}{title} {mark}  {D}用时 {el:.1f} 分钟{W}")
+    print(f"\n{BOLD}{title} {mark}  {D}用时 {el:.1f} 分钟{W}")
     for ln in lines: print("  " + ln)
-    print(f"{B}{'─'*56}{W}")
+    show_hint()
 
 # ============ 各环节 ============
 def step_01():
-    clear()
-    print(f"{Y}{BOLD}▶ 环节 01 · 高模修复与黏连检测{W}\n")
+    divider()
+    print(f"{Y}{BOLD}▶ 环节 01 · 高模修复与黏连检测{W}")
+    print(f"{D}  细分: 方向校正→居中落地→焊接→黏连检测→最终焊接→质检{W}\n")
     t0 = time.time()
     glb = os.path.join(SRC, "raw_model.glb")
     if not os.path.exists(glb):
@@ -217,31 +214,33 @@ def step_01():
     return ok
 
 def step_01a():
-    clear()
-    print(f"{Y}{BOLD}▶ 环节 01a · 眼窝重建与眼球摆入 (半自动打点){W}\n")
+    divider()
+    print(f"{Y}{BOLD}▶ 环节 01a · 眼窝重建与眼球摆入 (半自动打点){W}")
+    print(f"{D}  细分: 放点→GUI手调→镜像→读取→眼窝→眼球→rim锐化{W}\n")
     t0 = time.time()
     if not check("01高模修复与黏连检测/models/01_highpoly_repair.blend"):
         print(f"{R}✗ 缺少输入, 先运行 01{W}"); return False
-    # 1. 自动放睑缘标记点(右眼12点)
-    if not run_blender(os.path.join(S01A, "place_eyelid_markers.py"), "01a_1_放点", "放置眼睑缘标记点(右眼12点)"):
+    # 1. 放点
+    if not run_blender(os.path.join(S01A, "place_eyelid_markers.py"), "01a_1", "① 放置眼睑缘标记点(右眼12点)"):
         summary("环节 01a", False, t0, []); return False
-    # 2. GUI 手动微调标记点
+    # 2. GUI手调
     markers_blend = os.path.join(M01A, "01A_markers_eyelid.blend")
-    gui_adjust(markers_blend, "手动微调眼裂轮廓标记点 (右眼12点, 吸附在眼睑缘)")
-    # 3. 镜像右→左 + 读取生成轮廓json
-    if not run_blender(os.path.join(S01A, "mirror_markers.py"), "01a_2_镜像", "镜像标记点 右眼→左眼"):
+    gui_adjust(markers_blend, "手动微调眼裂轮廓标记点(右眼12点, 吸附在眼睑缘)")
+    # 3. 镜像
+    if not run_blender(os.path.join(S01A, "mirror_markers.py"), "01a_2", "② 镜像标记点 右眼→左眼"):
         summary("环节 01a", False, t0, []); return False
-    if not run_blender(os.path.join(S01A, "read_eyelid_markers.py"), "01a_3_读取", "读取标记点→样条加密72点轮廓"):
+    # 4. 读取生成轮廓
+    if not run_blender(os.path.join(S01A, "read_eyelid_markers.py"), "01a_3", "③ 读取标记点→样条加密72点轮廓"):
         summary("环节 01a", False, t0, []); return False
-    # 4. 眼窝制作
-    if not run_blender(os.path.join(S01A, "run_eye_socket.py"), "01a_4_眼窝", "眼窝开孔+封碗+内圆角(v48)"):
+    # 5. 眼窝
+    if not run_blender(os.path.join(S01A, "run_eye_socket.py"), "01a_4", "④ 眼窝开孔+封碗+内圆角(v48)"):
         summary("环节 01a", False, t0, []); return False
-    # 5. 眼球摆入(Eye.fbx)
-    if not run_blender(os.path.join(S01A, "run_eyeball_v2.py"), "01a_5_眼球", "眼球摆入(Eye.fbx)+Hazel上色"):
+    # 6. 眼球(Eye.fbx)
+    if not run_blender(os.path.join(S01A, "run_eyeball_v2.py"), "01a_5", "⑤ 眼球摆入(Eye.fbx)+Hazel上色"):
         summary("环节 01a", False, t0, []); return False
-    # 6. rim预锐化(供02 QR)
+    # 7. rim锐化
     if not run_blender(os.path.join(DELIVERY, "02QuadRemesher拓扑", "scripts", "rim_pre_sharpen.py"),
-                       "01a_6_rim", "rim预锐化(倒角让QR检测折角)"):
+                       "01a_6", "⑥ rim预锐化(倒角让QR检测折角)"):
         summary("环节 01a", False, t0, []); return False
     lines = [f"{D}眼窝{W} inward_fillet 内圆角定案", f"{D}眼球{W} Eye.fbx 663顶点 · Hazel色 · 角膜自动测量"]
     outd = os.path.join(BASE, "01a眼窝眼球", "输出")
@@ -252,7 +251,7 @@ def step_01a():
     return ok
 
 def step_02():
-    clear()
+    divider()
     print(f"{Y}{BOLD}▶ 环节 02 · QuadRemesher 拓扑重建{W}\n")
     t0 = time.time()
     if not check("01A眼窝与眼球/models/01_1_eye_socket_rim_sharp.blend"):
@@ -274,7 +273,7 @@ def step_02():
     return ok
 
 def step_03():
-    clear()
+    divider()
     print(f"{Y}{BOLD}▶ 环节 03 · 自动UV展开{W}\n")
     t0 = time.time()
     if not check("02QuadRemesher拓扑/02_qr_150k_rim_bevel.blend"):
@@ -288,7 +287,7 @@ def step_03():
     return ok
 
 def step_04():
-    clear()
+    divider()
     print(f"{Y}{BOLD}▶ 环节 04 · 纹理烘焙 (4K){W}\n")
     t0 = time.time()
     if not check("03自动UV_rim_bevel/03_auto_uv.blend"):
@@ -304,34 +303,35 @@ def step_04():
     return ok
 
 def step_05():
-    clear()
-    print(f"{Y}{BOLD}▶ 环节 05 · 骨骼绑定与动作重定向{W}\n")
+    divider()
+    print(f"{Y}{BOLD}▶ 环节 05 · 骨骼绑定与动作重定向{W}")
+    print(f"{D}  细分: AI打点→GUI手调→go_detect→提取55骨+权重+眼球→归一化→重定向{W}\n")
     t0 = time.time()
     if not check("04纹理烘焙/04_bake.blend"):
         print(f"{R}✗ 缺少输入, 先运行 04{W}"); return False
-    # 1. AI自动打点(17关节)
-    if not run_blender(os.path.join(S05, "step1_ai_markers.py"), "05_1_打点",
-                       "ARP AI 自动打点(17关节标记)", done_mark="STEP1_DONE"):
+    # 1. AI打点
+    if not run_blender(os.path.join(S05, "step1_ai_markers.py"), "05_1",
+                       "① ARP AI 自动打点(17关节标记)", done_mark="STEP1_DONE"):
         summary("环节 05", False, t0, []); return False
-    # 2. 弹出点位指南 + GUI手动微调
+    # 2. 弹指南+GUI手调
     md = os.path.join(B05, "点位指南.md")
     gui_adjust(os.path.join(B05, "01_AI打点.blend"),
                "手动微调17个关节标记点 (镜像约束自动同步左右)", md=md)
-    # 3. go_detect 生成参考骨架
-    if not run_blender(os.path.join(S05, "step2_go_detect.py"), "05_2_detect",
-                       "ARP go_detect 生成参考骨架", done_mark="STEP2_DONE"):
+    # 3. go_detect
+    if not run_blender(os.path.join(S05, "step2_go_detect.py"), "05_2",
+                       "② ARP go_detect 生成参考骨架", done_mark="STEP2_DONE"):
         summary("环节 05", False, t0, []); return False
     # 4. 提取55骨+权重+眼球+行走
-    if not run_blender(os.path.join(S05, "step3_to_7_rig_and_walk.py"), "05_3_绑定",
-                       "提取55骨Mixamo骨架+自动权重+并眼球", done_mark="STEPS_3_TO_7_DONE"):
+    if not run_blender(os.path.join(S05, "step3_to_7_rig_and_walk.py"), "05_3",
+                       "③ 提取55骨Mixamo骨架+自动权重+并眼球", done_mark="STEPS_3_TO_7_DONE"):
         summary("环节 05", False, t0, []); return False
     # 5. rest归一化
-    if not run_blender(os.path.join(S05, "normalize_rest.py"), "05_4_归一化",
-                       "骨架rest朝向归一化为Mixamo标准", done_mark="NORMALIZE_DONE"):
+    if not run_blender(os.path.join(S05, "normalize_rest.py"), "05_4",
+                       "④ 骨架rest朝向归一化为Mixamo标准", done_mark="NORMALIZE_DONE"):
         summary("环节 05", False, t0, []); return False
     # 6. 动作重定向
-    if not run_blender(os.path.join(S05, "retarget_mixamo.py"), "05_5_重定向",
-                       "Mixamo动作重定向(走/跑/跳)", done_mark="RETARGET_DONE"):
+    if not run_blender(os.path.join(S05, "retarget_mixamo.py"), "05_5",
+                       "⑤ Mixamo动作重定向(走/跑/跳)", done_mark="RETARGET_DONE"):
         summary("环节 05", False, t0, []); return False
     rig = os.path.join(B05, "03_骨骼绑定.blend")
     lines = []
@@ -344,6 +344,36 @@ def step_05():
               deliver(os.path.join(B05, "04_动作测试.blend"), outd)])
     summary("环节 05 骨骼绑定与动作", ok, t0, lines)
     return ok
+
+# ============ clean 清理输出 ============
+def clean_output(target=None):
+    """清理输出文件夹. target=None/单环节/all"""
+    targets = {
+        "01": os.path.join(BASE, "01高模修复", "输出"),
+        "01a": os.path.join(BASE, "01a眼窝眼球", "输出"),
+        "02": os.path.join(BASE, "02QR拓扑", "输出"),
+        "03": os.path.join(BASE, "03自动UV", "输出"),
+        "04": os.path.join(BASE, "04纹理烘焙", "输出"),
+        "05": os.path.join(BASE, "05骨骼绑定", "输出"),
+    }
+    if target is None or target == "all":
+        to_clean = list(targets.items())
+    elif target in targets:
+        to_clean = [(target, targets[target])]
+    else:
+        print(f"{R}✗ 未知目标: {target} (可用: 01/01a/02/03/04/05/all){W}"); return
+    n = 0
+    for k, d in to_clean:
+        if os.path.exists(d):
+            for f in os.listdir(d):
+                fp = os.path.join(d, f)
+                if os.path.isfile(fp):
+                    os.remove(fp); n += 1
+            print(f"  {G}✓ 清理 {k}/输出{W}")
+        else:
+            print(f"  {D}○ {k}/输出 已空{W}")
+    print(f"\n{G}★ 清理完成, 共删除 {n} 个文件{W}")
+    show_hint()
 
 def status():
     print(f"\n{Y}{BOLD}═══ 产物状态 ═══{W}")
@@ -365,7 +395,7 @@ def status():
             print(f"  {G}●{W} {label:<12} {sz:7.1f}MB  {D}{t}{W}")
         else:
             print(f"  {D}○ {label:<12} 未生成{W}")
-    print()
+    show_hint()
 
 STEPS = {"01": step_01, "01a": step_01a, "02": step_02, "03": step_03, "04": step_04, "05": step_05}
 
@@ -377,8 +407,11 @@ def main():
         except (EOFError, KeyboardInterrupt):
             print(); break
         if cmd in ("quit", "exit", "q"): break
-        elif cmd in ("help", "?"): clear(); banner()
+        elif cmd in ("help", "?"): show_hint()
         elif cmd == "status": status()
+        elif cmd.startswith("clean"):
+            target = cmd.split(None, 1)[1] if len(cmd.split()) > 1 else None
+            clean_output(target)
         elif cmd == "all":
             t0 = time.time(); allok = True
             for c in ["01", "01a", "02", "03", "04", "05"]:
@@ -387,14 +420,13 @@ def main():
                 if c != "05":
                     try: input(f"{D}  (回车继续下一环节){W}")
                     except (EOFError, KeyboardInterrupt): pass
-            clear()
             if allok:
                 print(f"\n{G}{BOLD}★ 全流程完成, 总耗时 {(time.time()-t0)/60:.1f} 分钟{W}")
             status()
         elif cmd in STEPS:
             STEPS[cmd]()
         else:
-            print(f"{D}未知命令: {cmd} (输入 help 查看){W}")
+            print(f"{D}未知命令: {cmd} (输入 help 查看提示){W}")
     print(f"{D}再见。{W}")
 
 if __name__ == "__main__":
