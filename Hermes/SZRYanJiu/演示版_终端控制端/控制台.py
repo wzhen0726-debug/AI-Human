@@ -309,7 +309,7 @@ def step_04():
 def step_05():
     divider()
     print(f"{Y}{BOLD}▶ 环节 05 · 骨骼绑定与动作重定向{W}")
-    print(f"{D}  细分: AI打点→GUI手调→go_detect→提取55骨+权重+眼球→归一化→重定向{W}\n")
+    print(f"{D}  细分: AI打点→GUI手调→go_detect→提取55骨+权重+眼球→rest补偿重定向{W}\n")
     t0 = time.time()
     if not check("04纹理烘焙/04_bake.blend"):
         print(f"{R}✗ 缺少输入, 先运行 04{W}"); return False
@@ -329,22 +329,17 @@ def step_05():
     if not run_blender(os.path.join(S05, "step3_to_7_rig_and_walk.py"), "05_3",
                        "③ 提取55骨Mixamo骨架+自动权重+并眼球", done_mark="STEPS_3_TO_7_DONE"):
         summary("环节 05", False, t0, []); return False
-    # 5. rest归一化
-    if not run_blender(os.path.join(S05, "normalize_rest.py"), "05_4",
-                       "④ 骨架rest朝向归一化为Mixamo标准", done_mark="NORMALIZE_DONE"):
-        summary("环节 05", False, t0, []); return False
-    # 6. 动作重定向
-    if not run_blender(os.path.join(S05, "retarget_mixamo.py"), "05_5",
-                       "⑤ Mixamo动作重定向(走/跑/跳)", done_mark="RETARGET_DONE"):
+    # 5. 动作重定向(rest补偿版: 骨架结构不动, 保41连接+关节重叠)
+    if not run_blender(os.path.join(S05, "retarget_mixamo.py"), "05_4",
+                       "④ Mixamo动作重定向(rest补偿, 走/跑/跳)", done_mark="RETARGET_DONE"):
         summary("环节 05", False, t0, []); return False
     rig = os.path.join(B05, "03_骨骼绑定.blend")
     lines = []
     nobj, rows = stat_blend(rig)
     lines.append(f"{D}骨架{W} 55骨 Mixamo命名 · 24对对称 · 眼球蒙皮Head")
-    lines.append(f"{D}动作{W} 走36帧/跑20帧/跳31帧 · 帧数按参考原样")
+    lines.append(f"{D}动作{W} 走36帧/跑20帧/跳31帧 · 帧数按参考原样 · 骨骼保持连接")
     outd = os.path.join(BASE, "05骨骼绑定", "输出")
     ok = all([deliver(rig, outd),
-              deliver(os.path.join(B05, "03_mixamo_rest.blend"), outd),
               deliver(os.path.join(B05, "04_动作测试.blend"), outd)])
     summary("环节 05 骨骼绑定与动作", ok, t0, lines)
     return ok

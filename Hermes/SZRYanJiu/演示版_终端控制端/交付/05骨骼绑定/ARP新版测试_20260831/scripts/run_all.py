@@ -16,9 +16,8 @@ STEPS = [
     ("step1_ai_markers.py", "01_AI打点", "STEP1_DONE"),
     ("step2_go_detect.py", "02_go_detect", "STEP2_DONE"),
     ("step3_to_7_rig_and_walk.py", "03~07_建骨行走", "STEPS_3_TO_7_DONE"),
-    ("normalize_rest.py", "rest归一化", "NORMALIZE_DONE"),
     ("retarget_mixamo.py", "Mixamo重定向", "RETARGET_DONE"),
-]
+    ]
 
 def run(script, tag, done_mark):
     log = os.path.join(LOGS, f"run_{tag}.txt")

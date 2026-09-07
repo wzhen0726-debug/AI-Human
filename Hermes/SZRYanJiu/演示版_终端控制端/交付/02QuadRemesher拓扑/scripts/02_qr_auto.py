@@ -149,6 +149,13 @@ print(f"\n8. Importing...")
 bpy.ops.import_scene.fbx(filepath=retopoFbx)
 qr_obj = [o for o in bpy.context.selected_objects if o.type == "MESH"][0]
 qr_obj.name = mesh.name + "_QR"
+# 归零FBX导入残留旋转(轴向转换浮点残差~-1.6e-7rad≈-0.000009°)
+bpy.ops.object.select_all(action="DESELECT")
+qr_obj.select_set(True)
+bpy.context.view_layer.objects.active = qr_obj
+_rot_before = tuple(qr_obj.rotation_euler)
+bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+print(f"   旋转归零: {_rot_before} -> {tuple(qr_obj.rotation_euler)}")
 faces = len(qr_obj.data.polygons)
 print(f"   QR mesh: {qr_obj.name}, {faces:,} faces")
 
