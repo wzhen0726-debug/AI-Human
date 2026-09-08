@@ -1,21 +1,28 @@
-"""04_动作测试.blend 生成: Mixamo动画绑定 — rest补偿重定向版 (2026-09-07)
+"""04_动作测试.blend 生成: Mixamo动画绑定 — rest保持+增量重定向版 (2026-09-08 v3)
 
-v2方案(替代旧的normalize_rest+直接复制):
-  旧方案把骨架rest朝向归一化成Mixamo方向 → 骨骼tail甩离我们的关节(膝52mm/踝57mm),
-  41根连接全部断开 → 04里骨骼各自独立+关节错位(用户实测发现).
-  新方案: 骨架完全不动(03_骨骼绑定.blend结构原样: 41连接/关节重叠/权重一致),
-  动画用rest补偿重定向数学逐帧换算, 目标=我们的骨骼世界朝向逐帧等于参考的世界朝向:
-    C_b     = R_our_rest_b^-1 @ R_ref_rest_b              [常量: 两骨架rest朝向差]
-    D_b(t)  = R_ref_rest_b^-1 @ W_ref_b(t)                [参考骨相对自身rest的世界旋转增量]
-    目标增量 D'_b(t) = C_b @ D_b(t)  => 我们的世界朝向 = R_our_rest @ D' = W_ref_b(t) 精确相等
-    q_b(t)  = A_b^-1 @ D'_parent(t)^-1 @ A_b @ D'_b(t)    [写入我们骨骼的局部四元数]
-  推导: Blender链式公式 W_b(t)=W_parent(t)@R_rest_parent^-1@R_rest_b@q_b 在世界空间成立,
-  令我们的增量等于D'即得上式. 绝对世界姿态与Mixamo一致(旧版已验证的自然步态),
-  而rest/连接/权重全部保持03原样(无撕裂无断裂).
-  参考rest用每个动画FBX自带的绑定姿势(Mixamo各文件角色比例不同,腿长比逐个实测).
+v3定案(修内八/猫步): 骨架结构不动, 且**保留我们自己的rest朝向**, 只叠加Mixamo的运动增量:
+    D_b(t)  = R_ref_rest_b^-1 @ W_ref_b(t)              [参考骨相对自身rest的世界旋转增量]
+    q_b(t)  = A_b^-1 @ D_parent(t)^-1 @ A_b @ D_b(t)    [写入我们骨骼的局部四元数]
+    A_b     = R_our_rest_parent^-1 @ R_our_rest_b       [我们骨架的rest相对朝向]
+  效果: 我们的姿态 = 自己的rest站姿 ⊕ 参考的动作。外展/外八/踝间距全部保持自身比例。
 
-Hips平移: 与旧版相同 — 只重建垂直起伏(参考Hips世界z变化×实测腿长比,写入数值探测的垂直轴).
+**内八根因(v2的C补偿是错的, 实测数据)**:
+  v2曾加 rest补偿常量 C_b = R_our_rest^-1 @ R_ref_rest 使绝对世界朝向==参考(当时自查0.000°"全过"),
+  但这等于把我们的站姿扳成Mixamo演员的站姿。实测两者rest差异巨大:
+    大腿外展: 我们8.18° vs Mixamo 0.35°(近乎垂直)
+    脚掌外八: 我们+9.37° vs Mixamo +1.53°
+    踝部离中线: 我们±142.9mm vs Mixamo±91.2mm
+  C补偿后大腿被扭垂直、脚被扭正直、脚落点向中线收拢 → 网格在自己岔开的rest上被向内扭
+  → 用户看到的"内八感 + T台猫步"。教训: 绝对朝向匹配≠动作正确, 重定向的目标是
+  "自己的站姿 + 参考的动作", 绝不能把角色扳成参考演员的体型/站姿。
+
+**action帧范围坑**: 只设 use_frame_range=True 而不设 frame_start/frame_end, 会让
+  act.frame_range 恒为 [1,1] → 任何按它遍历的脚本只跑1帧(诊断时误以为动画只有1帧)。
+  必须显式 act.frame_start, act.frame_end = fstart, fend。
+
+Hips平移: 只重建垂直起伏(参考Hips世界z变化×实测腿长比, 写入数值探测出的垂直轴)。
 帧范围按参考动画原始范围. 四元数逐帧符号连续化(dot<0取反)防插值长弧抖动.
+参考rest用每个动画FBX自带的绑定姿势(Mixamo各文件角色比例不同, 腿长比逐个实测)。
 
 用法: blender -b --python scripts/retarget_mixamo.py
 """
@@ -111,8 +118,6 @@ for anim_name, fname in ANIMS:
             if p is None or p.name in R_ref_rest:
                 mapped[b.name] = b.name
     print(f"  可重定向骨: {len(mapped)}/{len(arm.data.bones)}")
-    # rest补偿常量 C_b: 使我们的绝对世界朝向==参考的绝对世界朝向
-    C = {n: R_our[n].inverted() @ R_ref_rest[n] for n in mapped}
 
     ref_act = refa.animation_data.action
     fstart, fend = int(ref_act.frame_range[0]), int(ref_act.frame_range[1])
@@ -121,7 +126,9 @@ for anim_name, fname in ANIMS:
     #  显式slots.new(id_type='ARMATURE')建的槽对object动画数据无效, 会导致后续赋值RuntimeError)
     act = bpy.data.actions.new(anim_name)
     act.use_fake_user = True
-    act.use_frame_range = True
+    # 显式设帧范围(只设use_frame_range会让act.frame_range恒为[1,1], 下游按它遍历只跑1帧)
+    act.frame_start, act.frame_end = fstart, fend
+    act.use_frame_range = True  # 切换动作时场景帧范围跟随动作
     if arm.animation_data is None: arm.animation_data_create()
     arm.animation_data.action = act
 
@@ -135,8 +142,10 @@ for anim_name, fname in ANIMS:
         # 参考骨当前世界四元数
         W_ref = {n: (wm_ref @ ref_ev.pose.bones[n].matrix).to_quaternion()
                  for n in mapped.values()}
-        # D_b(t) = R_ref_rest^-1 @ W_ref(t); 目标增量 D' = C @ D (rest补偿)
-        Dt = {n: C[n] @ (R_ref_rest[n].inverted() @ W_ref[n]) for n in W_ref}
+        # D_b(t) = R_ref_rest^-1 @ W_ref(t): 参考骨相对自身rest的世界旋转增量.
+        # 不做绝对朝向补偿(见文件头"内八根因"): 我们要的是"自己的站姿 + 参考的动作",
+        # 不是"变成参考的站姿".
+        Dt = {n: R_ref_rest[n].inverted() @ W_ref[n] for n in W_ref}
         for bn in mapped:
             pb = arm.pose.bones[bn]
             p = arm.data.bones[bn].parent
