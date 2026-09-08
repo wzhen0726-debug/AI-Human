@@ -23,8 +23,8 @@ print("=" * 60)
 print(f"Engine: {ENGINE}")
 print(f"Engine exists: {os.path.exists(ENGINE)}")
 
-# 1. 打开高模(01a眼窝版; 2026-09-08 A方案: rim预锐化机制已删除, 直接用眼窝高模)
-blend_path = os.path.join(DELIVERY, "01A眼窝与眼球", "models", "01_1_eye_socket.blend")
+# 1. 打开高模(01a眼窝+材质分区版; 2026-09-08 用户方案: 眼窝独立材质, QR只勾"使用材质"引导)
+blend_path = os.path.join(DELIVERY, "01A眼窝与眼球", "models", "01_1_eye_socket_qr.blend")
 print(f"\n1. Loading: {blend_path}")
 bpy.ops.wm.open_mainfile(filepath=blend_path)
 
@@ -67,36 +67,29 @@ bm.free()
 mesh.data.update()
 print(f"2.5 Cleanup: {before_v:,} -> {after_weld:,} verts (welded {before_v-after_weld:,}), filled {filled} hole faces")
 
-# 2.6 法向分割预处理(2026-09-08): 让QR沿高模的真实折角布线, 保住眼窝等结构
-# 实测对比(眼窝区双向Chamfer, 4种配置):
-#   A 仅角度检测硬边(旧默认): 高模→低模中位1.690mm p95=3.551mm max=8.030mm, rim折角max=35.7°(棱线被抹平)
-#   B 法向分割45°+EDGE导出:   高模→低模中位1.296mm p95=2.418mm max=3.330mm, rim折角max=79.3°(棱线保留)
-#   → B 细节丢失-23%/最差处-59%/棱线锐度2.2倍/眼窝顶点密度+47%, 代价仅面数+6.9%、quad 100%→99.3%
-# 插件tooltip前提: UseIndexedNormals"仅在启用SmoothShade+AutoSmooth时才有用"
-#   Blender 5.1 已移除 use_auto_smooth/auto_smooth_angle, 正解=mesh.set_sharp_from_angle()
-# SHARP_ANGLE_DEG是二面角阈值(几何内禀量, 与体型无关), 不违反"按身高/bbox比例"的自适应原则
-SHARP_ANGLE_DEG = 45.0
-for p in mesh.data.polygons:
-    p.use_smooth = True
-if hasattr(mesh.data, 'set_sharp_from_angle'):
-    mesh.data.set_sharp_from_angle(angle=math.radians(SHARP_ANGLE_DEG))
-else:
-    # 退路: bmesh逐边按二面角标sharp
-    bm_s = bmesh.new(); bm_s.from_mesh(mesh.data); bm_s.edges.ensure_lookup_table()
-    thr = math.radians(SHARP_ANGLE_DEG)
-    for e in bm_s.edges:
-        e.smooth = not (len(e.link_faces) == 2 and e.calc_face_angle() > thr)
-    bm_s.to_mesh(mesh.data); bm_s.free()
-mesh.data.update()
-bm_c = bmesh.new(); bm_c.from_mesh(mesh.data); bm_c.edges.ensure_lookup_table()
-n_sharp = sum(1 for e in bm_c.edges if not e.smooth)
-bm_c.free()
-print(f"2.6 法向分割预处理: shade_smooth全面 + set_sharp_from_angle({SHARP_ANGLE_DEG}°) "
-      f"-> 硬边{n_sharp:,}/{len(mesh.data.edges):,} ({n_sharp/len(mesh.data.edges)*100:.2f}%)")
+# 2.6 材质分区校验(2026-09-08 用户方案): QR只勾"使用材质", 沿眼窝/皮肤材质边界布线.
+# 材质边界=碗面与皮肤的公共边=眼睑缘rim → QR沿rim布线, 保住眼窝结构.
+# 实测四配置对比(眼窝区双向Chamfer + rim折角 + 拓扑质量):
+#   A_hard(角度检测硬边,旧默认):  141,951面 quad100.0% 非流形10  rim折角max35.7° chamfer中位1.690mm max8.030mm
+#   B_n45_edge(法向分割45°):     151,684面 quad 99.3% 非流形58  rim折角max79.3° chamfer中位1.296mm max3.330mm
+#   D_mat_only(只用材质,本方案):  144,611面 quad 99.9% 非流形 0  rim折角max80.7° chamfer中位1.242mm max7.339mm
+#   E_mat_n45(材质+法向):        144,088面 quad 98.7% 非流形2962 rim折角max178.0° chamfer中位1.412mm
+# 选D: 非流形0(下游UV/烘焙/绑定不再受拖累)、quad99.9%、chamfer中位最优、棱线锐度=旧默认2.3倍.
+#   D的chamfer max 7.3mm全部落在rim过渡带(碗底深处0个离群,碗底保留0.81/1.85mm), 由烘焙法线贴图补偿.
+# 前提: 01a的 assign_socket_material.py 已给眼窝碗面赋独立材质 EyeSocket(输出_qr.blend, 不动烘焙源文件).
+mats = [m.name if m else None for m in mesh.data.materials]
+import collections as _c
+_mi = [0] * len(mesh.data.polygons)
+mesh.data.polygons.foreach_get("material_index", _mi)
+_cnt = dict(_c.Counter(_mi))
+if len(_cnt) < 2:
+    raise AssertionError(f"高模只有{len(_cnt)}种材质{_cnt} — 缺眼窝独立材质, QR无材质边界可引导! "
+                         f"先跑 01A眼窝与眼球/scripts/assign_socket_material.py")
+print(f"2.6 材质分区校验: 槽={mats} 面分布={_cnt} → 材质边界可引导QR沿rim布线")
 
-# 3. 导出FBX (mesh_smooth_type='EDGE'把sharp边写成FBX法向分割, QR才能读到)
+# 3. 导出FBX (材质分区靠material_index随FBX的smoothing/material槽带走; 不需要法向分割)
 print(f"\n3. Exporting FBX...")
-bpy.ops.export_scene.fbx(filepath=inputFbx, use_selection=True, mesh_smooth_type='EDGE')
+bpy.ops.export_scene.fbx(filepath=inputFbx, use_selection=True)
 fbx_mb = os.path.getsize(inputFbx) / 1024 / 1024
 print(f"   FBX: {fbx_mb:.1f} MB")
 
@@ -111,10 +104,10 @@ with open(settingsFile, "w") as f:
     f.write('CurvatureAdaptivness=80\n')
     f.write('ExactQuadCount=0\n')
     f.write('UseVertexColorMap=0\n')
-    f.write('UseMaterialIds=1\n')   # 启用材质边界→rim锐利 (2026-08-24)
-    # 2026-09-08 改用法向分割(见2.6注释的实测对比): 沿高模真实折角布线, 保住眼窝棱线
-    f.write('UseIndexedNormals=1\n')    # 使用法向分割(原0=关闭)
-    f.write('AutoDetectHardEdges=0\n')  # 关闭角度检测硬边(原1=开启; 实测该模式抹平眼窝折角)
+    # 2026-09-08 用户方案(实测D组最优): 只用材质引导, 取消法向分割与角度检测硬边
+    f.write('UseMaterialIds=1\n')       # ✓使用材质: 沿眼窝/皮肤材质边界(=rim)布线
+    f.write('UseIndexedNormals=0\n')    # ✗取消法向分割
+    f.write('AutoDetectHardEdges=0\n')  # ✗取消角度检测硬边(实测抹平眼窝折角35.7°)
     # 不写SymAxis：模型纹理不对称，强制对称拓扑会导致纹理错位
 print("   Settings written")
 
@@ -186,6 +179,24 @@ bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
 print(f"   旋转归零: {_rot_before} -> {tuple(qr_obj.rotation_euler)}")
 faces = len(qr_obj.data.polygons)
 print(f"   QR mesh: {qr_obj.name}, {faces:,} faces")
+
+# 8.5 材质合并(2026-09-08 修红眼窝bug): QR的UseMaterialIds会保留眼窝EyeSocket引导材质
+#     (饱和红0.8/0.15/0.15). 材质引导只为让QR沿rim布线, 布线完成后必须丢弃 —
+#     否则红材质槽随低模流到03/04, 04烘焙只替换材质槽0, 眼窝面(material_index=1)仍挂红槽
+#     → 渲染/烘焙产物眼窝发红(实测真bug: 02/03/04都残留EyeSocket.001红槽).
+#     源头合并最干净: 所有面归槽0, 删多余槽. QR输出本就是单材质灰模, 肤色在04烘焙才贴.
+_nmat = len(qr_obj.data.materials)
+if _nmat > 1:
+    qr_obj.data.polygons.foreach_set("material_index", [0] * len(qr_obj.data.polygons))
+    while len(qr_obj.data.materials) > 1:
+        # Blender 5.1: materials.pop() 只接受 index, 不再有 update_data 参数
+        qr_obj.data.materials.pop(index=len(qr_obj.data.materials) - 1)
+    qr_obj.data.update()
+    _chk = [m.name if m else None for m in qr_obj.data.materials]
+    print(f"   材质合并: {_nmat}槽 -> {len(_chk)}槽 {_chk} (丢弃EyeSocket引导材质)")
+    assert len(_chk) == 1, f"材质合并失败! 仍有多槽={_chk}"
+else:
+    print(f"   材质槽={_nmat}(QR未保留分区, 无需合并)")
 
 # 9. 清理原始高模
 for obj in list(bpy.data.objects):

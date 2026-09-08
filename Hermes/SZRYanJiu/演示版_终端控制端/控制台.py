@@ -219,7 +219,7 @@ def step_01():
 def step_01a():
     divider()
     print(f"{Y}{BOLD}▶ 环节 01a · 眼窝重建与眼球摆入 (半自动打点){W}")
-    print(f"{D}  细分: 放点→GUI手调→镜像→读取→眼窝→眼球→rim锐化{W}\n")
+    print(f"{D}  细分: 放点→GUI手调→镜像→读取→眼窝→眼球→赋材质{W}\n")
     t0 = time.time()
     if not check("01高模修复与黏连检测/models/01_highpoly_repair.blend"):
         print(f"{R}✗ 缺少输入, 先运行 01{W}"); return False
@@ -242,8 +242,11 @@ def step_01a():
     # 6. 眼球(Eye.fbx)
     if not run_blender(os.path.join(S01A, "run_eyeball_v2.py"), "01a_5", "⑤ 眼球摆入(Eye.fbx)+Hazel上色"):
         summary("环节 01a", False, t0, []); return False
-    # (2026-09-08 A方案: rim预锐化步骤已删除 — 倒角权重被to_mesh冲掉致空转, 且下游QR无rim边环, 整套机制失效)
-    lines = [f"{D}眼窝{W} inward_fillet 内圆角定案", f"{D}眼球{W} Eye.fbx 663顶点 · Hazel色 · 角膜自动测量"]
+    # 7. 眼窝独立材质(2026-09-08): 供02 QR沿材质边界布线保住眼窝结构; 输出_qr.blend, 不动烘焙源文件
+    if not run_blender(os.path.join(S01A, "assign_socket_material.py"), "01a_6", "⑥ 眼窝碗面赋独立材质(供QR沿rim布线)"):
+        summary("环节 01a", False, t0, []); return False
+    lines = [f"{D}眼窝{W} inward_fillet 内圆角定案", f"{D}眼球{W} Eye.fbx 663顶点 · Hazel色 · 角膜自动测量",
+             f"{D}材质{W} EyeSocket碗面分区 → QR沿rim布线"]
     outd = os.path.join(BASE, "01a眼窝眼球", "输出")
     ok = all([deliver(os.path.join(M01A, "01_1_eye_socket.blend"), outd),
               deliver(os.path.join(M01A, "01_2_eyeball_placed.blend"), outd)])
@@ -252,10 +255,11 @@ def step_01a():
 
 def step_02():
     divider()
-    print(f"{Y}{BOLD}▶ 环节 02 · QuadRemesher 拓扑重建{W}\n")
+    print(f"{Y}{BOLD}▶ 环节 02 · QuadRemesher 拓扑重建{W}")
+    print(f"{D}  引导方式: 眼窝独立材质(UseMaterialIds) · 已取消角度检测硬边/法向分割{W}\n")
     t0 = time.time()
-    if not check("01A眼窝与眼球/models/01_1_eye_socket.blend"):
-        print(f"{R}✗ 缺少输入, 先运行 01a{W}"); return False
+    if not check("01A眼窝与眼球/models/01_1_eye_socket_qr.blend"):
+        print(f"{R}✗ 缺少输入(带材质分区版), 先运行 01a{W}"); return False
     if not run_blender(os.path.join(DELIVERY, "02QuadRemesher拓扑", "scripts", "02_qr_auto.py"),
                        "02_QR", "QuadRemesher 自动拓扑(目标14万quad)"):
         summary("环节 02", False, t0, []); return False
