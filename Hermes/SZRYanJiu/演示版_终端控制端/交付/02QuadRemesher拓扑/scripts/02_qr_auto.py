@@ -23,8 +23,8 @@ print("=" * 60)
 print(f"Engine: {ENGINE}")
 print(f"Engine exists: {os.path.exists(ENGINE)}")
 
-# 1. 打开高模(rim预锐化版, 2026-08-24 倒角让QR检测折角)
-blend_path = os.path.join(DELIVERY, "01A眼窝与眼球", "models", "01_1_eye_socket_rim_sharp.blend")
+# 1. 打开高模(01a眼窝版; 2026-09-08 A方案: rim预锐化机制已删除, 直接用眼窝高模)
+blend_path = os.path.join(DELIVERY, "01A眼窝与眼球", "models", "01_1_eye_socket.blend")
 print(f"\n1. Loading: {blend_path}")
 bpy.ops.wm.open_mainfile(filepath=blend_path)
 

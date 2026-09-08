@@ -242,15 +242,11 @@ def step_01a():
     # 6. 眼球(Eye.fbx)
     if not run_blender(os.path.join(S01A, "run_eyeball_v2.py"), "01a_5", "⑤ 眼球摆入(Eye.fbx)+Hazel上色"):
         summary("环节 01a", False, t0, []); return False
-    # 7. rim锐化
-    if not run_blender(os.path.join(DELIVERY, "02QuadRemesher拓扑", "scripts", "rim_pre_sharpen.py"),
-                       "01a_6", "⑥ rim预锐化(倒角让QR检测折角)"):
-        summary("环节 01a", False, t0, []); return False
+    # (2026-09-08 A方案: rim预锐化步骤已删除 — 倒角权重被to_mesh冲掉致空转, 且下游QR无rim边环, 整套机制失效)
     lines = [f"{D}眼窝{W} inward_fillet 内圆角定案", f"{D}眼球{W} Eye.fbx 663顶点 · Hazel色 · 角膜自动测量"]
     outd = os.path.join(BASE, "01a眼窝眼球", "输出")
     ok = all([deliver(os.path.join(M01A, "01_1_eye_socket.blend"), outd),
-              deliver(os.path.join(M01A, "01_2_eyeball_placed.blend"), outd),
-              deliver(os.path.join(M01A, "01_1_eye_socket_rim_sharp.blend"), outd)])
+              deliver(os.path.join(M01A, "01_2_eyeball_placed.blend"), outd)])
     summary("环节 01a 眼窝与眼球", ok, t0, lines)
     return ok
 
@@ -258,21 +254,18 @@ def step_02():
     divider()
     print(f"{Y}{BOLD}▶ 环节 02 · QuadRemesher 拓扑重建{W}\n")
     t0 = time.time()
-    if not check("01A眼窝与眼球/models/01_1_eye_socket_rim_sharp.blend"):
+    if not check("01A眼窝与眼球/models/01_1_eye_socket.blend"):
         print(f"{R}✗ 缺少输入, 先运行 01a{W}"); return False
     if not run_blender(os.path.join(DELIVERY, "02QuadRemesher拓扑", "scripts", "02_qr_auto.py"),
                        "02_QR", "QuadRemesher 自动拓扑(目标14万quad)"):
         summary("环节 02", False, t0, []); return False
-    if not run_blender(os.path.join(DELIVERY, "02QuadRemesher拓扑", "scripts", "rim_bevel.py"),
-                       "02_bevel", "rim倒角(低模眼睑缘锐化)"):
-        summary("环节 02", False, t0, []); return False
+    # (2026-09-08 A方案: rim倒角步骤已删除 — QR无rim边环, 倒角只落在眼周碎边上(用户实测发现), 无锐化效果)
     qr = os.path.join(DELIVERY, "02QuadRemesher拓扑", "02_qr_150k.blend")
     lines = []
     nobj, rows = stat_blend(qr)
     for nm, v, f in rows: lines.append(f"{D}低模{W} {nm[:28]} {Y}{v}顶点 / {f}面{W}")
     outd = os.path.join(BASE, "02QR拓扑", "输出")
-    ok = all([deliver(qr, outd),
-              deliver(os.path.join(DELIVERY, "02QuadRemesher拓扑", "02_qr_150k_rim_bevel.blend"), outd)])
+    ok = all([deliver(qr, outd)])
     summary("环节 02 QR拓扑", ok, t0, lines)
     return ok
 
@@ -280,12 +273,12 @@ def step_03():
     divider()
     print(f"{Y}{BOLD}▶ 环节 03 · 自动UV展开{W}\n")
     t0 = time.time()
-    if not check("02QuadRemesher拓扑/02_qr_150k_rim_bevel.blend"):
+    if not check("02QuadRemesher拓扑/02_qr_150k.blend"):
         print(f"{R}✗ 缺少输入, 先运行 02{W}"); return False
-    if not run_blender(os.path.join(DELIVERY, "03自动UV_rim_bevel", "scripts", "03_auto_uv_apply_bevel.py"),
-                       "03_UV", "应用倒角 + Smart UV Project"):
+    if not run_blender(os.path.join(DELIVERY, "03自动UV", "scripts", "03_auto_uv.py"),
+                       "03_UV", "Smart UV Project"):
         summary("环节 03", False, t0, []); return False
-    out = os.path.join(DELIVERY, "03自动UV_rim_bevel", "03_auto_uv.blend")
+    out = os.path.join(DELIVERY, "03自动UV", "03_auto_uv.blend")
     ok = deliver(out, os.path.join(BASE, "03自动UV", "输出"))
     summary("环节 03 自动UV", ok, t0, [f"{D}UV范围{W} 少接缝无碎岛(66°角度限制)"])
     return ok
@@ -294,7 +287,7 @@ def step_04():
     divider()
     print(f"{Y}{BOLD}▶ 环节 04 · 纹理烘焙 (4K){W}\n")
     t0 = time.time()
-    if not check("03自动UV_rim_bevel/03_auto_uv.blend"):
+    if not check("03自动UV/03_auto_uv.blend"):
         print(f"{R}✗ 缺少输入, 先运行 03{W}"); return False
     if not run_blender(os.path.join(DELIVERY, "04纹理烘焙", "scripts", "04_bake.py"),
                        "04_烘焙", "烘焙 4K Diffuse + Normal"):
@@ -381,7 +374,7 @@ def status():
         ("01a 眼窝", "01A眼窝与眼球/models/01_1_eye_socket.blend"),
         ("01a 眼球", "01A眼窝与眼球/models/01_2_eyeball_placed.blend"),
         ("02 QR拓扑", "02QuadRemesher拓扑/02_qr_150k.blend"),
-        ("03 UV", "03自动UV_rim_bevel/03_auto_uv.blend"),
+        ("03 UV", "03自动UV/03_auto_uv.blend"),
         ("04 烘焙", "04纹理烘焙/04_bake.blend"),
         ("05 绑定", "05骨骼绑定/ARP新版测试_20260831/03_骨骼绑定.blend"),
         ("05 动作", "05骨骼绑定/ARP新版测试_20260831/04_动作测试.blend"),

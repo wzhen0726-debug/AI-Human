@@ -2,7 +2,7 @@ import bpy, os
 import numpy as np
 
 DELIVERY = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端\交付"
-UV_BLEND = os.path.join(DELIVERY, "03自动UV_rim_bevel", "03_auto_uv.blend")
+UV_BLEND = os.path.join(DELIVERY, "03自动UV", "03_auto_uv.blend")
 HIGH_POLY = os.path.join(DELIVERY, "01A眼窝与眼球", "models", "01_1_eye_socket.blend")
 FIXED_TEX = os.path.join(DELIVERY, "01高模修复与黏连检测", "models", "01_original_tex_fixed.png")
 OUT_04 = os.path.join(DELIVERY, "04纹理烘焙")
