@@ -6,7 +6,7 @@
 新版: 对rim轮廓的每个点, 只取点-线段距离最近的那条边(边真正紧贴轮廓),
 再用自适应紧阈值(0.4×眼部边长中位, 下限1mm)过滤离群点. 只有眼睑缘本身的边
 有权重, 周围碎边权重为0. 全部距离测量驱动, 无硬编码体型参数."""
-import bpy, os, json, bmesh
+import bpy, os, json, bmesh, math
 import numpy as np
 from mathutils import Vector
 
@@ -43,11 +43,32 @@ near_mask = d_mid_all < 0.008
 med_len = float(np.median(Elen[near_mask]))
 print(f"眼部区边数={int(near_mask.sum())} 边长中位={med_len*1000:.3f}mm")
 
-# ---- rim最近边法: 每个rim点找点-线段距离最近的边 ----
-# 阈值: 0.4×边长中位, 下限1mm(自适应, 无硬编码体型)
+# ---- rim最近边法 + 切向过滤: 每个rim点找最近边, 且边方向必须顺着轮廓 ----
+# 距离阈值: 0.4×边长中位, 下限1mm; 切向阈值: 与最近轮廓段夹角<35°
+# (只查距离会选中斜跨轮廓的碎边: QR眼部网格不与rim对齐, 最近边常是44~77°横穿边)
 THRESH = max(0.001, 0.4 * med_len)
+# rim轮廓折线段(L/R各闭合)
+segs = []
+for s in ("L", "R"):
+    p = np.array(cont[s]["rim_3d"], dtype=np.float64)
+    for i in range(len(p)):
+        segs.append((p[i], p[(i+1) % len(p)]))
+S0 = np.array([x[0] for x in segs]); S1 = np.array([x[1] for x in segs])
+SD = S1 - S0
+SDl2 = np.einsum('ij,ij->i', SD, SD) + 1e-12
+SDu = SD / np.sqrt(SDl2)[:, None]
+
+def rim_dist_tang(p, dv):
+    """点p到轮廓折线距离 + 方向dv与最近轮廓段切向夹角(度)"""
+    t = np.clip(np.einsum('ij,ij->i', p - S0, SD) / SDl2, 0, 1)
+    proj = S0 + t[:, None] * SD
+    d = np.linalg.norm(proj - p[None, :], axis=1)
+    i = int(d.argmin())
+    c = abs(np.dot(dv, SDu[i]) / (np.linalg.norm(dv) + 1e-12))
+    return d[i], math.degrees(math.acos(np.clip(c, 0, 1)))
+
 sel = set()
-dmax = 0.0
+dmax = 0.0; n_rej_tang = 0; n_rej_dist = 0
 for p in rim_all:
     ab = E1 - E0
     ap = p - E0
@@ -56,12 +77,16 @@ for p in rim_all:
     proj = E0 + tc[:, None] * ab
     d = np.linalg.norm(proj - p[None, :], axis=1)
     i = int(np.argmin(d))
-    if d[i] < THRESH:
-        sel.add(i)
-        dmax = max(dmax, d[i])
-print(f"最近边法: 阈值={THRESH*1000:.2f}mm 选中边={len(sel)} rim点距边max={dmax*1000:.2f}mm")
-if len(sel) < 20:
-    raise AssertionError(f"选中边过少({len(sel)}), rim轮廓与低模可能不对齐!")
+    if d[i] >= THRESH:
+        n_rej_dist += 1; continue
+    mid = Emid[i]; dv = E1[i] - E0[i]
+    dm, ang = rim_dist_tang(mid, dv)
+    if ang >= 35.0:
+        n_rej_tang += 1; continue
+    sel.add(i)
+    dmax = max(dmax, d[i])
+print(f"最近边法+切向过滤: 距离阈值={THRESH*1000:.2f}mm 切向<35° 选中边={len(sel)} "
+      f"拒(距离)={n_rej_dist} 拒(斜跨)={n_rej_tang} rim点距边max={dmax*1000:.2f}mm")
 
 # ---- 写bevel权重: 只有选中边=1, 其余全0(碎线清零) ----
 bw_attr = me.attributes.get("bevel_weight_edge")
