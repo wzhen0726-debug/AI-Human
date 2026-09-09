@@ -326,14 +326,18 @@ def step_05():
     if not run_blender(os.path.join(S05, "step3_to_7_rig_and_walk.py"), "05_3",
                        "③ 提取55骨Mixamo骨架+自动权重+并眼球", done_mark="STEPS_3_TO_7_DONE"):
         summary("环节 05", False, t0, []); return False
-    # 5. 动作重定向(rest补偿版: 骨架结构不动, 保41连接+关节重叠)
-    if not run_blender(os.path.join(S05, "retarget_mixamo.py"), "05_4",
-                       "④ Mixamo动作重定向(rest补偿, 走/跑/跳)", done_mark="RETARGET_DONE"):
+    # 4.5 骨骼标准化(2026-09-09新增): rest开度对齐Mixamo T-Pose, 网格+眼球跟随重摆
+    if not run_blender(os.path.join(S05, "normalize_to_tpose.py"), "05_3B",
+                       "③B 骨骼标准化(rest对齐Mixamo T-Pose, 网格跟随)", done_mark="03B_DONE"):
         summary("环节 05", False, t0, []); return False
-    rig = os.path.join(B05, "03_骨骼绑定.blend")
+    # 5. 动作重定向(增量重定向: 骨架结构不动, 保41连接+关节重叠)
+    if not run_blender(os.path.join(S05, "retarget_mixamo.py"), "05_4",
+                       "④ Mixamo动作重定向(03B标准rest, 走/跑/跳)", done_mark="RETARGET_DONE"):
+        summary("环节 05", False, t0, []); return False
+    rig = os.path.join(B05, "03B_骨骼标准化.blend")
     lines = []
     nobj, rows = stat_blend(rig)
-    lines.append(f"{D}骨架{W} 55骨 Mixamo命名 · 24对对称 · 眼球蒙皮Head")
+    lines.append(f"{D}骨架{W} 55骨 Mixamo命名 · rest已对齐T-Pose · 眼球蒙皮Head")
     lines.append(f"{D}动作{W} 走36帧/跑20帧/跳31帧 · 帧数按参考原样 · 骨骼保持连接")
     outd = os.path.join(BASE, "05骨骼绑定", "输出")
     ok = all([deliver(rig, outd),
