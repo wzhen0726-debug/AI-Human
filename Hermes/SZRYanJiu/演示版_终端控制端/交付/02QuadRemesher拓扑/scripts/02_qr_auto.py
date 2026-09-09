@@ -180,7 +180,29 @@ print(f"   旋转归零: {_rot_before} -> {tuple(qr_obj.rotation_euler)}")
 faces = len(qr_obj.data.polygons)
 print(f"   QR mesh: {qr_obj.name}, {faces:,} faces")
 
-# 8.5 材质合并(2026-09-08 修红眼窝bug): QR的UseMaterialIds会保留眼窝EyeSocket引导材质
+# 8.5 清理原始高模(先清: 检查副本只含QR低模, 不混190万面高模, 文件小且干净)
+for obj in list(bpy.data.objects):
+    if obj != qr_obj and obj.type == "MESH":
+        bpy.data.objects.remove(obj, do_unlink=True)
+print("8.5 Cleaned original mesh")
+
+# 8.6 材质分区检查副本(2026-09-08 用户要求): 保存QR引擎的真实输出(保留眼窝EyeSocket材质分区),
+#     供用户核验"QR是否真的沿眼窝材质边界(=rim)布线". 必须在材质合并(8.7)之前存.
+#     这是QR的真实产物, 不是按rim重新赋材质(那等于自证, 看不出QR行为).
+import collections as _cc
+_nmat_raw = len(qr_obj.data.materials)
+check_blend = os.path.join(OUT_02, "02_qr_150k_材质分区检查.blend")
+if _nmat_raw > 1:
+    bpy.ops.wm.save_as_mainfile(filepath=check_blend)
+    _mi_chk = [0] * len(qr_obj.data.polygons)
+    qr_obj.data.polygons.foreach_get("material_index", _mi_chk)
+    _cnt_chk = dict(_cc.Counter(_mi_chk))
+    _mnames = [m.name if m else None for m in qr_obj.data.materials]
+    print(f"   材质分区检查副本: {os.path.basename(check_blend)} 槽={_mnames} 面分布={_cnt_chk}")
+else:
+    print(f"   ⚠ QR未保留材质分区({_nmat_raw}槽), 无法生成检查副本 — UseMaterialIds可能未生效!")
+
+# 8.7 材质合并(2026-09-08 修红眼窝bug): QR的UseMaterialIds会保留眼窝EyeSocket引导材质
 #     (饱和红0.8/0.15/0.15). 材质引导只为让QR沿rim布线, 布线完成后必须丢弃 —
 #     否则红材质槽随低模流到03/04, 04烘焙只替换材质槽0, 眼窝面(material_index=1)仍挂红槽
 #     → 渲染/烘焙产物眼窝发红(实测真bug: 02/03/04都残留EyeSocket.001红槽).
@@ -198,17 +220,11 @@ if _nmat > 1:
 else:
     print(f"   材质槽={_nmat}(QR未保留分区, 无需合并)")
 
-# 9. 清理原始高模
-for obj in list(bpy.data.objects):
-    if obj != qr_obj and obj.type == "MESH":
-        bpy.data.objects.remove(obj, do_unlink=True)
-print("9. Cleaned original mesh")
-
-# 10. 保存
+# 9. 保存主产物(单材质, 供下游03/04)
 output_blend = os.path.join(OUT_02, "02_qr_150k.blend")
 output_fbx = os.path.join(OUT_02, "02_qr_150k.fbx")
 bpy.ops.wm.save_as_mainfile(filepath=output_blend)
-print(f"10. Saved: {output_blend}")
+print(f"9. Saved: {output_blend}")
 
 bpy.ops.object.select_all(action="DESELECT")
 qr_obj.select_set(True)
