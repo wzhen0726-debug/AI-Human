@@ -34,6 +34,25 @@ def rim_diag(P):
     return float(np.linalg.norm(P.max(axis=0) - P.min(axis=0)))
 DIAGL, DIAGR = rim_diag(RL), rim_diag(RR)
 
+def rim_plane(P):
+    """该眼 rim 拟合平面 → (中心, 单位法线指向脸前方).
+    眼窝碗从rim环往**深处**凹(depth>0), 眼睑/眉部皮肤在rim环**前方**(depth<0)."""
+    ctr = P.mean(axis=0)
+    u, s, vt = np.linalg.svd(P - ctr)
+    n = vt[2]                          # 最小奇异向量 = 平面法线
+    if n[1] > 0: n = -n                # 统一指向脸前方(-y)
+    return ctr, n, float(s[2])
+
+def plane_depth(Pts, ctr, n):
+    """点到rim平面的有符号深度: >0 = 碗内侧(眼球方向), <0 = 外侧(眼皮/额头皮肤)."""
+    return (Pts - ctr) @ (-n)
+
+PLN_L = rim_plane(RL); PLN_R = rim_plane(RR)
+# 容差: rim bbox对角线的0.15%(≈0.06mm) — 只吸收平面拟合噪声.
+# 实测分界零重叠: 真碗面depth全≥+0.01mm, 溢出面全≤-0.01mm, 分界就在rim平面上.
+# ⚠曾误设0.8%(=0.3mm): 上睑缘溢出面(depth -0.3~-0.01mm)会漏网 — 那正是用户肉眼可见的红色溢出.
+TOL = max(DIAGL, DIAGR) * 0.0015
+
 def seg_dist_batch(Pts, P):
     """Pts(M,3) 各点到闭合折线 P(N,3) 的最近3D距离 → (M,).
     ⚠关键: 必须用3D距离, 不能只用XZ投影 — 后脑勺面(y≈+90mm)的XZ投影
@@ -82,27 +101,45 @@ m = ((C[:,0] >= allr[:,0].min()-pad) & (C[:,0] <= allr[:,0].max()+pad) &
 cand = np.where(m)[0]
 print(f"bbox候选(含Y深度滤)={len(cand):,}")
 
-# 分眼判定: XZ pip(在眼睑缘轮廓内) + 3D距rim折线 < 该眼rim对角线(碗内面尺度上限)
+# 分眼判定: XZ pip(在眼睑缘轮廓内) + 3D距rim折线在尺度内 + **rim平面内侧**(碗方向)
+# ⚠第三个条件是必需的: 上眼睑/眉部皮肤的XZ投影也落在rim轮廓内(实测413面全部"在rim内"),
+#   且距rim仅1.71mm(远小于对角线阈值), 但在rim平面**前方**(depth -5.31~-0.01mm) →
+#   只靠pip+距离会把它们当碗面 = 用户肉眼可见的红色材质溢出.
+#   实测真碗面depth全≥+0.01mm、溢出面全≤-0.01mm, 分界干净无重叠.
 sockL, sockR = [], []
+rejL, rejR = [], []          # 被平面判据拒掉的(溢出)面, 供统计
 for idx in cand:
     xz = C[idx][[0, 2]]
     okL = pip_batch(xz[None], PL)[0]; okR = pip_batch(xz[None], PR)[0]
     if not (okL or okR):
         continue
-    # 3D 深度判据: 到所属眼 rim 折线的最近距离必须在该眼 rim 尺度内
+    # 3D 距离判据: 到所属眼 rim 折线的最近距离必须在该眼 rim 尺度内
     dL = seg_dist_batch(C[idx][None], RL)[0]
     dR = seg_dist_batch(C[idx][None], RR)[0]
-    if okL and dL < DIAGL:
-        sockL.append(idx)
-    elif okR and dR < DIAGR:
-        sockR.append(idx)
-    elif dL < DIAGL or dR < DIAGR:
-        # pip 边缘情形(轮廓线上)但3D距离在碗内 → 仍算碗面
-        (sockL if dL < DIAGL else sockR).append(idx)
+    # 平面深度判据: 必须在rim平面内侧(碗方向), 容差吸收平面拟合噪声
+    depL = plane_depth(C[idx][None], PLN_L[0], PLN_L[1])[0]
+    depR = plane_depth(C[idx][None], PLN_R[0], PLN_R[1])[0]
+    side = None
+    if okL and dL < DIAGL: side = 'L'
+    elif okR and dR < DIAGR: side = 'R'
+    elif dL < DIAGL: side = 'L'
+    elif dR < DIAGR: side = 'R'
+    if side is None: continue
+    dep = depL if side == 'L' else depR
+    if dep >= -TOL:
+        (sockL if side == 'L' else sockR).append(idx)
+    else:
+        (rejL if side == 'L' else rejR).append(dep)
 sock = np.array(sockL + sockR, dtype=np.int64)
-inL = np.ones(len(sockL), bool); inR = np.ones(len(sockR), bool)
 print(f"rim内碗面={len(sock):,} (L={len(sockL)} R={len(sockR)})")
-print(f"  深度判据阈值: L眼rim对角线={DIAGL*1000:.1f}mm R眼={DIAGR*1000:.1f}mm")
+print(f"  平面判据拒掉(溢出)={len(rejL)+len(rejR):,} (L={len(rejL)} R={len(rejR)})")
+if rejL or rejR:
+    allr_d = np.array(rejL + rejR) * 1000
+    print(f"    溢出面depth: min={allr_d.min():.3f} 中位={np.median(allr_d):.3f} max={allr_d.max():.3f}mm (全应<0)")
+    for band, lo, hi in (("(-0.1,0]", -0.1, 0.0), ("(-1,-0.1]", -1.0, -0.1), ("≤-1mm", -99., -1.0)):
+        n = int(((allr_d > lo) & (allr_d <= hi)).sum())
+        if n: print(f"    {band}: {n}个")
+print(f"  判据阈值: L眼rim对角线={DIAGL*1000:.1f}mm R眼={DIAGR*1000:.1f}mm 平面容差={TOL*1000:.3f}mm")
 if len(sock) < 100:
     raise AssertionError(f"识别碗面过少({len(sock)}), rim轮廓或坐标可能不对!")
 
