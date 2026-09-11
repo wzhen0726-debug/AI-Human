@@ -95,10 +95,21 @@ _cont=_json58.load(open(_cont_p,encoding="utf-8"))
 _RLy=np.array([q[1] for q in _cont["L"]["rim_3d"] if q is not None])
 _RRy=np.array([q[1] for q in _cont["R"]["rim_3d"] if q is not None])
 _yminL=_RLy.min()-0.0005; _yminR=_RRy.min()-0.0005
+# v58c XZ闸门(2026-09-11 用户GUI截图报红区边缘尖刺锯齿): v58b只加了y闸门, 漏加XZ rim闸门.
+#   实测167个补红面里41个距rim>2mm(面心戳出rim环外缘), 整面染红 → 红色以尖刺状戳出边界.
+#   tag碗面基线自身XZ超rim>2mm=0% → 补红面也不应超. 加: 面心距rim>2mm不补.
+_RL3=np.array([q for q in _cont["L"]["rim_3d"] if q is not None])
+_RR3=np.array([q for q in _cont["R"]["rim_3d"] if q is not None])
+def _seg_d3(Pts,P):
+    S0=P[None,:,:]; S1=np.roll(P,-1,axis=0)[None,:,:]; SD=S1-S0
+    SDl2=np.einsum('inj,inj->in',SD,SD)+1e-18; d=Pts[:,None,:]-S0
+    t=np.clip(np.einsum('mni,mni->mn',d,SD)/SDl2,0,1); proj=S0+t[:,:,None]*SD
+    return np.linalg.norm(proj-Pts[:,None,:],axis=2).min(axis=1)
 _fix = []
 for _fi in _cand:
     _c = _C[_fi]
     if (_c[0] < 0 and _c[1] < _yminL) or (_c[0] > 0 and _c[1] < _yminR): continue   # 睑前面不补
+    if min(_seg_d3(_c[None,:],_RL3)[0], _seg_d3(_c[None,:],_RR3)[0]) > 0.002: continue  # 距rim>2mm不补
     _pl = _c@_inv_mw[:3,:3].T + _inv_mw[:3,3]
     _h = _svc_b.find_nearest(_pl)
     if _h[0] is not None and abs(_h[3]) < 0.0005:      # 面心贴原始碗面<0.5mm = 共面重复面
@@ -106,7 +117,7 @@ for _fi in _cand:
 if _fix:
     mi[np.array(_fix)] = si
     me.polygons.foreach_set("material_index", mi); me.update()
-print(f"v58b重复面补红: 候选{len(_cand)} 补红={len(_fix)} (面心距原始tag碗面<0.5mm + y在rim后, 单pass有界)")
+print(f"v58c重复面补红: 候选{len(_cand)} 补红={len(_fix)} (面心贴碗<0.5mm + y在rim后 + 距rim≤2mm, 单pass有界)")
 
 # ---- 材质边界统计: 碗/皮肤公共边应正好=rim环(碗面从rim长出, 边界必然贴rim) ----
 import bmesh
