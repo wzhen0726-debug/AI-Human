@@ -71,6 +71,8 @@ print(f"赋材质: 皮肤(idx0)={int((mi==0).sum()):,}  眼窝(idx{si})={int((mi
 #   真皮肤距碗面>1mm(前方灰面p50=9.3mm)不误收; 不测前后方向(共面时数值不稳, 且堆栈在碗后也无害);
 #   采样面心+全顶点, 任一点距原始碗面<0.5mm即补红. 确定/有界/一遍收敛/零拓扑改动.
 from mathutils.bvhtree import BVHTree as _BVHTree
+import json as _json58
+_cont_p = os.path.join(DELIVERY, "01A眼窝与眼球", "screenshots", "3ddfa", "eyelid_contour_manual.json")
 _mw = np.array(obj.matrix_world); _inv_mw = np.linalg.inv(_mw)
 _co = np.empty(len(me.vertices)*3); me.vertices.foreach_get("co", _co)
 _VL = _co.reshape(-1,3)
@@ -83,19 +85,28 @@ _bb_lo = _C[_bmask].min(axis=0)-0.010; _bb_hi = _C[_bmask].max(axis=0)+0.010
 _in_bb = ((_C[:,0]>=_bb_lo[0])&(_C[:,0]<=_bb_hi[0])&(_C[:,1]>=_bb_lo[1])&(_C[:,1]<=_bb_hi[1])
           &(_C[:,2]>=_bb_lo[2])&(_C[:,2]<=_bb_hi[2]))
 _cand = np.where(_in_bb & ~_bmask)[0]
+# v58b 收紧(2026-09-11 用户GUI截图: 红区外扩成锯齿大片爬到眼睑):
+#   ❌原v58用[面心+全顶点任一]<0.5mm — 大皮肤三角只要一个顶点碰到碗面就整面染红,
+#     补红370个中136个(36.8%)XZ超手描rim>2mm、65个y在睑前 = 染到眼睑皮肤上 → 红区锯齿外扩.
+#     对比基线: tag碗面自身XZ超rim>2mm = 0% (碗面从不越rim), 说明那136个是误染.
+#   ✅收紧两道闸: ①只用【面心】测距(不采顶点) — 面心贴碗才是真共面重复面, 大面搭边不算;
+#     ②y闸门: 面心y不得比该侧rim最前y更靠前(容差0.5mm), 排除睑前重复面.
+_cont=_json58.load(open(_cont_p,encoding="utf-8"))
+_RLy=np.array([q[1] for q in _cont["L"]["rim_3d"] if q is not None])
+_RRy=np.array([q[1] for q in _cont["R"]["rim_3d"] if q is not None])
+_yminL=_RLy.min()-0.0005; _yminR=_RRy.min()-0.0005
 _fix = []
 for _fi in _cand:
-    _vs = list(me.polygons[_fi].vertices)
-    _pts = [_C[_fi]] + [_VW[_v] for _v in _vs]
-    for _p in _pts:
-        _pl = _p@_inv_mw[:3,:3].T + _inv_mw[:3,3]
-        _h = _svc_b.find_nearest(_pl)
-        if _h[0] is not None and abs(_h[3]) < 0.0005:
-            _fix.append(int(_fi)); break
+    _c = _C[_fi]
+    if (_c[0] < 0 and _c[1] < _yminL) or (_c[0] > 0 and _c[1] < _yminR): continue   # 睑前面不补
+    _pl = _c@_inv_mw[:3,:3].T + _inv_mw[:3,3]
+    _h = _svc_b.find_nearest(_pl)
+    if _h[0] is not None and abs(_h[3]) < 0.0005:      # 面心贴原始碗面<0.5mm = 共面重复面
+        _fix.append(int(_fi))
 if _fix:
     mi[np.array(_fix)] = si
     me.polygons.foreach_set("material_index", mi); me.update()
-print(f"v58重复面补红: 候选{len(_cand)} 补红={len(_fix)} (距原始tag碗面<0.5mm共面重复堆栈, 单pass有界)")
+print(f"v58b重复面补红: 候选{len(_cand)} 补红={len(_fix)} (面心距原始tag碗面<0.5mm + y在rim后, 单pass有界)")
 
 # ---- 材质边界统计: 碗/皮肤公共边应正好=rim环(碗面从rim长出, 边界必然贴rim) ----
 import bmesh
