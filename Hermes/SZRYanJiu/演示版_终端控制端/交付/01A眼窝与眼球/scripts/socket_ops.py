@@ -196,15 +196,18 @@ def make_eye_socket(obj, center, side):
                and f.calc_center_median().z < 1.678
                and all(len(e.link_faces)==2 for e in f.edges)]
     if slivers:
-        bmesh.ops.dissolve_faces(bm, faces=slivers)
+        _dis = bmesh.ops.dissolve_faces(bm, faces=slivers)
         bmesh.update_edit_mesh(mesh)
         # 2026-08-13 v24: 消除溶解产生的ngon(多边面→三角化, 防止法线异常/破面/布线乱)
-        bm.faces.ensure_lookup_table()
-        ngons = [f for f in bm.faces if len(f.verts) > 4]
+        # v59d根因修复: 旧代码全局扫bm.faces三角化【所有】ngon — L/R处理顺序下,
+        #   socket R会把cup L已建好的碗底ngon盖(84边)和rim合并ngon全部打碎成三角
+        #   (实测L碗面232三角面 vs R 0). 修: 只三角化本次dissolve的产物(region).
+        _region = [f for f in _dis.get("region", []) if f.is_valid]
+        ngons = [f for f in _region if len(f.verts) > 4]
         if ngons:
             bmesh.ops.triangulate(bm, faces=ngons)
             bmesh.update_edit_mesh(mesh)
-            print(f"  triangulated {len(ngons)} ngons after dissolve")
+            print(f"  triangulated {len(ngons)} ngons after dissolve (region-local)")
     bpy.ops.object.mode_set(mode='OBJECT')
     print(f"make_eye_socket {side}: dissolved {len(slivers)} sliver faces")
 
@@ -359,78 +362,114 @@ def make_eye_cup(obj, center, side):
     ring_idx = max(rings, key=len)
     ring0 = [bm.verts[i] for i in ring_idx]  # 拓扑行走顺序(与网格边界一致, 不排序!)
     M = len(ring0)
+
+    def _rewalk_ring():
+        """重走开放边环, 返回(BMVert列表, M) 或 (None,0). 焊/删顶点后索引失效必须重走."""
+        bm.verts.ensure_lookup_table(); bm.edges.ensure_lookup_table()
+        _oe = [e for e in bm.edges if len(e.link_faces)==1 and in_zone(e.verts[0].co)]
+        _adj = defaultdict(list)
+        for e in _oe:
+            _adj[e.verts[0].index].append(e.verts[1].index)
+            _adj[e.verts[1].index].append(e.verts[0].index)
+        _rings = []; _vis = set()
+        for start in list(_adj.keys()):
+            if start in _vis or len(_adj[start]) != 2: continue
+            ring = [start]; _vis.add(start)
+            prev, cur = -1, start; closed = False
+            for _ in range(10000):
+                nxt = None
+                for n in _adj[cur]:
+                    if n == prev: continue
+                    if n == start: closed = True; break
+                    if n not in _vis: nxt = n; break
+                if closed or nxt is None: break
+                ring.append(nxt); _vis.add(nxt)
+                prev, cur = cur, nxt
+            if closed and len(ring) >= 3: _rings.append(ring)
+        if not _rings: return None, 0
+        _ri = max(_rings, key=len)
+        return [bm.verts[i] for i in _ri], len(_ri)
     
-    # ---- 1.5 松弛ring0去锯齿(v42: 3次轻度Laplace, 平衡形状保持与平滑) ----
-    # v39: 12次太强(扭曲rim形状, avg偏差6.4mm), v42: 0次太弱(星爆拓扑)
-    # 3次轻度松弛: 消除锯齿但保持3DDFA轮廓形状
+    # ---- 1.5 v59 rim重构(2026-09-11): 松弛(恢复) + 焊退化边 + sliver保拓扑 + ngon碗底 ----
+    # 实测定罪链(_diag_rim/_diag_ring/_spike_*/_baseline_cmp, 全部数字可复现):
+    #   • 基线L前视转角XZ仅5.93° — 平滑全靠旧松弛×12(v59f曾误判其"形同虚设"而移除 → 恶化到68°/max179°, 恢复);
+    #   • 基线R的真缺陷=顶点爆炸104(vs L 84)+转角XZ 137°/max138°: 触rim的sliver溶解→ngon→三角化改道rim;
+    #   • 旧"径向投影"形同虚设(只动6/84、8/76个顶点) → 删除;
+    #   • XZ投影到曲线方案否决: 82顶点投72段折线→弧长非单调→转角飙180°尖刺(v59c实测);
+    #   • 切割类方案全否决: knife_project(headless 0切割边)/boolean(非流形被拒)/顶点墙洪泛(泄漏删光193万面)/
+    #     测地线补全(自交)/等距重排(位移15.9mm)/全量snap到曲线(y位移7.3mm拉坑);
+    #   • y跨度16mm≠伪影: 手描曲线是眼睑缘(y-105~-111), 边界环是窝底切口(y达-115.6), y本就不同, 双层竖边=0.
+    # ✅ v59定案(只修真缺陷, 位移有界):
+    #   ① 3D Laplacian松弛×12 w=0.3(恢复v42配方, 磨zigzag保杏仁形);
+    #   ② 焊退化小边<0.3mm(松弛把R的0.126mm近重合顶点压成重合 → 必须焊, 合法边≥0.4mm不误焊);
+    #   ③ 触rim的sliver只翻法线不溶解(根治R侧104顶点爆炸, v59b实测R保持76 ✓);
+    #   ④ 碗底单极点→单ngon盖(消中心黑洞+放射扇, v59b实测极点=0 ✓).
+    #   删除: 旧径向投影(无效). 左右同一程序化流程, 无硬编码坐标.
+    import json as _json
+    with open(EYELID_CONTOUR_JSON, encoding="utf-8") as _f:
+        _dd = _json.load(_f)
+    _rim_pts = np.array([[r[0]-center.x, r[2]-center.z]
+                         for r in _dd[side]["rim_3d"] if r is not None], dtype=np.float64)
+    _Nc = len(_rim_pts)
+
+    # ① 3D Laplacian松弛×12 (v42验证过的配方, w=0.3) — 恢复!
+    #   v59f教训(基线对比实测): 曾误判松弛"形同虚设"而移除 → L转角XZ从5.93°恶化到68°/max179°.
+    #   基线L前视平滑全靠它(把边界环沿曲线的zigzag磨平); 周长119→88mm的"收缩"实为磨锯齿的正常代价
+    #   (基线周长88mm = 平滑杏仁形的真实周长, 手描曲线周长78.8mm, 差值=环贴曲线的深度起伏).
+    #   v59新增价值: ④sliver翻法线保住R侧拓扑(基线R被溶解-三角化撑到104顶点/137°转角), 松弛作用在干净环上.
     for _ in range(12):
         new_pos = {}
         for i, v in enumerate(ring0):
             a = ring0[(i-1)%M].co; b = ring0[(i+1)%M].co
-            # v42: 固定权重0.3(轻度松弛), 避免扭曲
             w = 0.3
             new_pos[v.index] = v.co*(1-w) + (a+b)*0.5*w
         for v in ring0:
             v.co = new_pos[v.index]
-    
-    # v42: 松弛后径向投影回3DDFA轮廓(约束到正确位置, 消除偏离)
-    # 方法: 轮廓折线密集采样建立 角度θ→半径r 插值表, 每个ring0顶点保持自身角度,
-    #       半径设为r(θ). 避免最近点投影的聚簇bug(曾致jump max 6.8mm).
-    import json as _json
-    with open(EYELID_CONTOUR_JSON, encoding="utf-8") as _f:
-        _dd = _json.load(_f)
-    _pts = [(r[0]-center.x, r[2]-center.z) for r in _dd[side]["rim_3d"] if r is not None]
-    # 折线密集采样(每段细分16点), 建立(θ,r)表
-    _samples = []
-    _n = len(_pts)
-    for _i in range(_n):
-        _p1 = _pts[_i]; _p2 = _pts[(_i+1)%_n]
-        for _t in range(16):
-            _f = _t/16
-            _sx = _p1[0]+(_p2[0]-_p1[0])*_f; _sz = _p1[1]+(_p2[1]-_p1[1])*_f
-            _samples.append((math.atan2(_sz, _sx), math.sqrt(_sx*_sx+_sz*_sz)))
-    _samples.sort()
-    _thetas = [s[0] for s in _samples]; _radii_tab = [s[1] for s in _samples]
-    def _radius_at(theta):
-        # 周期插值
-        import bisect
-        i = bisect.bisect_left(_thetas, theta)
-        if i == 0 or i == len(_thetas):
-            # 环绕: theta < 最小 或 >= 最大, 用首尾环绕
-            t1, r1 = _thetas[-1], _radii_tab[-1]
-            t2, r2 = _thetas[0], _radii_tab[0]
-            if t1 > t2:  # 环绕 -π/π
-                span = (t2 + 2*math.pi) - t1
-                d = (theta - t1) if theta >= t1 else (theta + 2*math.pi - t1)
-            else:
-                span = t2 - t1; d = theta - t1
-        else:
-            t1, r1 = _thetas[i-1], _radii_tab[i-1]
-            t2, r2 = _thetas[i], _radii_tab[i]
-            span = t2 - t1; d = theta - t1
-        if span <= 0: return r1
-        return r1 + (r2-r1) * d / span
-    
-    projected = 0
-    for v in ring0:
-        dx = v.co.x - center.x; dz = v.co.z - center.z
-        r_now = math.sqrt(dx*dx + dz*dz)
-        if r_now < 1e-9: continue
-        theta = math.atan2(dz, dx)
-        r_target = _radius_at(theta)
-        if abs(r_target - r_now) > 0.0005:  # >0.5mm才移动
-            v.co.x = center.x + r_target * math.cos(theta)
-            v.co.z = center.z + r_target * math.sin(theta)
-            projected += 1
-    print(f"  径向投影回3DDFA轮廓: {projected}/{M}顶点")
+
+    # ② 焊接退化小边(<0.3mm). 松弛把锯齿磨平时可能把近重合顶点(R基线min0.126mm)压到重合 →
+    #   退化边/死折/碗面首环退化quad. 合法最短边(松弛后)≥0.4mm > 0.3mm阈值, 不误焊.
+    _nweld = 0
+    for _wr in range(12):
+        _pair = None
+        for _i in range(M):
+            if (ring0[_i].co - ring0[(_i+1) % M].co).length < 0.0003:
+                _pair = (ring0[_i], ring0[(_i+1) % M]); break
+        if _pair is None:
+            break
+        _a, _b = _pair
+        _a.co = (_a.co + _b.co) / 2
+        bmesh.ops.remove_doubles(bm, verts=[_a, _b], dist=0.00035)
+        bmesh.update_edit_mesh(mesh)
+        bm = bmesh.from_edit_mesh(mesh)
+        bm.verts.ensure_lookup_table(); bm.edges.ensure_lookup_table()
+        tag_l = bm.faces.layers.int.get("v44tag_" + side) or tag_l
+        ring0, M = _rewalk_ring()
+        _nweld += 1
+        if ring0 is None:
+            print(f"  !! v59② 焊边后环丢失(轮{_wr+1}), 中止")
+            break
+    print(f"  v59② 焊接退化边: {_nweld}次 → M={M}")
+    if ring0 is None or M < 8:
+        bpy.ops.object.mode_set(mode='OBJECT')
+        print(f"make_eye_cup {side}: !! v59重构后环异常(M={M}), skip")
+        return
+    # 自检: 最短边/转角/偏离曲线(独立于修复步骤的量, 防自证)
+    _P3w = np.array([[v.co.x, v.co.y, v.co.z] for v in ring0])
+    _minseg = float(np.min(np.linalg.norm(np.roll(_P3w, -1, axis=0) - _P3w, axis=1)))
+    print(f"  v59最终: 最短边={_minseg*1000:.3f}mm")
     rim_y = sum(v.co.y for v in ring0) / M
-    # v39: 验证松弛效果
-    _radii = [(v.co - center).xz.length for v in ring0]
-    _jumps = [abs(_radii[(i+1)%M] - _radii[i]) for i in range(M)]
-    print(f"make_eye_cup {side}: boundary ring M={M} (of {len(rings)} rings), ring relaxed x12, "
-          f"jump avg={sum(_jumps)/len(_jumps)*1000:.2f}mm max={max(_jumps)*1000:.2f}mm")
-    # v41: 打印rim半径分布(诊断交缝精度)
-    _rmm = [r*1000 for r in _radii]
+    # 验证: 转角/间距/偏离曲线
+    _post = np.array([[v.co.x-center.x, v.co.z-center.z] for v in ring0])
+    _d2v = np.linalg.norm(_post[:,None,:]-_rim_pts[None,:,:], axis=2).min(axis=1)
+    _P3w = np.array([[v.co.x, v.co.y, v.co.z] for v in ring0])
+    _sp = np.linalg.norm(np.roll(_P3w,-1,axis=0)-_P3w, axis=1)*1000
+    _d0 = _P3w-np.roll(_P3w,1,axis=0); _d1 = np.roll(_P3w,-1,axis=0)-_P3w
+    _n0 = _d0/(np.linalg.norm(_d0,axis=1,keepdims=True)+1e-12); _n1 = _d1/(np.linalg.norm(_d1,axis=1,keepdims=True)+1e-12)
+    _turn = np.degrees(np.arccos(np.clip((_n0*_n1).sum(axis=1),-1,1)))
+    print(f"make_eye_cup {side}: boundary ring M={M} (of {len(rings)} rings), v59重构后 "
+          f"XZ偏离曲线 max={_d2v.max()*1000:.3f}mm 转角mean={_turn.mean():.1f}°/max={_turn.max():.1f}° "
+          f"间距[{_sp.min():.2f},{_sp.max():.2f}]mm")
+    _rmm = [np.linalg.norm(p)*1000 for p in _post]
     print(f"  rim半径: [{min(_rmm):.1f},{max(_rmm):.1f}]mm avg={sum(_rmm)/M:.1f}mm")
     
     # ---- 1.55 UV捕获: 必须在创建倒角带/碗面之前! ----
@@ -523,15 +562,28 @@ def make_eye_cup(obj, center, side):
                 new_faces.append(_nf)
             except ValueError: pass
     
-    # 碗底: 最后一环到中心点
-    pole = bm.verts.new((center.x, rim_y + max_depth, center.z))
+    # 碗底: v59(2026-09-11) 单极点放射扇 → 单个ngon平面盖.
+    # 根因(用户GUI截图): 极点扇=中心黑洞+放射布线; 且极点处三角面积0.02mm²级易触发下游误判.
+    # 末环已收缩到25%(半径≈3mm), 直接用ngon封顶: 高模线框=一个多边形, 无放射线.
+    # 眼球放置后完全遮挡; QR/FBX内部会自行三角化, 不需要高模保持扇形.
     last = all_rings[-1]
-    for i in range(M):
-        try:
-            _nf = bm.faces.new((last[(i+1)%M], last[i], pole))
-            _nf[tag_l] = 2
-            new_faces.append(_nf)
-        except ValueError: pass
+    try:
+        _cap = bm.faces.new(tuple(last))
+        _cap[tag_l] = 2
+        _cap.smooth = False        # 平面盖不参与smooth shading(平面无需)
+        new_faces.append(_cap)
+        cap_face = _cap
+        print(f"  v59碗底: 单ngon盖 {len(last)}边 (替代单极点{M}三角放射扇)")
+    except ValueError as _e:
+        # 兜底: ngon创建失败(自交等)则回退极点扇 — 不应发生, 发生即报告
+        print(f"  !! v59碗底ngon失败({_e}), 回退极点扇")
+        pole = bm.verts.new((center.x, rim_y + max_depth, center.z))
+        for i in range(M):
+            try:
+                _nf = bm.faces.new((last[(i+1)%M], last[i], pole))
+                _nf[tag_l] = 2
+                new_faces.append(_nf)
+            except ValueError: pass
     
     # 实测倒角宽度自检(前F环的径向内收量)
     _span = []
@@ -549,7 +601,7 @@ def make_eye_cup(obj, center, side):
     if SOCKET_VARIANT == "chamfer_relax" and SOCKET_RELAX_PASSES > 0:
         _interior = [v for ring in all_rings[1:] for v in ring]
         _locked = set(id(v) for v in ring0)
-        _locked.add(id(pole))
+        _locked.add(id(cap_face))
         def _max_r():
             return max((v.co - center).xz.length for v in _interior) * 1000
         _r_before = _max_r()
@@ -595,25 +647,40 @@ def make_eye_cup(obj, center, side):
     # 2026-08-13 v23: 加z上限<1.678, 同make_eye_socket, 防触及眉毛区.
     # 2026-08-13 v32根因修复: 加y上限<rim_y+1mm! 碗底极点三角扇面积极小(0.0001mm2级)
     # 且满足原判据 → 被误溶 → 碗底出现开放边+非流形边(实测L眼1开放边+2非流形边).
+    # v59(2026-09-11): 触ring0的sliver【只翻法线不溶解】!
+    #   根因(实测): 溶解触rim的sliver→邻面合并成ngon→三角化重铺→材质边界改道,
+    #   R侧rim从76顶点撑到104、转角飙出117.6°死折(v58c用户所见锯齿的几何源头之一).
+    #   翻法线同样消黑刺(反向→朝前), 零拓扑改动, v59曲线吸附的成果不被破坏.
     bm.normal_update()
     bm.faces.ensure_lookup_table()
+    _rim_vids = set(id(v) for v in ring0)
     flipped_slivers = [f for f in bm.faces
                        if f.calc_area() < 0.5e-6 and f.normal.y > 0.3
                        and (f.calc_center_median()-center).xz.length < 0.015
                        and f.calc_center_median().z < 1.678
                        and f.calc_center_median().y < rim_y + 0.001
                        and all(len(e.link_faces)==2 for e in f.edges)]
-    if flipped_slivers:
-        bmesh.ops.dissolve_faces(bm, faces=flipped_slivers)
+    rim_slivers = [f for f in flipped_slivers if any(id(v) in _rim_vids for v in f.verts)]
+    _rimset = set(id(f) for f in rim_slivers)
+    inner_slivers = [f for f in flipped_slivers if id(f) not in _rimset]
+    if rim_slivers:
+        bmesh.ops.reverse_faces(bm, faces=rim_slivers)
+        bm.normal_update()
+        bmesh.update_edit_mesh(mesh)
+    if inner_slivers:
+        _dis2 = bmesh.ops.dissolve_faces(bm, faces=inner_slivers)
         bmesh.update_edit_mesh(mesh)
         # 2026-08-13 v24: 消除溶解产生的ngon
-        bm.faces.ensure_lookup_table()
-        ngons = [f for f in bm.faces if len(f.verts) > 4]
+        # v59d根因修复(同make_eye_socket): 旧代码全局扫所有ngon三角化, 但只按【本侧】tag层排除碗底盖 →
+        #   cup R 的pass里 L 的ngon盖带的是 v44tag_L==2 / v44tag_R==0, 不被排除 → L碗底盖被打碎成三角
+        #   (实测L碗面232三角, 其中72个在碗底深度). 修: 只三角化本次dissolve产物(region), 天然不碰别侧/碗底.
+        _region2 = [f for f in _dis2.get("region", []) if f.is_valid]
+        ngons = [f for f in _region2 if len(f.verts) > 4]
         if ngons:
             bmesh.ops.triangulate(bm, faces=ngons)
             bmesh.update_edit_mesh(mesh)
-            print(f"  triangulated {len(ngons)} ngons after flipped_sliver dissolve")
-    print(f"make_eye_cup {side}: dissolved {len(flipped_slivers)} flipped rim slivers")
+            print(f"  triangulated {len(ngons)} ngons after flipped_sliver dissolve (region-local)")
+    print(f"make_eye_cup {side}: rim slivers翻法线={len(rim_slivers)} 内部slivers溶解={len(inner_slivers)}")
     
     # ---- 3. 拐角过渡由挤出缓冲环完成(v30), 废弃subdivide/bevel ----
 
