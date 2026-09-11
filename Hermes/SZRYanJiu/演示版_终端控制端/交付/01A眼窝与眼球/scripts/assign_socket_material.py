@@ -59,6 +59,44 @@ me.polygons.foreach_set("material_index", mi)
 me.update()
 print(f"赋材质: 皮肤(idx0)={int((mi==0).sum()):,}  眼窝(idx{si})={int((mi==si).sum()):,}")
 
+# ---- v58 重复面补红(2026-09-11, 判据定案): ----
+# 根因(_diag_rlow实测): 用户所见灰楔 = 原始扫描的重叠重复面, 与碗面共面/近共面但无tag.
+#   R下睑中央灰面距原始tag碗面0.03-0.48mm(face1209172等25+个), 正面看盖住红碗面 → 灰楔.
+# ❌v56距离+前方判定: 共面时(C-near_w)≈零向量, 前方符号=数值噪声, 随机漏一半(补163仍见118).
+# ❌v57射线可见性: 共面的红/灰面射线随机命中其一, 命中红→跳过, 同位置灰面照样可见.
+# ❌迭代(BVH对已补红面重建): 网格密(边长~0.4mm)沿表面形成0.5mm链, 6轮650个仍增长=爬藤外扩.
+# ❌阈值放宽(1.0/1.5mm单pass): 前方灰面距离连续分布0.002→29mm无断层, 放宽必把真眼睑皮肤染红
+#   (vision实测1.5mm版"红区偏大/红尖角伸入灰区").
+# ✅v58: 单pass, 距离只对【原始tag碗面】量, 阈值0.5mm — 只抓共面重复堆栈(R下睑灰楔全≤0.48mm),
+#   真皮肤距碗面>1mm(前方灰面p50=9.3mm)不误收; 不测前后方向(共面时数值不稳, 且堆栈在碗后也无害);
+#   采样面心+全顶点, 任一点距原始碗面<0.5mm即补红. 确定/有界/一遍收敛/零拓扑改动.
+from mathutils.bvhtree import BVHTree as _BVHTree
+_mw = np.array(obj.matrix_world); _inv_mw = np.linalg.inv(_mw)
+_co = np.empty(len(me.vertices)*3); me.vertices.foreach_get("co", _co)
+_VL = _co.reshape(-1,3)
+_VW = _VL@_mw[:3,:3].T + _mw[:3,3]
+_bmask = (mi == si)          # 此刻mi只有tag碗面 = 原始碗面真值
+_bowl_polys = [list(me.polygons[fi].vertices) for fi in np.where(_bmask)[0]]
+_svc_b = _BVHTree.FromPolygons([tuple(v) for v in _VL], _bowl_polys)   # 只建一次, 永不重建
+_C = np.array([_VW[list(me.polygons[i].vertices)].mean(axis=0) for i in range(n)])
+_bb_lo = _C[_bmask].min(axis=0)-0.010; _bb_hi = _C[_bmask].max(axis=0)+0.010
+_in_bb = ((_C[:,0]>=_bb_lo[0])&(_C[:,0]<=_bb_hi[0])&(_C[:,1]>=_bb_lo[1])&(_C[:,1]<=_bb_hi[1])
+          &(_C[:,2]>=_bb_lo[2])&(_C[:,2]<=_bb_hi[2]))
+_cand = np.where(_in_bb & ~_bmask)[0]
+_fix = []
+for _fi in _cand:
+    _vs = list(me.polygons[_fi].vertices)
+    _pts = [_C[_fi]] + [_VW[_v] for _v in _vs]
+    for _p in _pts:
+        _pl = _p@_inv_mw[:3,:3].T + _inv_mw[:3,3]
+        _h = _svc_b.find_nearest(_pl)
+        if _h[0] is not None and abs(_h[3]) < 0.0005:
+            _fix.append(int(_fi)); break
+if _fix:
+    mi[np.array(_fix)] = si
+    me.polygons.foreach_set("material_index", mi); me.update()
+print(f"v58重复面补红: 候选{len(_cand)} 补红={len(_fix)} (距原始tag碗面<0.5mm共面重复堆栈, 单pass有界)")
+
 # ---- 材质边界统计: 碗/皮肤公共边应正好=rim环(碗面从rim长出, 边界必然贴rim) ----
 import bmesh
 bm = bmesh.new(); bm.from_mesh(me); bm.edges.ensure_lookup_table()
