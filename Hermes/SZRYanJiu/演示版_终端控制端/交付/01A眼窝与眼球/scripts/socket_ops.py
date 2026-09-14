@@ -519,19 +519,47 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
     mesh = obj.data
     CP = np.array([[float(p[0]), float(p[1])] for p in poly], dtype=np.float64)   # 手描/光滑轮廓 XZ(mm? 否: 米)
     NP = len(CP)
-    # 轮廓每点沿 Y 打到原表面的深度
+    # 轮廓每点沿 Y 打到原表面的深度(洞口处射线会穿透打到后脑 → 必须做合理性检查)
     y_ray = cy - 0.080
     CY = []
+    _ok = []
     for (px, pz) in poly:
         ok, loc, nor, idx = obj.ray_cast(Vector((float(px), y_ray, float(pz))), Vector((0.0, 1.0, 0.0)))
-        CY.append(loc.y if ok else cy)
+        good = ok and abs(loc.y - cy) < 0.030
+        CY.append(loc.y if good else np.nan)
+        _ok.append(good)
     CY = np.array(CY, dtype=np.float64)
+    _nbad = int(np.isnan(CY).sum())
+    if _nbad:
+        _idx = np.arange(len(CY))
+        _val = ~np.isnan(CY)
+        CY = np.interp(_idx, _idx[_val], CY[_val], period=len(CY))   # 无效点用邻居插值(闭环)
+    print(f"rebuild_rim_band {side}: 轮廓深度采样 无效 {_nbad}/{len(CY)}(穿透打到后脑等) → 已用邻居插值")
 
     # ---- ① 删轮廓 W mm 内的皮肤面 ----
     bm = bmesh.new()
     bm.from_mesh(mesh)
     bm.faces.ensure_lookup_table()
     W = W_mm / 1000.0
+    # ---- ⓪ 先把带区域里的大面细分(粗面区会让带边界离轮廓很远 → 缝回来的面被拉长, 用户看到"拉伸出去")
+    for _sub in range(4):
+        bm.edges.ensure_lookup_table()
+        _se = []
+        for f in bm.faces:
+            c = f.calc_center_median()
+            if c.y > cy + 0.010 or (c - cv).xz.length > 0.030:
+                continue
+            if np.sqrt((CP[:, 0] - c.x) ** 2 + (CP[:, 1] - c.z) ** 2).min() > 3.5 * W:
+                continue
+            for e in f.edges:
+                if (e.verts[0].co - e.verts[1].co).length > RIM_BAND_FINE_MM / 1000.0:
+                    _se.append(e)
+        if not _se:
+            break
+        bmesh.ops.subdivide_edges(bm, edges=list(set(_se)), cuts=1, use_grid_fill=False)
+        bm.verts.ensure_lookup_table()
+        bm.edges.ensure_lookup_table()
+
     victims = []
     _CPs = CP  # 轮廓折线(米), 闭合
     _NCP = len(_CPs)
