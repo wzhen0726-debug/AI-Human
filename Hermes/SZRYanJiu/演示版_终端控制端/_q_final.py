@@ -4,6 +4,7 @@ D=r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端"
 _d=json.load(open(os.path.join(D,"交付","01A眼窝与眼球","screenshots","3ddfa","iris_3ddfa.json"),encoding="utf-8"))
 bpy.ops.wm.open_mainfile(filepath=os.path.join(D,"01a眼窝眼球","输出","01_1_eye_socket.blend"))
 c=_d["L"]["center_3d"]; cv=Vector((float(c[0]),float(c[1]),float(c[2])))
+_cR=_d["R"]["center_3d"]; cvR=Vector((float(_cR[0]),float(_cR[1]),float(_cR[2])))
 head=max([x for x in bpy.data.objects if x.type=='MESH'],key=lambda x:len(x.data.vertices))
 me=head.data
 if bpy.context.mode!='OBJECT':
@@ -48,4 +49,7 @@ except Exception: pass
 shoot("fin_sh_front.png",0.0,0.0)
 shoot("fin_sh_low.png",-0.32,-0.25)
 shoot("fin_sh_zoom.png",-0.25,-0.30,0.020)
+shoot("fin_fo_R.png",0.0,0.0,0.045,cvR)
+shoot("fin_fo_R_low.png",-0.30,0.30,0.045,cvR)
+shoot("fin_sh_R.png",0.0,0.0,0.045,cvR)
 print("渲染完成")
