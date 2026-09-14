@@ -95,6 +95,19 @@ RIM_WELD_MM = 0.06             # 环上退化小边焊接阈值(网格边长0.3m
 RIM_SPIKE_RELAX_THRESH_DEG = 25  # 环上转角超过此值判为退化尖点, 做环内局部松弛
 RIM_SPIKE_RELAX_PASSES = 12
 RIM_SPIKE_RELAX_LAMBDA = 0.45
+# v64b: 环上尖点处的【局部表面】去噪(实测 L 环 7 个 >30° 顶点全集中在"下睑靠外眼角"一处,
+#   该处表面 2mm 内深度起伏 1.5mm → 环贴上去只能跟着折). 只动那一小片, 带位移上限。
+RIM_SPIKE_SURF = True
+# v64c: rim 环【深度 y 剖面】低通(XZ不动) — 治 L 侧"下睑靠外眼角"那处 1.2mm 表面台阶造成的 30~38° 折角
+RIM_DEPTH_SMOOTH = False   # 实测否决: y二阶差分降到0.007mm但3D转角反而恶化(L 5→25个>30°, R 0→26个, 顶点XZ间距不均→索引域低通在弧长上成阶梯)
+RIM_DEPTH_PASSES = 8
+RIM_DEPTH_LAMBDA = 0.40
+RIM_DEPTH_CAP_MM = 0.35
+
+RIM_SPIKE_SURF_R_MM = 3.0      # 以坏点为中心的平滑半径
+RIM_SPIKE_SURF_PASSES = 16
+RIM_SPIKE_SURF_LAMBDA = 0.12
+RIM_SPIKE_SURF_CAP_MM = 0.40   # 允许的表面最大位移(超过即停)
 
 # ---- v64: rim 带局部去噪(实测: 对"折角"无效, 只微降表面噪声; 且表面位移可达1.6mm → 默认关闭) ----
 RIM_DENOISE = False

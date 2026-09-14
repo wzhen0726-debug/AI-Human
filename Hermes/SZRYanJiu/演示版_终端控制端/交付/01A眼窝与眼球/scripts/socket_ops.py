@@ -275,6 +275,88 @@ def denoise_rim_band(obj, center, side, poly):
           f"{RIM_DENOISE_PASSES}passes, λ={lam}), 表面最大位移 {_maxd:.3f}mm")
 
 
+def relax_surface_at_spikes(obj, center, side):
+    """v64b: 环上大转角处的【局部表面】加权去噪(带位移上限).
+
+    根因(实测 _diag_L_ring.py): L 环 7 个 >30° 顶点全部集中在"下睑靠外眼角"一处
+    (相对眼中心 dx≈-6~-7.5mm, dz≈-6.4mm), 该处表面 2mm 内深度起伏 1.5mm;
+    环到手描轮廓只差 0.02~0.05mm → 不是切偏, 是那片表面自己起伏, 环贴上去就只能跟着折。
+    做法: 先找环上转角 > 阈值的顶点 → 取其周围 R 内的表面顶点 → 加权 Laplacian 平滑(权重按距离衰减),
+    位移超过 CAP 就停止 → 只动那一小片, 其余顶点一律不动。
+    """
+    if not RIM_SPIKE_SURF:
+        return
+    cv = Vector((float(center[0]), float(center[1]), float(center[2])))
+    mesh = obj.data
+    bpy.context.view_layer.objects.active = obj
+    if obj.mode != 'EDIT':
+        bpy.ops.object.mode_set(mode='EDIT')
+    bm = bmesh.from_edit_mesh(mesh)
+    bm.verts.ensure_lookup_table()
+    nadj = {}
+    for v in bm.verts:
+        if (v.co - cv).xz.length > 0.030 or v.co.y > cv.y + 0.010:
+            continue
+        nb = [e.other_vert(v) for e in v.link_edges if len(e.link_faces) == 1]
+        if len(nb) == 2:
+            nadj[v.index] = [n.index for n in nb]
+    if not nadj:
+        bpy.ops.object.mode_set(mode='OBJECT')
+        print(f"relax_surface_at_spikes {side}: 未找到环")
+        return
+    bad = []
+    for vi, nb in nadj.items():
+        a = bm.verts[nb[0]].co - bm.verts[vi].co
+        b = bm.verts[nb[1]].co - bm.verts[vi].co
+        if a.length < 1e-9 or b.length < 1e-9:
+            continue
+        ang = math.degrees(math.acos(max(-1.0, min(1.0, -(a.dot(b)) / (a.length * b.length)))))
+        if ang > RIM_SPIKE_RELAX_THRESH_DEG:
+            bad.append(vi)
+    if not bad:
+        bpy.ops.object.mode_set(mode='OBJECT')
+        print(f"relax_surface_at_spikes {side}: 无 >{RIM_SPIKE_RELAX_THRESH_DEG}° 尖点, 跳过")
+        return
+    R = RIM_SPIKE_SURF_R_MM / 1000.0
+    targets = [bm.verts[i].co.copy() for i in bad]
+    w = {}
+    for v in bm.verts:
+        dmin = min((v.co - t).length for t in targets)
+        if dmin < R:
+            w[v.index] = (1.0 - dmin / R) ** 2
+    if not w:
+        bpy.ops.object.mode_set(mode='OBJECT')
+        return
+    before = {vi: bm.verts[vi].co.copy() for vi in w}
+    nbr = {vi: [e.other_vert(bm.verts[vi]).index for e in bm.verts[vi].link_edges] for vi in w}
+    cap = RIM_SPIKE_SURF_CAP_MM / 1000.0
+    lam = RIM_SPIKE_SURF_LAMBDA
+    passes_done = 0
+    for _ in range(RIM_SPIKE_SURF_PASSES):
+        upd = {}
+        for vi, ww in w.items():
+            nb = nbr[vi]
+            if not nb:
+                continue
+            acc = Vector((0.0, 0.0, 0.0))
+            for ni in nb:
+                acc += bm.verts[ni].co
+            acc /= len(nb)
+            upd[vi] = bm.verts[vi].co.lerp(acc, lam * ww)
+        for vi, co in upd.items():
+            bm.verts[vi].co = co
+        _mv = max((bm.verts[vi].co - before[vi]).length for vi in w)
+        passes_done += 1
+        if _mv > cap:                     # 位移到上限即停
+            passes_done -= 1
+            break
+    _mv = max((bm.verts[vi].co - before[vi]).length for vi in w) * 1000.0
+    bmesh.update_edit_mesh(mesh)
+    bpy.ops.object.mode_set(mode='OBJECT')
+    print(f"relax_surface_at_spikes {side}: 坏点 {len(bad)} 个 → 局部平滑表面顶点 {len(w)} 个 "
+          f"(R={RIM_SPIKE_SURF_R_MM}mm, {passes_done}passes), 最大位移 {_mv:.3f}mm (上限 {RIM_SPIKE_SURF_CAP_MM}mm)")
+
+
 def relax_ring_spikes(obj, center, side):
     """v64: rim 环去刺 —— 焊接退化小边后仍有少数大转角顶点(实测 L 侧 135°/180° 尖点,
     来自 boolean 在轮廓折角处产生的近重合顶点/折回边)。只动这些顶点:
@@ -330,6 +412,58 @@ def relax_ring_spikes(obj, center, side):
               f"(阈值 {RIM_SPIKE_RELAX_THRESH_DEG}°, {RIM_SPIKE_RELAX_PASSES}passes)")
     else:
         print(f"relax_ring_spikes {side}: 无 >{RIM_SPIKE_RELAX_THRESH_DEG}° 尖点")
+
+
+def smooth_ring_depth(obj, center, side):
+    """v64c: 只平滑 rim 环的【深度 y 剖面】, XZ 严格不动(=手描轮廓形状不变).
+
+    根因(实测 _render_spotL.py + _diag_L_ring.py): L 环 5 个 30~38° 折角全在"下睑靠外眼角"
+    一处, 该处表面有 1.2mm 台阶 → 环跨过去时 y 剖面出现台阶 → 3D 转角大; 而 XZ 到轮廓只有
+    0.02~0.045mm(切得很准)。表面平滑(0.41mm上限)压不下去, 因为那就是眼睑真实的褶。
+    做法: 把环按顺序排好, 只对 y 做沿环的 Laplacian 低通(带位移上限), x/z 一个字节都不动 →
+    洞形不变, 环的 3D 走向变光滑。y 只动零点几毫米, 视觉不可见。
+    """
+    if not RIM_DEPTH_SMOOTH:
+        return
+    cv = Vector((float(center[0]), float(center[1]), float(center[2])))
+    mesh = obj.data
+    bpy.context.view_layer.objects.active = obj
+    if obj.mode != 'EDIT':
+        bpy.ops.object.mode_set(mode='EDIT')
+    bm = bmesh.from_edit_mesh(mesh)
+    bm.verts.ensure_lookup_table()
+    nadj = {}
+    for v in bm.verts:
+        if (v.co - cv).xz.length > 0.030 or v.co.y > cv.y + 0.010:
+            continue
+        nb = [e.other_vert(v).index for e in v.link_edges if len(e.link_faces) == 1]
+        if len(nb) == 2:
+            nadj[v.index] = nb
+    if not nadj:
+        bpy.ops.object.mode_set(mode='OBJECT')
+        print(f"smooth_ring_depth {side}: 未找到环")
+        return
+    y0 = {vi: bm.verts[vi].co.y for vi in nadj}
+    y = dict(y0)
+    cap = RIM_DEPTH_CAP_MM / 1000.0
+    lam = RIM_DEPTH_LAMBDA
+    done = 0
+    for _ in range(RIM_DEPTH_PASSES):
+        yn = {}
+        for vi, nb in nadj.items():
+            yn[vi] = (1 - lam) * y[vi] + lam * 0.5 * (y[nb[0]] + y[nb[1]])
+        y = yn
+        done += 1
+        if max(abs(y[vi] - y0[vi]) for vi in y) > cap:
+            done -= 1
+            break
+    for vi in y:
+        c = bm.verts[vi].co
+        bm.verts[vi].co = Vector((c.x, y[vi], c.z))
+    _mv = max(abs(y[vi] - y0[vi]) for vi in y) * 1000.0
+    bmesh.update_edit_mesh(mesh)
+    bpy.ops.object.mode_set(mode='OBJECT')
+    print(f"smooth_ring_depth {side}: 环 {len(y)} 顶点, y 低通 {done}passes, 最大 |Δy| {_mv:.3f}mm (上限 {RIM_DEPTH_CAP_MM}mm), XZ未动")
 
 
 def make_eye_socket(obj, center, side):
@@ -409,8 +543,10 @@ def make_eye_socket(obj, center, side):
             _mnames = [m.name if m else None for m in mesh.materials]
             if "SOCKET_CUT_TMP" in _mnames:
                 mesh.materials.pop(index=_mnames.index("SOCKET_CUT_TMP"))
-            # 环去刺(焊接后仍剩的退化尖点: 实测 L 侧 135°/180°)
+            # 环去刺: ① 先对尖点处【表面】做局部去噪(根因: 表面在那儿有褶/噪点) ② 再对环上残余尖点做环内松弛
+            relax_surface_at_spikes(obj, center, side)
             relax_ring_spikes(obj, center, side)
+            smooth_ring_depth(obj, center, side)
             bpy.ops.object.mode_set(mode='EDIT')
             bm = bmesh.from_edit_mesh(mesh)
             bm.edges.ensure_lookup_table()
