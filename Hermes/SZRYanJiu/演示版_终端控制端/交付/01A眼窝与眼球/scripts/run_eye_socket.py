@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from eye_socket_config import *
 from iris_detect import detect_iris_centers
-from socket_ops import make_eye_socket, make_eye_cup
+from socket_ops import make_eye_socket, make_eye_cup, finish_socket_boolean
 
 def load_3ddfa_centers():
     """从3DDFA反投影结果读眼中心 (语义定位, 比暗像素准).
@@ -105,12 +105,16 @@ def main():
         print("Using dark-pixel detection (fallback)")
         cL, cR = detect_iris_centers()
     
+    # v63: boolean切割模式 → make_eye_socket 已切出 pit(开口=手描轮廓精确), 收尾走 finish_socket_boolean;
+    #       洪泛模式仍用 make_eye_cup 建碗.
+    _finish = finish_socket_boolean if SOCKET_CUT_MODE == "boolean" else make_eye_cup
+    print(f"开孔模式: {SOCKET_CUT_MODE} (收尾={_finish.__name__})")
     # 左眼
     make_eye_socket(obj, cL, "L")
-    make_eye_cup(obj, cL, "L")
+    _finish(obj, cL, "L")
     # 右眼
     make_eye_socket(obj, cR, "R")
-    make_eye_cup(obj, cR, "R")
+    _finish(obj, cR, "R")
     
     # v31: 删custom_normal属性 + 眼窝区局部recalc(皮肤参考). 绝不全局recalc/质心翻转.
     unify_normals_global(obj, cL, cR)

@@ -7,6 +7,7 @@
 """
 import bpy
 import bmesh
+import math
 import numpy as np
 from mathutils import Vector
 from eye_socket_config import *
@@ -112,9 +113,85 @@ def point_in_polygon(x, z, poly):
         j = i
     return inside
 
+def point_poly_dist(x, z, poly):
+    """点到多边形折线(XZ, 米)的最近距离."""
+    import math as _m
+    best = 1e9
+    n = len(poly)
+    for i in range(n):
+        ax, az = poly[i]
+        bx, bz = poly[(i + 1) % n]
+        vx, vz = bx - ax, bz - az
+        L2 = vx * vx + vz * vz + 1e-18
+        t = ((x - ax) * vx + (z - az) * vz) / L2
+        t = 0.0 if t < 0.0 else (1.0 if t > 1.0 else t)
+        dx, dz = ax + t * vx - x, az + t * vz - z
+        d = _m.sqrt(dx * dx + dz * dz)
+        if d < best:
+            best = d
+    return best
+
+
+def cut_hole_by_prism(obj, poly, center, side):
+    """v62: 用"手描轮廓沿Y贯穿的封闭棱柱"对头部做 boolean EXACT DIFFERENCE, 切出眼洞.
+    棱柱侧壁 = 过轮廓段的竖直平面 → 切出的洞边界 XZ 投影必然落在轮廓折线上
+    (spike实测: 偏差中位0.0000mm/最大0.047mm, 边界222顶点; 旧洪泛方案中位0.09~0.15/最大0.90~1.00mm).
+    棱柱必须前后都穿出眼区(前端在脸外, 后端在颅内) → 结果=带竖直洞壁+平底的封闭体; 调用方再删洞壁面留出洞口.
+    """
+    scn = bpy.context.scene
+    if bpy.context.view_layer.objects.active is None or bpy.context.mode != 'OBJECT':
+        bpy.ops.object.mode_set(mode='OBJECT')
+    y_f = center.y - PRISM_FRONT_MM / 1000.0
+    y_b = center.y + PRISM_BACK_MM / 1000.0
+    pts = [(float(p[0]), float(p[1])) for p in poly]
+    n = len(pts)
+    verts = [(x, y_f, z) for (x, z) in pts] + [(x, y_b, z) for (x, z) in pts]
+    faces = []
+    for i in range(n):
+        j = (i + 1) % n
+        faces.append((i, j, n + j, n + i))          # 侧壁
+    faces.append(tuple(range(n - 1, -1, -1)))       # 前盖(法线朝前)
+    faces.append(tuple(range(n, 2 * n)))            # 后盖
+    pm = bpy.data.meshes.new("socket_prism")
+    pm.from_pydata(verts, [], faces)
+    pm.validate()
+    # v63b根因修复: 手描轮廓点序在左右眼可能反向(R侧由L镜像而来) → 棱柱面法线朝向不一致,
+    #   boolean 会切出"3面共边"的坏拓扑(实测R侧207条非流形边, L侧0). 不依赖点序: 直接重算外向法线.
+    _pbm = bmesh.new()
+    _pbm.from_mesh(pm)
+    bmesh.ops.recalc_face_normals(_pbm, faces=_pbm.faces[:])
+    _pbm.to_mesh(pm)
+    _pbm.free()
+    # v63: 用【独立材质】标记 boolean 新面(棱柱的所有面→该材质). boolean EXACT 会把棱柱面的材质
+    #   传给新生成的面(wall+盖) → 之后按 material_index 精确删除, 不靠几何容差(容差判据实测漏47面).
+    tmp_mat = bpy.data.materials.get("SOCKET_CUT_TMP") or bpy.data.materials.new("SOCKET_CUT_TMP")
+    pm.materials.append(tmp_mat)
+    for p in pm.polygons:
+        p.material_index = 0
+    _head_mats = [m.name if m else None for m in obj.data.materials]
+    if tmp_mat.name not in _head_mats:
+        obj.data.materials.append(tmp_mat)
+    cut_slot = [m.name if m else None for m in obj.data.materials].index(tmp_mat.name)
+    prism = bpy.data.objects.new("socket_prism", pm)
+    scn.collection.objects.link(prism)
+    mod = obj.modifiers.new("socket_cut", 'BOOLEAN')
+    mod.operation = 'DIFFERENCE'
+    mod.solver = 'EXACT'
+    mod.object = prism
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.modifier_apply(modifier=mod.name)
+    bpy.data.objects.remove(prism, do_unlink=True)
+    bpy.data.meshes.remove(pm, do_unlink=True)
+    print(f"cut_hole_by_prism {side}: EXACT DIFFERENCE 完成 ({n}边形棱柱, y[{y_f*1000:.0f},{y_b*1000:.0f}]mm, 新面材质槽={cut_slot})")
+    return cut_slot
+
+
 def make_eye_socket(obj, center, side):
-    """开孔: 删面心在眼睑轮廓(杏仁多边形)内的所有面, 不分深度全删净.
-    2026-08-07重写: 旧y_cut条件让深部鼓包面残留成孤岛(45条开放边/5断环)→锯齿破面."""
+    """开孔: 沿手描眼睑轮廓切出眼洞.
+    v62(2026-09-14): 洪泛删面 → 棱柱 boolean EXACT 切割.
+      根因: 洪泛删面的洞边界只能落在网格边环上 → 到手描轮廓偏差最大~1mm(网格量化),
+            红材质边界因此有~1mm锯齿/尖角. 棱柱侧壁是过轮廓段的竖直平面, 切出的边界必然贴轮廓.。
+    旧路径(floodfill, SOCKET_CUT_MODE 切换)保留作A/B与回退."""
     mesh = obj.data
     center = Vector(center)
     
@@ -128,59 +205,103 @@ def make_eye_socket(obj, center, side):
     
     bm = bmesh.from_edit_mesh(mesh)
     bm.faces.ensure_lookup_table()
-    # 2026-08-07 v4: 洪泛填充删面(替代面心判断). 面心判断让删区不连通, 留5个孤立环(锯齿破面).
-    # 从眼中心最近面生长, 只收录面心在轮廓内的邻面 -> 删区必连通成单环.
     # y限制: cy+20mm(鼓包最深处~-0.10也要删净; 轮廓只覆盖眼区, 不会误删后脑壳)
     y_cut = cy + 0.020
-    # 面邻接表
-    f2f = {}
-    for f in bm.faces:
-        f2f[f.index] = []
-    for e in bm.edges:
-        if len(e.link_faces) == 2:
-            a, b = e.link_faces[0].index, e.link_faces[1].index
-            f2f[a].append(b); f2f[b].append(a)
-    # 找离眼中心最近的面作种子(必须用3D距离: xz最近会选到后脑勺同x/z的面y=+0.09)
-    seed = min(bm.faces, key=lambda f: (f.calc_center_median()-center).length)
     def inside_poly(fc):
         if fc.y >= y_cut: return False
         if poly is not None:
             return point_in_polygon(fc.x, fc.z, poly)
         return ((fc.x-cx)/rx)**2 + ((fc.z-cz)/rz)**2 <= 1.0
-    # BFS洪泛
-    to_delete = set([seed.index])
-    stack = [seed.index]
-    while stack:
-        fi = stack.pop()
-        for nb in f2f[fi]:
-            if nb in to_delete: continue
-            nf = bm.faces[nb]
-            if inside_poly(nf.calc_center_median()):
-                to_delete.add(nb)
-                stack.append(nb)
-    del_faces = [bm.faces[i] for i in to_delete]
-    # v43: 删面前捕获眼区面的顶点级UV样本(贴图眼睛/睫毛细节的XZ位置映射), 供make_eye_cup重建碗后恢复
-    uv_layer_src = bm.loops.layers.uv.active
-    samples = []
-    if uv_layer_src:
-        for f in del_faces:
-            for loop in f.loops:
-                co = loop.vert.co
-                uv = loop[uv_layer_src].uv
-                if 0.01 < uv.x < 0.99 and 0.01 < uv.y < 0.99:
-                    samples.append((co.x - center.x, co.z - center.z, uv.x, uv.y))
-    _EYE_UV_SAMPLES[side] = samples
-    print(f"make_eye_socket {side}: captured {len(samples)} eye-region UV samples for bowl mapping")
-    bmesh.ops.delete(bm, geom=del_faces, context='FACES')
-    bmesh.update_edit_mesh(mesh)
-    bpy.ops.object.mode_set(mode='OBJECT')
-    print(f"make_eye_socket {side}: flood-fill deleted {len(del_faces)} faces (single connected patch)")
+
+    if SOCKET_CUT_MODE == "boolean" and poly is not None:
+        # ================= v62: 棱柱 boolean 切割 =================
+        # ① 轮廓内面(切割前统计, 仅供 v43 UV样本映射)
+        in_poly = [f for f in bm.faces
+                   if (f.calc_center_median() - center).xz.length < 0.030
+                   and inside_poly(f.calc_center_median())]
+        uv_layer_src = bm.loops.layers.uv.active
+        samples = []
+        if uv_layer_src:
+            for f in in_poly:
+                for loop in f.loops:
+                    co = loop.vert.co
+                    uv = loop[uv_layer_src].uv
+                    if 0.01 < uv.x < 0.99 and 0.01 < uv.y < 0.99:
+                        samples.append((co.x - center.x, co.z - center.z, uv.x, uv.y))
+        _EYE_UV_SAMPLES[side] = samples
+        print(f"make_eye_socket {side}: captured {len(samples)} eye-region UV samples "
+              f"({len(in_poly)} 轮廓内面) for bowl mapping")
+        bpy.ops.object.mode_set(mode='OBJECT')
+        # ② boolean 切洞 (返回"新面材质槽"号)
+        _cut_slot = cut_hole_by_prism(obj, poly, center, side)
+        # ③ v63: 保留 boolean 切出的眼窝 pit(竖直壁+平底), 按材质槽【精确】识别这些新面 → 打 tag=2.
+        #    不再删壁面重建碗: 删壁面后环走不通(实测L环间距45mm/R侧M=5), 且pit的开口边界本来就精确贴轮廓.
+        bpy.ops.object.mode_set(mode='EDIT')
+        bm = bmesh.from_edit_mesh(mesh)
+        bm.faces.ensure_lookup_table()
+        _tagb = bm.faces.layers.int.get("v44tag_" + side)
+        if _tagb is None:
+            _tagb = bm.faces.layers.int.new("v44tag_" + side)
+        _pit = 0
+        for f in bm.faces:
+            if f.material_index == _cut_slot:
+                f[_tagb] = 2
+                f.smooth = True
+                _pit += 1
+        bmesh.update_edit_mesh(mesh)
+        bpy.ops.object.mode_set(mode='OBJECT')
+        # 删临时材质槽(材质稍后由 assign_socket_material 按 tag 重设)
+        _mnames = [m.name if m else None for m in mesh.materials]
+        if "SOCKET_CUT_TMP" in _mnames:
+            mesh.materials.pop(index=_mnames.index("SOCKET_CUT_TMP"))
+        print(f"make_eye_socket {side}: boolean切出眼窝pit, 标记碗面 {_pit} 面")
+        bpy.ops.object.mode_set(mode='EDIT')
+    else:
+        # ================= 旧路径: 洪泛删面(A/B与回退) =================
+        f2f = {}
+        for f in bm.faces:
+            f2f[f.index] = []
+        for e in bm.edges:
+            if len(e.link_faces) == 2:
+                a, b = e.link_faces[0].index, e.link_faces[1].index
+                f2f[a].append(b); f2f[b].append(a)
+        # 找离眼中心最近的面作种子(必须用3D距离: xz最近会选到后脑勺同x/z的面y=+0.09)
+        seed = min(bm.faces, key=lambda f: (f.calc_center_median()-center).length)
+        to_delete = set([seed.index])
+        stack = [seed.index]
+        while stack:
+            fi = stack.pop()
+            for nb in f2f[fi]:
+                if nb in to_delete: continue
+                nf = bm.faces[nb]
+                if inside_poly(nf.calc_center_median()):
+                    to_delete.add(nb)
+                    stack.append(nb)
+        del_faces = [bm.faces[i] for i in to_delete]
+        # v43: 删面前捕获眼区面的顶点级UV样本
+        uv_layer_src = bm.loops.layers.uv.active
+        samples = []
+        if uv_layer_src:
+            for f in del_faces:
+                for loop in f.loops:
+                    co = loop.vert.co
+                    uv = loop[uv_layer_src].uv
+                    if 0.01 < uv.x < 0.99 and 0.01 < uv.y < 0.99:
+                        samples.append((co.x - center.x, co.z - center.z, uv.x, uv.y))
+        _EYE_UV_SAMPLES[side] = samples
+        print(f"make_eye_socket {side}: captured {len(samples)} eye-region UV samples for bowl mapping")
+        bmesh.ops.delete(bm, geom=del_faces, context='FACES')
+        bmesh.update_edit_mesh(mesh)
+        bpy.ops.object.mode_set(mode='OBJECT')
+        print(f"make_eye_socket {side}: flood-fill deleted {len(del_faces)} faces (single connected patch)")
     print(f"make_eye_socket {side}: push-in removed (凹陷由碗负责)")
     
     # 局部焊接重复顶点(不动法线, 历史教训: 全局Shift+N会翻过洞边缘)
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
-    bpy.ops.mesh.remove_doubles(threshold=0.0001)
+    # v62: boolean模式下threshold缩小到20µm(boolean EXACT产物本就无重复顶点, 只需并真重合点);
+    #   floodfill模式的0.1mm会把切出来的密集边界顶点并掉.
+    bpy.ops.mesh.remove_doubles(threshold=(0.00002 if SOCKET_CUT_MODE == "boolean" else 0.0001))
     bpy.ops.object.mode_set(mode='OBJECT')
     print(f"make_eye_socket {side}: cleanup done (local weld only, no global recalc)")
     
@@ -190,7 +311,7 @@ def make_eye_socket(obj, center, side):
     bpy.ops.object.mode_set(mode='EDIT')
     bm = bmesh.from_edit_mesh(mesh)
     bm.faces.ensure_lookup_table()
-    slivers = [f for f in bm.faces
+    slivers = [] if SOCKET_CUT_MODE == "boolean" else [f for f in bm.faces
                if f.calc_area() < 0.5e-6
                and (f.calc_center_median()-center).xz.length < 0.015
                and f.calc_center_median().z < 1.678
@@ -419,7 +540,10 @@ def make_eye_cup(obj, center, side):
     #   基线L前视平滑全靠它(把边界环沿曲线的zigzag磨平); 周长119→88mm的"收缩"实为磨锯齿的正常代价
     #   (基线周长88mm = 平滑杏仁形的真实周长, 手描曲线周长78.8mm, 差值=环贴曲线的深度起伏).
     #   v59新增价值: ④sliver翻法线保住R侧拓扑(基线R被溶解-三角化撑到104顶点/137°转角), 松弛作用在干净环上.
-    for _ in range(12):
+    # v62: boolean切出的边界已精确贴轮廓(偏差中位0.0000mm) → 松弛会把边界推离轮廓, 必须跳过;
+    #   floodfill旧路径的边界是网格锯齿边, 仍需松弛×12磨平(v59定案).
+    _RELAX_N = 0 if SOCKET_CUT_MODE == "boolean" else 12
+    for _ in range(_RELAX_N):
         new_pos = {}
         for i, v in enumerate(ring0):
             a = ring0[(i-1)%M].co; b = ring0[(i+1)%M].co
@@ -664,7 +788,8 @@ def make_eye_cup(obj, center, side):
                        and all(len(e.link_faces)==2 for e in f.edges)]
     rim_slivers = [f for f in flipped_slivers if any(id(v) in _rim_vids for v in f.verts)]
     _rimset = set(id(f) for f in rim_slivers)
-    inner_slivers = [f for f in flipped_slivers if id(f) not in _rimset]
+    # v62: boolean模式下不溶解内部sliver — 溶解会把切出来的密集边界/碗面细面吞掉(实测R侧环被溶到M=3).
+    inner_slivers = [] if SOCKET_CUT_MODE == "boolean" else [f for f in flipped_slivers if id(f) not in _rimset]
     if rim_slivers:
         bmesh.ops.reverse_faces(bm, faces=rim_slivers)
         bm.normal_update()
@@ -896,7 +1021,112 @@ def make_eye_cup(obj, center, side):
     us = [loop[uv_layer].uv.x for f in bm.faces for loop in f.loops]
     vs = [loop[uv_layer].uv.y for f in bm.faces for loop in f.loops]
     print(f"  UV分配: {assigned} loops, 碗面贴图映射={bowl_mapped}面, avg=({avg_u:.4f},{avg_v:.4f}), u=[{min(us):.4f},{max(us):.4f}] v=[{min(vs):.4f},{max(vs):.4f}]")
-
     bpy.ops.object.mode_set(mode='OBJECT')
     print(f"make_eye_cup {side}: ring0={M} bowl_faces={len(new_faces)} depth={max_depth*1000:.1f}mm")
     return ring0
+
+
+def finish_socket_boolean(obj, center, side):
+    """v63(2026-09-14): boolean 切割模式的收尾.
+    make_eye_socket 已用棱柱 EXACT DIFFERENCE 切出眼窝 pit(竖直壁+平底), 开口边界=手描轮廓折线
+    (spike实测: 到轮廓偏差 中位0.0000mm/max0.047mm, 222顶点; 旧洪泛边界 max~0.9mm), 并已打 tag=2.
+    本函数只做收尾: 眼区 UV 重建映射(复用 v43 IDW 查找表) + 法线校正. 不找环/不松弛/不建碗.
+    """
+    mesh = obj.data
+    center = Vector(center)
+    bpy.context.view_layer.objects.active = obj
+    if obj.mode != 'EDIT':
+        bpy.ops.object.mode_set(mode='EDIT')
+    bm = bmesh.from_edit_mesh(mesh)
+    bm.verts.ensure_lookup_table()
+    bm.faces.ensure_lookup_table()
+    uv_layer = bm.loops.layers.uv.active or bm.loops.layers.uv.verify()
+    _tag_l = bm.faces.layers.int.get("v44tag_" + side)
+    if _tag_l is None:
+        print(f"finish_socket_boolean {side}: WARNING tag层丢失, 跳过")
+        bpy.ops.object.mode_set(mode='OBJECT')
+        return
+    pit = [f for f in bm.faces if f[_tag_l] == 2]
+    # ---- 皮肤UV基准(下眼睑皮肤区, 同 v42b 判据) ----
+    tex_img = None
+    for _m in obj.data.materials:
+        if _m and _m.use_nodes:
+            for _n in _m.node_tree.nodes:
+                if _n.type == 'TEX_IMAGE' and _n.image:
+                    tex_img = _n.image
+    _tex_px = tex_img.pixels[:] if tex_img else None
+    _TW, _TH = tex_img.size if tex_img else (0, 0)
+    def _uv_bright(u, v):
+        if not _tex_px:
+            return 1.0
+        _x = min(max(int(u*_TW), 0), _TW-1); _y = min(max(int(v*_TH), 0), _TH-1)
+        _i = (_y*_TW + _x)*4
+        return (_tex_px[_i] + _tex_px[_i+1] + _tex_px[_i+2]) / 3
+    skin_uvs = []
+    for v in bm.verts:
+        dx = v.co.x - center.x; dz = v.co.z - center.z
+        dxz = math.sqrt(dx*dx + dz*dz)
+        if dz < -0.008 and 0.018 < dxz < 0.030 and v.co.y < center.y:
+            for loop in v.link_loops:
+                uv = loop[uv_layer].uv
+                if 0.01 < uv.x < 0.99 and 0.01 < uv.y < 0.99 and _uv_bright(uv.x, uv.y) > 0.40:
+                    skin_uvs.append(uv.copy())
+                break
+    if skin_uvs:
+        _us = sorted([u.x for u in skin_uvs]); _vs = sorted([u.y for u in skin_uvs])
+        avg_u, avg_v = _us[len(_us)//2], _vs[len(_vs)//2]
+    else:
+        avg_u, avg_v = 0.5, 0.5
+    # ---- v43 IDW 查找表: XZ→UV(把贴图里画好的眼睛细节映射回眼窝面) ----
+    _eye_samples = _EYE_UV_SAMPLES.get(side, [])
+    _eye_grid = None
+    if len(_eye_samples) >= 16:
+        _sa = np.array(_eye_samples, dtype=np.float64)
+        _sx, _sz, _su, _sv = _sa[:, 0], _sa[:, 1], _sa[:, 2], _sa[:, 3]
+        _lim = 0.016
+        _GRID = 40
+        _xs = np.linspace(-_lim, _lim, _GRID)
+        _zs = np.linspace(-_lim, _lim, _GRID)
+        _gridU = np.zeros((_GRID, _GRID)); _gridV = np.zeros((_GRID, _GRID))
+        for _i in range(_GRID):
+            _dx = _xs[_i] - _sx; _dx2 = _dx*_dx
+            for _j in range(_GRID):
+                _dz = _zs[_j] - _sz
+                _w = 1.0/(_dx2 + _dz*_dz + 1e-10)
+                _gridU[_i, _j] = (_w*_su).sum()/_w.sum()
+                _gridV[_i, _j] = (_w*_sv).sum()/_w.sum()
+        def _lookup(dx, dz):
+            _fx = (dx + _lim)/(2*_lim)*(_GRID-1); _fz = (dz + _lim)/(2*_lim)*(_GRID-1)
+            _ix = int(max(0, min(_GRID-2, _fx))); _iz = int(max(0, min(_GRID-2, _fz)))
+            _tx = max(0.0, min(1.0, _fx-_ix)); _tz = max(0.0, min(1.0, _fz-_iz))
+            _a = _gridU[_ix, _iz]; _b = _gridU[_ix+1, _iz]; _c = _gridU[_ix, _iz+1]; _d = _gridU[_ix+1, _iz+1]
+            u = _a*(1-_tx)*(1-_tz) + _b*_tx*(1-_tz) + _c*(1-_tx)*_tz + _d*_tx*_tz
+            _a = _gridV[_ix, _iz]; _b = _gridV[_ix+1, _iz]; _c = _gridV[_ix, _iz+1]; _d = _gridV[_ix+1, _iz+1]
+            v = _a*(1-_tx)*(1-_tz) + _b*_tx*(1-_tz) + _c*(1-_tx)*_tz + _d*_tx*_tz
+            return (u, v)
+        _eye_grid = True
+    # ---- UV 分配: 只动 pit 面, 原始皮肤面 UV 一律不动 ----
+    assigned = 0
+    for f in pit:
+        for loop in f.loops:
+            vc = loop.vert.co
+            if _eye_grid is not None:
+                du, dv = _lookup(vc.x - center.x, vc.z - center.z)
+            else:
+                du, dv = (avg_u, avg_v)
+            loop[uv_layer].uv = (du, dv)
+            assigned += 1
+    bmesh.update_edit_mesh(mesh)
+    # ---- 法线: pit 面必须朝 -Y(可见侧) ----
+    _flip = 0
+    for f in pit:
+        if f.normal.y > 0.05:
+            bmesh.ops.reverse_faces(bm, faces=[f])
+            _flip += 1
+    if _flip:
+        bm.normal_update()
+    bmesh.update_edit_mesh(mesh)
+    _ny = [f.normal.y for f in pit] or [0.0]
+    print(f"finish_socket_boolean {side}: pit面 {len(pit)}(tag=2) UV重映射 {assigned} loops "
+          f"(查找表{'有' if _eye_grid else '无'}) 翻转 {_flip} normal.y[{min(_ny):.2f},{max(_ny):.2f}]")
+    bpy.ops.object.mode_set(mode='OBJECT')

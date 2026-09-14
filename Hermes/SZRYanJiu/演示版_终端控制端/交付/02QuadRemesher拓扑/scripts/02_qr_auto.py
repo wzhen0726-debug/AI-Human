@@ -156,21 +156,33 @@ for p in [retopoFbx, progressFile]:
 # 5. 启动引擎
 print(f"\n5. Starting xremesh...")
 engine_dir = os.path.dirname(ENGINE)
+# v63根因修复: 原用 stdout/stderr=PIPE 且不读 → 管道写满会让引擎在退出前卡住; 且实测引擎
+#   产出 retopo.fbx + progress=2 后【仍不退出】(持续跑, CPU还涨), 而脚本用 while proc.poll() 死等 → 永久挂起.
+#   插件自身的完成判据是 progress.txt == 2 (qr_operators.py modal: ProgressValueFloat==2 → doRemeshing_Finish),
+#   不是进程退出. 故: ①输出落盘(可查引擎警告) ②progress==2 即视为完成, 强制收掉引擎进程 ③硬超时兜底.
+outF = os.path.join(QRTemp, 'xremesh_stdout.txt')
+errF = os.path.join(QRTemp, 'xremesh_stderr.txt')
+_outf = open(outF, "w", encoding="utf-8", errors="replace")
+_errf = open(errF, "w", encoding="utf-8", errors="replace")
 proc = subprocess.Popen(
     [ENGINE, "-s", settingsFile],
     cwd=engine_dir,
-    stdout=subprocess.PIPE,
-    stderr=subprocess.PIPE
+    stdout=_outf,
+    stderr=_errf
 )
-print(f"   PID: {proc.pid}")
+print(f"   PID: {proc.pid}  (stdout→{outF})")
 
 # 6. 轮询进度
 print(f"\n6. Waiting...")
 start = time.time()
 last_pct = -1
-while proc.poll() is None:
+DONE = False
+while True:
+    if proc.poll() is not None:
+        break
     time.sleep(2)
     elapsed = time.time() - start
+    val = None
     if os.path.exists(progressFile):
         try:
             with open(progressFile, "r") as pf:
@@ -189,6 +201,24 @@ while proc.poll() is None:
                     print(f"   ERROR: {msg} (code={val})")
         except:
             pass
+    # progress==2 = 引擎完成(插件同判据); retopo.fbx 落地后引擎常驻不退 → 收掉进程继续
+    if val == 2 and os.path.exists(retopoFbx) and elapsed > 3:
+        DONE = True
+        break
+    if elapsed > 1800:
+        print("   超时30min, 强制结束引擎进程")
+        break
+if DONE and proc.poll() is None:
+    try:
+        proc.kill()
+        proc.wait(timeout=20)
+        print("   引擎已产出结果(progress=2), 已收掉常驻进程并继续")
+    except Exception as _e:
+        print(f"   引擎进程收尾异常: {_e}")
+try:
+    _outf.close(); _errf.close()
+except Exception:
+    pass
 
 rc = proc.returncode
 elapsed = time.time() - start

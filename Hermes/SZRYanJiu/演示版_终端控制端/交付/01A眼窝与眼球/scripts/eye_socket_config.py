@@ -67,6 +67,18 @@ SOCKET_VARIANT = "inward_fillet"
 SOCKET_RELAX_PASSES = 6      # 松弛迭代次数
 SOCKET_RELAX_LAMBDA = 0.5    # 松弛步长
 
+# ---- v62(2026-09-14) 开孔方式: 洪泛删面 → 棱柱 boolean EXACT 切割 ----
+# 根因(实测): 洪泛删面的洞边界只能落在网格边环上 → 到手描轮廓偏差最大 ~1mm(网格量化),
+#   红材质边界因此有 ~1mm 锯齿/尖角(用户GUI截图所见"红材质溢出到环外三角面"的残余部分).
+# boolean: 棱柱侧壁 = 过轮廓段的竖直平面 → 切出边界XZ投影必然落在轮廓折线上.
+#   spike实测(_spike_boolexact*): 偏差 中位0.0000mm 均值0.0005 最大0.047mm, 边界222顶点单一闭合环;
+#   耗时 7.9s(1.93M面); 旧方案边界84顶点、偏差中位0.09~0.15 最大0.90~1.00mm.
+# "floodfill" = 旧路径, 保留作 A/B 对比与回退.
+SOCKET_CUT_MODE = "boolean"
+PRISM_FRONT_MM = 80.0        # 棱柱前端伸出眼中心的距离(需在脸面之前)
+PRISM_BACK_MM = 45.0         # 棱柱后端伸入颅内距离(需穿过整个眼区)
+WALL_TOL_MM = 0.05           # 判定"洞壁面"的容差(所有顶点贴轮廓折线) → 切割后删掉, 留出洞口
+
 # v48 内圆角参数(平滑脸与眼窝接缝)
 SOCKET_FILLET_RINGS = 4        # 内圆角环数
 SOCKET_FILLET_INWARD = 0.0012  # 内收量(米)=1.2mm
