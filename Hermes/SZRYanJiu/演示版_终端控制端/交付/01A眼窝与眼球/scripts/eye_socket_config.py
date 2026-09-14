@@ -79,6 +79,31 @@ PRISM_FRONT_MM = 80.0        # 棱柱前端伸出眼中心的距离(需在脸面
 PRISM_BACK_MM = 45.0         # 棱柱后端伸入颅内距离(需穿过整个眼区)
 WALL_TOL_MM = 0.05           # 判定"洞壁面"的容差(所有顶点贴轮廓折线) → 切割后删掉, 留出洞口
 
+# ---- v64: 轮廓光滑化(根源修 rim 环折角) ----
+# 根因(实测 _diag_rim3d.py): 手描 72 点轮廓自身 turn mean5.2°/max65.7°(+180°退化尖点),
+#   boolean 切出的边界 XZ 投影严格=该轮廓 → 折角 1:1 复制到 rim 环, 换角度看就是"急转弯"。
+# 做法: 等弧长重采样 + 闭合DFT低通(只留前 N 次谐波) → 形状不变、折角磨掉。
+RIM_CONTOUR_SMOOTH = True
+RIM_CONTOUR_RESAMPLE = 240     # 重采样点数(棱柱边数, 越密切出的环越细)
+RIM_CONTOUR_HARMONICS = 12     # 保留谐波数(越小越光滑; 12 → 眼角曲率半径≈1mm, 折角14°, 与手描偏差0.33mm)
+
+# ---- v64: rim 环清理(焊接退化小边 + 去刺) ----
+RIM_WELD_MM = 0.06             # 环上退化小边焊接阈值(网格边长0.3mm; 过大会把窄颈焊成X自交)
+RIM_SPIKE_RELAX_THRESH_DEG = 25  # 环上转角超过此值判为退化尖点, 做环内局部松弛
+RIM_SPIKE_RELAX_PASSES = 12
+RIM_SPIKE_RELAX_LAMBDA = 0.45
+
+# ---- v64: rim 带局部去噪(实测: 对"折角"无效, 只微降表面噪声; 且表面位移可达1.6mm → 默认关闭) ----
+RIM_DENOISE = False
+RIM_DENOISE_BAND_MM = 2.5     # 带宽度(mm, 按到轮廓折线的XZ距离)
+RIM_DENOISE_PASSES = 12       # 平滑迭代次数
+RIM_DENOISE_LAMBDA = 0.5      # 每步强度
+
+# ---- v64: 切割后掏空环内(用户方案: 高模只留 rim 环+空洞, 眼窝在QR低模上补) ----
+# True  = 删掉 boolean 切出的坑壁+坑底 → 环内全空, 无需材质分区/UV重映射;
+# False = 保留坑(pit)当眼窝(v63路径).
+SOCKET_EMPTY_INTERIOR = True
+
 # v48 内圆角参数(平滑脸与眼窝接缝)
 SOCKET_FILLET_RINGS = 4        # 内圆角环数
 SOCKET_FILLET_INWARD = 0.0012  # 内收量(米)=1.2mm

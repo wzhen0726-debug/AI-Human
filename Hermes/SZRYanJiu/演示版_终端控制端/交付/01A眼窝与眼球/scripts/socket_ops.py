@@ -186,6 +186,152 @@ def cut_hole_by_prism(obj, poly, center, side):
     return cut_slot
 
 
+def smooth_contour(poly, n=None, harm=None):
+    """v64: 手描轮廓 → 光滑闭合曲线(等弧长重采样 + 闭合DFT低通).
+
+    根因(实测 _diag_rim3d.py): 手描 72 点轮廓自身 turn mean5.2°/max65.7°, 还含 180° 退化尖点;
+    boolean 切出的边界 XZ 投影严格=该轮廓 → 折角被 1:1 复制到 rim 环上, 换角度看就是"急转弯/折角".
+    做法: 按弧长等距重采样成 n 点, 再做周期性 DFT, 只保留前 harm 次谐波(闭合曲线低通),
+    整体形状不变(偏差亚毫米级), 折角被磨掉。
+    """
+    n = int(n or RIM_CONTOUR_RESAMPLE)
+    harm = int(harm if harm is not None else RIM_CONTOUR_HARMONICS)
+    P = np.asarray([[float(p[0]), float(p[1])] for p in poly], dtype=np.float64)
+    Q = np.vstack([P, P[:1]])
+    seg = np.linalg.norm(np.diff(Q, axis=0), axis=1)
+    s = np.concatenate([[0.0], np.cumsum(seg)])
+    if s[-1] <= 0:
+        return [(float(a), float(b)) for a, b in P]
+    t = np.linspace(0.0, s[-1], n, endpoint=False)
+    x = np.interp(t, s, Q[:, 0])
+    z = np.interp(t, s, Q[:, 1])
+    X = np.fft.rfft(x); Z = np.fft.rfft(z)
+    keep = min(harm, len(X) - 1)
+    X[keep + 1:] = 0.0; Z[keep + 1:] = 0.0
+    x2 = np.fft.irfft(X, n); z2 = np.fft.irfft(Z, n)
+    out = [(float(a), float(b)) for a, b in zip(x2, z2)]
+    # 与原始轮廓的最大偏差(自检)
+    _P = np.asarray(out)
+    _d = []
+    for p in P:
+        _dd = np.linalg.norm(_P - p, axis=1).min()
+        _d.append(_dd)
+    return out, float(max(_d) * 1000.0)
+
+
+def denoise_rim_band(obj, center, side, poly):
+    """v64: 只对 rim 带内侧做加权 Laplacian 去噪 —— 从源头修"换角度看 rim 环不直".
+
+    根因(实测 _diag_rim3d.py): rim 环就是网格边环, 直接继承扫描面的微噪声 ——
+    环相对平滑曲线抖动 中位0.26mm / p90 0.55mm / max 0.95~1.12mm, 3D转角 max 58~90°,
+    相邻点深度二阶差分 中位0.11mm / max 0.9~1.1mm。正视图(-Y)完全看不出来, 一旋转就是波浪/锯齿。
+    做法: 只在"到轮廓折线XZ距离 < BAND 且 眼区正面"的顶点上平滑, 权重按距离平方衰减(带边缘不动),
+    人脸整体形状不受影响(带外顶点一律不动)。
+    """
+    if not RIM_DENOISE:
+        return
+    center = Vector((float(center[0]), float(center[1]), float(center[2])))
+    band = RIM_DENOISE_BAND_MM / 1000.0
+    mesh = obj.data
+    bpy.context.view_layer.objects.active = obj
+    if obj.mode != 'EDIT':
+        bpy.ops.object.mode_set(mode='EDIT')
+    bm = bmesh.from_edit_mesh(mesh)
+    bm.verts.ensure_lookup_table()
+    w = {}
+    for v in bm.verts:
+        if v.co.y > center.y + 0.010:                       # 只碰眼区正面, 不碰颅内/后脑
+            continue
+        dx, dz = v.co.x - center.x, v.co.z - center.z
+        if dx * dx + dz * dz > 0.030 ** 2:
+            continue
+        d = point_poly_dist(v.co.x, v.co.z, poly)
+        if d < band:
+            w[v.index] = (1.0 - d / band) ** 2               # 距离衰减权重
+    if not w:
+        bpy.ops.object.mode_set(mode='OBJECT')
+        print(f"denoise_rim_band {side}: 带内无顶点, 跳过")
+        return
+    _before = {vi: bm.verts[vi].co.copy() for vi in w}
+    nbr = {vi: [e.other_vert(bm.verts[vi]).index for e in bm.verts[vi].link_edges] for vi in w}
+    lam = RIM_DENOISE_LAMBDA
+    for _ in range(RIM_DENOISE_PASSES):
+        upd = {}
+        for vi, ww in w.items():
+            nb = nbr[vi]
+            if not nb:
+                continue
+            acc = Vector((0.0, 0.0, 0.0))
+            for ni in nb:
+                acc += bm.verts[ni].co
+            acc /= len(nb)
+            upd[vi] = bm.verts[vi].co.lerp(acc, lam * ww)
+        for vi, co in upd.items():
+            bm.verts[vi].co = co
+    _maxd = max((bm.verts[vi].co - _before[vi]).length for vi in w) * 1000.0
+    bmesh.update_edit_mesh(mesh)
+    bpy.ops.object.mode_set(mode='OBJECT')
+    print(f"denoise_rim_band {side}: 带内顶点 {len(w)} (band={RIM_DENOISE_BAND_MM}mm, "
+          f"{RIM_DENOISE_PASSES}passes, λ={lam}), 表面最大位移 {_maxd:.3f}mm")
+
+
+def relax_ring_spikes(obj, center, side):
+    """v64: rim 环去刺 —— 焊接退化小边后仍有少数大转角顶点(实测 L 侧 135°/180° 尖点,
+    来自 boolean 在轮廓折角处产生的近重合顶点/折回边)。只动这些顶点:
+    沿环上相邻点做局部松弛(不用面法向, 只在环内), 其余顶点一律不动。
+    """
+    cv = Vector((float(center[0]), float(center[1]), float(center[2])))
+    mesh = obj.data
+    bpy.context.view_layer.objects.active = obj
+    if obj.mode != 'EDIT':
+        bpy.ops.object.mode_set(mode='EDIT')
+    bm = bmesh.from_edit_mesh(mesh)
+    bm.verts.ensure_lookup_table()
+    # 环邻接(只认"边界边": link_faces==1)
+    nadj = {}
+    for v in bm.verts:
+        if (v.co - cv).xz.length > 0.030 or v.co.y > cv.y + 0.010:
+            continue
+        nb = [e.other_vert(v) for e in v.link_edges if len(e.link_faces) == 1]
+        if len(nb) == 2:
+            nadj[v.index] = [n.index for n in nb]
+    if not nadj:
+        bpy.ops.object.mode_set(mode='OBJECT')
+        print(f"relax_ring_spikes {side}: 未找到环")
+        return
+    lam = RIM_SPIKE_RELAX_LAMBDA
+    moved_total = set()
+    for _ in range(RIM_SPIKE_RELAX_PASSES):
+        bad = []
+        for vi, nb in nadj.items():
+            a = bm.verts[nb[0]].co - bm.verts[vi].co
+            b = bm.verts[nb[1]].co - bm.verts[vi].co
+            if a.length < 1e-9 or b.length < 1e-9:
+                continue
+            cosang = max(-1.0, min(1.0, -(a.dot(b)) / (a.length * b.length)))   # 转角(180°-张角)
+            ang = math.degrees(math.acos(cosang))
+            if ang > RIM_SPIKE_RELAX_THRESH_DEG:
+                bad.append(vi)
+        if not bad:
+            break
+        upd = {}
+        for vi in bad:
+            nb = nadj[vi]
+            mid = (bm.verts[nb[0]].co + bm.verts[nb[1]].co) * 0.5
+            upd[vi] = bm.verts[vi].co.lerp(mid, lam)
+            moved_total.add(vi)
+        for vi, co in upd.items():
+            bm.verts[vi].co = co
+    bmesh.update_edit_mesh(mesh)
+    if obj.mode != 'OBJECT':
+        bpy.ops.object.mode_set(mode='OBJECT')
+    if moved_total:
+        print(f"relax_ring_spikes {side}: 松弛尖点顶点 {len(moved_total)} 个 "
+              f"(阈值 {RIM_SPIKE_RELAX_THRESH_DEG}°, {RIM_SPIKE_RELAX_PASSES}passes)")
+    else:
+        print(f"relax_ring_spikes {side}: 无 >{RIM_SPIKE_RELAX_THRESH_DEG}° 尖点")
+
+
 def make_eye_socket(obj, center, side):
     """开孔: 沿手描眼睑轮廓切出眼洞.
     v62(2026-09-14): 洪泛删面 → 棱柱 boolean EXACT 切割.
@@ -200,6 +346,10 @@ def make_eye_socket(obj, center, side):
     bpy.ops.mesh.select_all(action='DESELECT')
     
     poly = load_eyelid_contour(side) if USE_EYELID_CONTOUR else None
+    if poly is not None and RIM_CONTOUR_SMOOTH:
+        poly, _cdev = smooth_contour(poly)
+        print(f"make_eye_socket {side}: 轮廓光滑化({RIM_CONTOUR_RESAMPLE}点, 前{RIM_CONTOUR_HARMONICS}次谐波), "
+              f"与手描轮廓最大偏差 {_cdev:.3f}mm")
     cx, cy, cz = center.x, center.y, center.z
     rx, rz = HOLE_RX, HOLE_RZ
     
@@ -232,9 +382,47 @@ def make_eye_socket(obj, center, side):
         print(f"make_eye_socket {side}: captured {len(samples)} eye-region UV samples "
               f"({len(in_poly)} 轮廓内面) for bowl mapping")
         bpy.ops.object.mode_set(mode='OBJECT')
+        # ①b v64: 切割前先在 rim 带去噪(修"换角度看 rim 环不直": 环=网格边环, 继承面微噪声)
+        denoise_rim_band(obj, center, side, poly)
         # ② boolean 切洞 (返回"新面材质槽"号)
         _cut_slot = cut_hole_by_prism(obj, poly, center, side)
-        # ③ v63: 保留 boolean 切出的眼窝 pit(竖直壁+平底), 按材质槽【精确】识别这些新面 → 打 tag=2.
+        if SOCKET_EMPTY_INTERIOR:
+            # ③a v64(用户方案): 掏空环内 —— 删掉 boolean 切出的坑壁+坑底, 只留 rim 环与空腔.
+            #     眼窝形状留到 QR 低模上补; 无需材质分区/UV重映射.
+            bpy.ops.object.mode_set(mode='EDIT')
+            bm = bmesh.from_edit_mesh(mesh)
+            bm.faces.ensure_lookup_table()
+            _cutf = [f for f in bm.faces if f.material_index == _cut_slot]
+            if _cutf:
+                bmesh.ops.delete(bm, geom=_cutf, context='FACES')
+            bmesh.update_edit_mesh(mesh)
+            bm = bmesh.from_edit_mesh(mesh)
+            bm.verts.ensure_lookup_table()
+            _ring_v = [v for v in bm.verts
+                       if any(len(e.link_faces) == 1 for e in v.link_edges)
+                       and (v.co - center).xz.length < 0.030 and v.co.y < center.y + 0.010]
+            _n0 = len(_ring_v)
+            if _ring_v:
+                bmesh.ops.remove_doubles(bm, verts=_ring_v, dist=RIM_WELD_MM / 1000.0)   # 焊接环上退化小边
+            bmesh.update_edit_mesh(mesh)
+            bpy.ops.object.mode_set(mode='OBJECT')
+            _mnames = [m.name if m else None for m in mesh.materials]
+            if "SOCKET_CUT_TMP" in _mnames:
+                mesh.materials.pop(index=_mnames.index("SOCKET_CUT_TMP"))
+            # 环去刺(焊接后仍剩的退化尖点: 实测 L 侧 135°/180°)
+            relax_ring_spikes(obj, center, side)
+            bpy.ops.object.mode_set(mode='EDIT')
+            bm = bmesh.from_edit_mesh(mesh)
+            bm.edges.ensure_lookup_table()
+            _oe = [e for e in bm.edges if len(e.link_faces) == 1
+                   and (e.verts[0].co - center).xz.length < 0.030
+                   and e.verts[0].co.y < center.y + 0.010]
+            bpy.ops.object.mode_set(mode='OBJECT')
+            print(f"make_eye_socket {side}: boolean掏空环内完成, 删坑面 {len(_cutf)}, "
+                  f"rim环顶点 {_n0}→{len(_oe)}")
+            bpy.ops.object.mode_set(mode='EDIT')
+            return
+        # ③b v63: 保留 boolean 切出的眼窝 pit(竖直壁+平底), 按材质槽【精确】识别这些新面 → 打 tag=2.
         #    不再删壁面重建碗: 删壁面后环走不通(实测L环间距45mm/R侧M=5), 且pit的开口边界本来就精确贴轮廓.
         bpy.ops.object.mode_set(mode='EDIT')
         bm = bmesh.from_edit_mesh(mesh)

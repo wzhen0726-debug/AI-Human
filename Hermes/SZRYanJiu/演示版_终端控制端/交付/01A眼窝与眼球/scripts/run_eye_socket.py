@@ -105,16 +105,22 @@ def main():
         print("Using dark-pixel detection (fallback)")
         cL, cR = detect_iris_centers()
     
-    # v63: boolean切割模式 → make_eye_socket 已切出 pit(开口=手描轮廓精确), 收尾走 finish_socket_boolean;
-    #       洪泛模式仍用 make_eye_cup 建碗.
-    _finish = finish_socket_boolean if SOCKET_CUT_MODE == "boolean" else make_eye_cup
-    print(f"开孔模式: {SOCKET_CUT_MODE} (收尾={_finish.__name__})")
+    # v63/v64: boolean切割模式 → make_eye_socket 已切出 pit(开口=手描轮廓精确), 收尾走 finish_socket_boolean;
+    #           v64 掏空模式(SOCKET_EMPTY_INTERIOR=True)则只留 rim 环+空腔, 不做材质分区/UV重映射;
+    #           洪泛模式仍用 make_eye_cup 建碗.
+    _empty = (SOCKET_CUT_MODE == "boolean" and SOCKET_EMPTY_INTERIOR)
+    if _empty:
+        _finish = None
+        print("开孔模式: boolean 掏空环内(v64) — 只交付 rim 环+空腔, 不做材质分区/UV")
+    else:
+        _finish = finish_socket_boolean if SOCKET_CUT_MODE == "boolean" else make_eye_cup
+        print(f"开孔模式: {SOCKET_CUT_MODE} (收尾={_finish.__name__})")
     # 左眼
     make_eye_socket(obj, cL, "L")
-    _finish(obj, cL, "L")
+    if _finish: _finish(obj, cL, "L")
     # 右眼
     make_eye_socket(obj, cR, "R")
-    _finish(obj, cR, "R")
+    if _finish: _finish(obj, cR, "R")
     
     # v31: 删custom_normal属性 + 眼窝区局部recalc(皮肤参考). 绝不全局recalc/质心翻转.
     unify_normals_global(obj, cL, cR)
