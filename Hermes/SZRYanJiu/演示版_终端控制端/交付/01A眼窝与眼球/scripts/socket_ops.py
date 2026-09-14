@@ -275,6 +275,39 @@ def denoise_rim_band(obj, center, side, poly):
           f"{RIM_DENOISE_PASSES}passes, λ={lam}), 表面最大位移 {_maxd:.3f}mm")
 
 
+def apply_local_inset(poly, center, side, insets):
+    """v64d: 轮廓【局部内收】—— 绕开表面陡面/褶(那里跟前视图近乎平行, 沿Y垂切会让环的y跳)。
+
+    用户方案(2026-09-14): 环是沿Y(前视图)垂直切下去的, 高模上眼窝附近的面并不都垂直于前视图;
+    跟前视图近乎平行的那几处, 交线会跳 → 环在那折。把轮廓在那些位置本地往里收 1mm 绕开它。
+    insets: [(side, dx_mm, dz_mm, radius_mm, inset_mm)] —— dx/dz 相对该眼中心, 单位mm。
+    只动半径内、按 (1-(d/r)^2) 平滑衰减, 所以轮廓依然光滑; 手描 json 一个字节都不改。
+    """
+    if not insets:
+        return poly
+    P = np.array([[float(p[0]), float(p[1])] for p in poly], dtype=np.float64)
+    cx, cz = float(center[0]), float(center[2])
+    out = P.copy()
+    for (s, dxm, dzm, rm, im) in insets:
+        if s != side:
+            continue
+        t = np.array([cx + dxm / 1000.0, cz + dzm / 1000.0])
+        r = rm / 1000.0
+        ins = im / 1000.0
+        d = np.linalg.norm(P - t, axis=1)
+        w = np.clip(1.0 - (d / r) ** 2, 0.0, None)
+        if w.max() <= 0:
+            continue
+        v = np.stack([cx - P[:, 0], cz - P[:, 1]], axis=1)
+        n = np.linalg.norm(v, axis=1, keepdims=True)
+        v = v / np.maximum(n, 1e-12)
+        out = out + v * (ins * w)[:, None]
+        _mv = float(np.linalg.norm(out - P, axis=1).max()) * 1000.0
+        print(f"apply_local_inset {side}: 目标点({dxm:+.1f},{dzm:+.1f})mm 半径{rm}mm 内收{im}mm, "
+              f"影响 {int((w > 0).sum())} 个轮廓点, 最大位移 {_mv:.3f}mm")
+    return [(float(a), float(b)) for a, b in out]
+
+
 def relax_surface_at_spikes(obj, center, side):
     """v64b: 环上大转角处的【局部表面】加权去噪(带位移上限).
 
@@ -484,6 +517,8 @@ def make_eye_socket(obj, center, side):
         poly, _cdev = smooth_contour(poly)
         print(f"make_eye_socket {side}: 轮廓光滑化({RIM_CONTOUR_RESAMPLE}点, 前{RIM_CONTOUR_HARMONICS}次谐波), "
               f"与手描轮廓最大偏差 {_cdev:.3f}mm")
+    if poly is not None:
+        poly = apply_local_inset(poly, center, side, RIM_LOCAL_INSET)
     cx, cy, cz = center.x, center.y, center.z
     rx, rz = HOLE_RX, HOLE_RZ
     

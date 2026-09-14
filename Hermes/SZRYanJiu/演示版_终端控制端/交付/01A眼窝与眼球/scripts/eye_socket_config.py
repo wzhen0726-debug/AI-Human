@@ -99,7 +99,13 @@ RIM_SPIKE_RELAX_LAMBDA = 0.45
 #   该处表面 2mm 内深度起伏 1.5mm → 环贴上去只能跟着折). 只动那一小片, 带位移上限。
 RIM_SPIKE_SURF = True
 # v64c: rim 环【深度 y 剖面】低通(XZ不动) — 治 L 侧"下睑靠外眼角"那处 1.2mm 表面台阶造成的 30~38° 折角
-RIM_DEPTH_SMOOTH = False   # 实测否决: y二阶差分降到0.007mm但3D转角反而恶化(L 5→25个>30°, R 0→26个, 顶点XZ间距不均→索引域低通在弧长上成阶梯)
+RIM_DEPTH_SMOOTH = False
+# v64d: 轮廓【局部内收】表 —— 绕开"跟前视图近乎平行"的陡面(沿Y垂切会让环的y跳/折角)。
+# 格式: [(side, 相对眼中心的 dx_mm, dz_mm, 作用半径mm, 内收量mm)]
+RIM_LOCAL_INSET = [
+    ("L", -7.3, -6.3, 4.0, 1.5),   # L 眼下睑靠外眼角: 该处表面2mm内1.2mm台阶; 扫描定案 4mm/1.5mm → max转角37.7°→28.7°, >30°点 5→0
+]
+   # 实测否决: y二阶差分降到0.007mm但3D转角反而恶化(L 5→25个>30°, R 0→26个, 顶点XZ间距不均→索引域低通在弧长上成阶梯)
 RIM_DEPTH_PASSES = 8
 RIM_DEPTH_LAMBDA = 0.40
 RIM_DEPTH_CAP_MM = 0.35
