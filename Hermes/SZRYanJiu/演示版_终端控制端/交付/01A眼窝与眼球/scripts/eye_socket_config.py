@@ -79,7 +79,11 @@ SOCKET_RELAX_LAMBDA = 0.5    # 松弛步长
 # "floodfill" = 旧路径, 保留作 A/B 对比与回退.
 SOCKET_CUT_MODE = "boolean"
 PRISM_FRONT_MM = 80.0        # 棱柱前端伸出眼中心的距离(需在脸面之前)
-PRISM_BACK_MM = 45.0         # 棱柱后端伸入颅内距离(需穿过整个眼区)
+PRISM_BACK_MM = 45.0
+# v67: 切割方向跟随局部表面法向(用户诊断: 沿Y垂切遇到"跟前视图近似平行"的面, 交线会跳→环折)
+CUT_FOLLOW_NORMAL = False   # 实测否决: 每点扫出方向不同→相邻切割壁互相穿插→boolean出垃圾(L洞口消失/R破环)。见日志 v67
+NORMAL_MAX_DEG = 55.0        # 扫出方向与Y轴的最大夹角(防扫出体自交)
+         # 棱柱后端伸入颅内距离(需穿过整个眼区)
 WALL_TOL_MM = 0.05           # 判定"洞壁面"的容差(所有顶点贴轮廓折线) → 切割后删掉, 留出洞口
 
 # ---- v64: 轮廓光滑化(根源修 rim 环折角) ----

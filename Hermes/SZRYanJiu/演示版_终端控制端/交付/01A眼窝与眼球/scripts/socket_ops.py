@@ -139,13 +139,53 @@ def cut_hole_by_prism(obj, poly, center, side):
     棱柱必须前后都穿出眼区(前端在脸外, 后端在颅内) → 结果=带竖直洞壁+平底的封闭体; 调用方再删洞壁面留出洞口.
     """
     scn = bpy.context.scene
+    mesh = obj.data
     if bpy.context.view_layer.objects.active is None or bpy.context.mode != 'OBJECT':
         bpy.ops.object.mode_set(mode='OBJECT')
     y_f = center.y - PRISM_FRONT_MM / 1000.0
     y_b = center.y + PRISM_BACK_MM / 1000.0
     pts = [(float(p[0]), float(p[1])) for p in poly]
     n = len(pts)
-    verts = [(x, y_f, z) for (x, z) in pts] + [(x, y_b, z) for (x, z) in pts]
+    # ---- v67: 切割方向跟随局部表面法向(用户诊断: 沿Y垂切遇到"跟前视图近似平行"的面时交线会跳) ----
+    # 做法: 轮廓每点从正前方沿+Y射线打到表面 → 命中点 q(其XZ与射线起点相同) + 该处法向 n →
+    #   沿 n 前后扫出切割体。这样交线在 q 处与表面横向相交(良态), 且环必然过 q → XZ 轮廓仍=手描线。
+    #   法向与Y轴夹角限制在 NORMAL_MAX_DEG 内(防扫出体自交)。
+    fpt = [(x, y_f, z) for (x, z) in pts]
+    bpt = [(x, y_b, z) for (x, z) in pts]
+    if CUT_FOLLOW_NORMAL:
+        import mathutils
+        _vm = mesh.vertices
+        _pm = mesh.polygons
+        _bvh = mathutils.bvhtree.BVHTree.FromPolygons(
+            [tuple(v.co) for v in _vm], [tuple(pp.vertices) for pp in _pm],
+            all_triangles=False, epsilon=0.0)
+        _ydir = Vector((0.0, 1.0, 0.0))
+        _lim = math.radians(NORMAL_MAX_DEG)
+        _hit_ok = 0
+        _f, _b = [], []
+        for (x, z) in pts:
+            _o = Vector((x, y_f, z))
+            _h = _bvh.ray_cast(_o, _ydir)
+            if _h[0] is None:
+                _f.append((x, y_f, z)); _b.append((x, y_b, z))
+                continue
+            _q = Vector(_h[0]); _d = Vector(_h[1])
+            if _d.length < 1e-9:
+                _d = _ydir
+            _d = _d.normalized()
+            _ang = _d.angle(_ydir)
+            if _ang > _lim:
+                _ax = _d.cross(_ydir)
+                if _ax.length < 1e-9:
+                    _ax = Vector((1.0, 0.0, 0.0))
+                _d = mathutils.Matrix.Rotation(_ang - _lim, 3, _ax.normalized()) @ _d
+                _d = _d.normalized()
+            _hit_ok += 1
+            _f.append(tuple(_q - _d * (PRISM_FRONT_MM / 1000.0)))
+            _b.append(tuple(_q + _d * (PRISM_BACK_MM / 1000.0)))
+        fpt, bpt = _f, _b
+        print(f"cut_hole_by_prism {side}: 法向跟随切割 命中 {_hit_ok}/{n} 点, 法向限角 {NORMAL_MAX_DEG}°")
+    verts = fpt + bpt
     faces = []
     for i in range(n):
         j = (i + 1) % n
