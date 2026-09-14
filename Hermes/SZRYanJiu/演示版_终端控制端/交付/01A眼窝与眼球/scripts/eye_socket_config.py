@@ -6,9 +6,12 @@
 import os
 
 DELIVERY = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端\交付"
-IN_BLEND = os.path.join(DELIVERY, "01高模修复与黏连检测", "models", "01_highpoly_repair.blend")
-OUT_BLEND = os.path.join(DELIVERY, "01A眼窝与眼球", "models", "01_1_eye_socket.blend")
-SHOT_DIR = os.path.join(DELIVERY, "01A眼窝与眼球", "screenshots")
+# 测试阶段产物位置(用户约定 2026-09-09: 测试期产物写各stage的 输出/, 交付/ 只在定稿后整理)
+WORK = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端\01a眼窝眼球\输出"
+os.makedirs(WORK, exist_ok=True)
+IN_BLEND = os.path.join(r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端", "01高模修复", "输出", "01_highpoly_repair.blend")
+OUT_BLEND = os.path.join(WORK, "01_1_eye_socket.blend")
+SHOT_DIR = os.path.join(WORK, "screenshots")
 
 # 3DDFA反投影结果 (精确定位眼部, 替代暗像素法)
 DDFA_JSON = os.path.join(DELIVERY, "01A眼窝与眼球", "screenshots", "3ddfa", "iris_3ddfa.json")

@@ -26,7 +26,7 @@ print(f"Engine: {ENGINE}")
 print(f"Engine exists: {os.path.exists(ENGINE)}")
 
 # 1. 打开高模(01a眼窝+材质分区版; 2026-09-08 用户方案: 眼窝独立材质, QR只勾"使用材质"引导)
-blend_path = os.path.join(DELIVERY, "01A眼窝与眼球", "models", "01_1_eye_socket_qr.blend")
+blend_path = os.path.join(WORK_01A, "01_1_eye_socket_qr.blend")
 print(f"\n1. Loading: {blend_path}")
 bpy.ops.wm.open_mainfile(filepath=blend_path)
 
