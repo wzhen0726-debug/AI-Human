@@ -104,6 +104,18 @@ RIM_SPIKE_RELAX_LAMBDA = 0.45
 RIM_SPIKE_SURF = True
 # v64c: rim 环【深度 y 剖面】低通(XZ不动) — 治 L 侧"下睑靠外眼角"那处 1.2mm 表面台阶造成的 30~38° 折角
 RIM_DEPTH_SMOOTH = False
+# v68: 环重建(等弧长重采样 + 深度按弧长低通) —— 不碰表面/不碰轮廓线, 代价是环略离面
+RIM_REBUILD_RING = False
+# v70: 去 rim 环的自交折返小尖(实测 L 环 XZ 自交 6 处, 全在下睑外侧那 3mm —— 用户看到的"缺口")
+RIM_REMOVE_FOLDS = False  # 实测两次都把握不好(切边+焊接 / 删段+焊接 都会把环弄烂) → 先关
+   # 先关(它把折返暴露/放大); 折返修好后再评估
+RIM_REBUILD_PASSES = 60
+RIM_REBUILD_LAMBDA = 0.40
+RIM_REBUILD_CAP_MM = 0.60   # 环可离面的最大量(加强低通后) 
+RIM_REBUILD_MAX_MM = 0.35      # 长于此的环边对半拆分
+RIM_REBUILD_MIN_MM = 0.12      # 短于此的环边合并
+
+
 # v64d: 轮廓【局部内收】表 —— 绕开"跟前视图近乎平行"的陡面(沿Y垂切会让环的y跳/折角)。
 # 格式: [(side, 相对眼中心的 dx_mm, dz_mm, 作用半径mm, 内收量mm)]
 RIM_LOCAL_INSET = [

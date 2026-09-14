@@ -487,6 +487,232 @@ def relax_ring_spikes(obj, center, side):
         print(f"relax_ring_spikes {side}: 无 >{RIM_SPIKE_RELAX_THRESH_DEG}° 尖点")
 
 
+def remove_ring_folds(obj, center, side, max_iter=10):
+    """v70: 去掉 rim 环在 XZ 上的【自交折返小尖】.
+
+    根因(实测 _q_fold.py): L 环有 6 处 XZ 自交, 全部集中在"下睑外侧"那 3mm; R 环 0 处。
+    这是切割面切到"近乎与前视图平行"的陡面时, 边界出去又折回留下的尖 —— 用户看到的"缺口"就是它,
+    也是那 37.7~127° 3D 转角的真正来源(不是深度起伏)。
+    做法: 找自交的两条边 → 在交点处各切一刀 → 删掉两切点之间那段小环(连同其面) → 合并两切点。
+    不动表面、不动轮廓线、不动其余顶点。
+    """
+    if not RIM_REMOVE_FOLDS:
+        return
+    cv = Vector((float(center[0]), float(center[1]), float(center[2])))
+    mesh = obj.data
+    bpy.context.view_layer.objects.active = obj
+    if obj.mode != 'EDIT':
+        bpy.ops.object.mode_set(mode='EDIT')
+
+    def get_ring(bm):
+        nadj = {}
+        for v in bm.verts:
+            if (v.co - cv).xz.length > 0.030 or v.co.y > cv.y + 0.010:
+                continue
+            nb = [e.other_vert(v).index for e in v.link_edges if len(e.link_faces) == 1]
+            if len(nb) == 2:
+                nadj[v.index] = nb
+        st = [k for k in nadj if len(nadj[k]) == 2]
+        if not st:
+            return []
+        ring = [st[0]]; prev, cur = -1, st[0]
+        while cur in nadj:
+            cand = [n for n in nadj[cur] if n != prev]
+            if not cand:
+                break
+            nxt = cand[0]
+            if nxt == ring[0]:
+                break
+            ring.append(nxt); prev, cur = cur, nxt
+            if len(ring) > 100000:
+                break
+        return ring
+
+    def seg_int(p1, p2, p3, p4):
+        d1 = p2 - p1; d2 = p4 - p3
+        den = d1[0] * d2[1] - d1[1] * d2[0]
+        if abs(den) < 1e-14:
+            return None
+        t = ((p3[0] - p1[0]) * d2[1] - (p3[1] - p1[1]) * d2[0]) / den
+        u = ((p3[0] - p1[0]) * d1[1] - (p3[1] - p1[1]) * d1[0]) / den
+        if 1e-9 < t < 1 - 1e-9 and 1e-9 < u < 1 - 1e-9:
+            return (t, u)
+        return None
+
+    fixed = 0
+    for _ in range(max_iter):
+        bm = bmesh.from_edit_mesh(mesh)
+        try:
+            bm.verts.ensure_lookup_table()
+            bm.edges.ensure_lookup_table()
+        except Exception:
+            break
+        ring = get_ring(bm)
+        N = len(ring)
+        if N < 8:
+            break
+        vmap = {v.index: v for v in bm.verts}
+        if any(k not in vmap for k in ring):
+            break
+        Q = np.array([[vmap[k].co.x, vmap[k].co.z] for k in ring]) * 1000.0
+        best = None
+        for i in range(N):
+            a1, a2 = Q[i], Q[(i + 1) % N]
+            for j in range(i + 2, N):
+                if (j + 1) % N == i or j == (i + 1) % N:
+                    continue
+                b1, b2 = Q[j], Q[(j + 1) % N]
+                r = seg_int(a1, a2, b1, b2)
+                if r:
+                    loop = min(j - i, N - (j - i))
+                    if best is None or loop < best[0]:
+                        best = (loop, i, j, r)
+        if best is None:
+            break
+        loop, i, j, (t, u) = best
+        # 折返段 = 两条相交边之间较短的一段(顶点 i+1 .. j)
+        M = N
+        fwd = (j - (i + 1)) % M
+        if fwd <= M - fwd:
+            seg_idx = [(i + 1 + s) % M for s in range(0, fwd + 1)]
+            keep_a, keep_b = ring[i], ring[(j + 1) % M]
+        else:
+            seg_idx = [(j + 1 + s) % M for s in range(0, (M - fwd - 1) + 1)]
+            keep_a, keep_b = ring[j], ring[(i + 1) % M]
+        victims = [vmap[k] for k in seg_idx if k in vmap]
+        if not victims:
+            break
+        bmesh.ops.delete(bm, geom=victims, context='VERTS')
+        bmesh.update_edit_mesh(mesh)
+        bm = bmesh.from_edit_mesh(mesh)
+        bm.verts.ensure_lookup_table()
+        vmap3 = {v.index: v for v in bm.verts}
+        if keep_a in vmap3 and keep_b in vmap3:
+            bmesh.ops.weld_verts(bm, targetmap={vmap3[keep_b]: vmap3[keep_a]})
+            bmesh.update_edit_mesh(mesh)
+        fixed += 1
+    bpy.ops.object.mode_set(mode='OBJECT')
+    print(f"remove_ring_folds {side}: 修复折返 {fixed} 处")
+
+
+def rebuild_ring_arc_length(obj, center, side):
+    """v68: rim 环重建 —— ①把环顶点按【等弧长】重新分布(XZ 仍严格沿原环走向=手描线) ②深度 y 按弧长低通.
+
+    根因(实测): 环顶点间距 0.06~0.60mm 极不均 → 任何深度起伏都会被放大成忽大忽小的 3D 转角;
+    之前"按索引低通深度"失败就是因为在非等距索引上做低通 = 在弧长上打阶梯。
+    本函数: 重采样成等弧长间距(总长不变) → 深度用等距 Laplacian 低通(带 |Δy| 上限) → 环成为
+    "轮廓曲率+平滑深度斜率"的光滑曲线。XZ 不偏离、表面不动、轮廓线不动。
+    代价: 环在该处会略微离面(最大 LIFT_MAX), 即洞的边不再逐点贴在皮肤上(视觉上是零点几毫米)。
+    """
+    if not RIM_REBUILD_RING:
+        return
+    cv = Vector((float(center[0]), float(center[1]), float(center[2])))
+    mesh = obj.data
+    bpy.context.view_layer.objects.active = obj
+    if obj.mode != 'EDIT':
+        bpy.ops.object.mode_set(mode='EDIT')
+    bm = bmesh.from_edit_mesh(mesh)
+    bm.verts.ensure_lookup_table()
+    nadj = {}
+    for v in bm.verts:
+        if (v.co - cv).xz.length > 0.030 or v.co.y > cv.y + 0.010:
+            continue
+        nb = [e.other_vert(v).index for e in v.link_edges if len(e.link_faces) == 1]
+        if len(nb) == 2:
+            nadj[v.index] = nb
+    # 排序成闭环
+    st = [k for k in nadj if len(nadj[k]) == 2]
+    if not st:
+        bpy.ops.object.mode_set(mode='OBJECT')
+        print(f"rebuild_ring_arc_length {side}: 未找到环")
+        return
+    ring = [st[0]]; prev, cur = -1, st[0]
+    while cur in nadj:
+        cand = [n for n in nadj[cur] if n != prev]
+        if not cand:
+            break
+        nxt = cand[0]
+        if nxt == ring[0]:
+            break
+        ring.append(nxt); prev, cur = cur, nxt
+        if len(ring) > 100000:
+            break
+    N = len(ring)
+    if N < 8:
+        bpy.ops.object.mode_set(mode='OBJECT')
+        return
+    P = np.array([[bm.verts[i].co.x, bm.verts[i].co.y, bm.verts[i].co.z] for i in ring], dtype=np.float64)
+    # ① 间距均匀化: 只【拆分长边 + 合并退化短边】(增删顶点, 不拖动已有顶点 → 不拽坏相邻面)
+    for _ in range(3):
+        bm.edges.ensure_lookup_table()
+        bm.verts.ensure_lookup_table()
+        ring_edges = [e for v in ring for e in bm.verts[v].link_edges if len(e.link_faces) == 1]
+        seen = set(); re_ = []
+        for e in ring_edges:
+            k = tuple(sorted((e.verts[0].index, e.verts[1].index)))
+            if k not in seen:
+                seen.add(k); re_.append(e)
+        long_e = [e for e in re_ if (e.verts[0].co - e.verts[1].co).length > RIM_REBUILD_MAX_MM / 1000.0]
+        if long_e:
+            bmesh.ops.subdivide_edges(bm, edges=long_e, cuts=1, use_grid_fill=False)
+            bmesh.update_edit_mesh(mesh)
+            bm.verts.ensure_lookup_table(); bm.edges.ensure_lookup_table()
+        ring_v = [v for v in bm.verts
+                  if (v.co - cv).xz.length < 0.030 and v.co.y < cv.y + 0.010
+                  and sum(1 for e in v.link_edges if len(e.link_faces) == 1) == 2]
+        if ring_v:
+            bmesh.ops.remove_doubles(bm, verts=ring_v, dist=RIM_REBUILD_MIN_MM / 1000.0)
+            bmesh.update_edit_mesh(mesh)
+            bm.verts.ensure_lookup_table(); bm.edges.ensure_lookup_table()
+        # 重新排序
+        nadj = {}
+        for v in bm.verts:
+            if (v.co - cv).xz.length > 0.030 or v.co.y > cv.y + 0.010:
+                continue
+            nb = [e.other_vert(v).index for e in v.link_edges if len(e.link_faces) == 1]
+            if len(nb) == 2:
+                nadj[v.index] = nb
+        st = [k for k in nadj if len(nadj[k]) == 2]
+        if not st:
+            break
+        ring = [st[0]]; prev, cur = -1, st[0]
+        while cur in nadj:
+            cand = [n for n in nadj[cur] if n != prev]
+            if not cand:
+                break
+            nxt = cand[0]
+            if nxt == ring[0]:
+                break
+            ring.append(nxt); prev, cur = cur, nxt
+            if len(ring) > 100000:
+                break
+    N = len(ring)
+    if N < 8:
+        bpy.ops.object.mode_set(mode='OBJECT')
+        print(f"rebuild_ring_arc_length {side}: 环顶点不足({N})")
+        return
+    P = np.array([[bm.verts[i].co.x, bm.verts[i].co.y, bm.verts[i].co.z] for i in ring], dtype=np.float64)
+    # ② 深度 y 按弧长低通(间距已近均匀 → 索引域≈弧长域), 只改 y
+    y = P[:, 1].copy()
+    y0 = y.copy()
+    done = 0
+    for _ in range(RIM_REBUILD_PASSES):
+        y = (1 - RIM_REBUILD_LAMBDA) * y + RIM_REBUILD_LAMBDA * 0.5 * (np.roll(y, 1) + np.roll(y, -1))
+        done += 1
+        if np.abs(y - y0).max() > RIM_REBUILD_CAP_MM / 1000.0:
+            done -= 1
+            break
+    lift = float(np.abs(y - y0).max()) * 1000.0
+    for k, vi in enumerate(ring):
+        c = bm.verts[vi].co
+        bm.verts[vi].co = Vector((c.x, float(y[k]), c.z))
+    step = np.linalg.norm(np.roll(P, -1, axis=0) - P, axis=1) * 1000.0
+    bmesh.update_edit_mesh(mesh)
+    bpy.ops.object.mode_set(mode='OBJECT')
+    print(f"rebuild_ring_arc_length {side}: 环 {N} 顶点, 间距[{step.min():.3f},{step.max():.3f}]mm(中位{np.median(step):.3f}), "
+          f"深度低通 {done}passes |Δy|max {lift:.3f}mm(上限{RIM_REBUILD_CAP_MM}), XZ 一个字节没动")
+
+
 def smooth_ring_depth(obj, center, side):
     """v64c: 只平滑 rim 环的【深度 y 剖面】, XZ 严格不动(=手描轮廓形状不变).
 
@@ -619,8 +845,10 @@ def make_eye_socket(obj, center, side):
             if "SOCKET_CUT_TMP" in _mnames:
                 mesh.materials.pop(index=_mnames.index("SOCKET_CUT_TMP"))
             # 环去刺: ① 先对尖点处【表面】做局部去噪(根因: 表面在那儿有褶/噪点) ② 再对环上残余尖点做环内松弛
+            remove_ring_folds(obj, center, side)
             relax_surface_at_spikes(obj, center, side)
             relax_ring_spikes(obj, center, side)
+            rebuild_ring_arc_length(obj, center, side)
             smooth_ring_depth(obj, center, side)
             bpy.ops.object.mode_set(mode='EDIT')
             bm = bmesh.from_edit_mesh(mesh)
