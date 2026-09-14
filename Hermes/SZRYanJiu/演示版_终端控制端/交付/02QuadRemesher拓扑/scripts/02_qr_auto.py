@@ -329,8 +329,12 @@ if _qsi:
     for _fi in _gray_zone:
         _vs=list(_qme.polygons[_fi].vertices)
         _P=_QV[_vs]
-        _samp=[_P.mean(axis=0)]+[tuple(p) for p in _P]
+        _samp=[_P.mean(axis=0)]
         for _i in range(len(_P)): _samp.append(tuple((_P[_i]+_P[(_i+1)%len(_P)])/2))
+        # v63: 判据从"任一采样点踩碗"(顶点/边中点也算)收紧为"面心踩碗".
+        #   根因(实测): boolean切割后洞壁顶边=手描轮廓本身, rim处每个跨界QR面都有顶点落在壁面上 →
+        #   旧判据把整面染红; QR大面(等效边长5.9mm)被整面染红后, 红色戳到轮廓外8.12mm(用户报"溢出").
+        #   面心判据: 面心在内→红(腔内无灰楔), 面心在外→灰(rim处至多一层薄灰线, 不会有大块红溢出).
         if any(_on_bowl_w(_np.array(s)) for s in _samp): _wedge.append(int(_fi))
     _wedge_arr=_np.fromiter(_wedge,dtype=_np.int64,count=len(_wedge))
     if len(_wedge_arr): _qmi_new[_wedge_arr]=_qsi
