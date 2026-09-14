@@ -285,7 +285,9 @@ def make_eye_cup(obj, center, side):
     from collections import defaultdict
     mesh = obj.data
     center = Vector(center)
-    max_depth = CUP_DEPTH
+    # v60(2026-09-14): 碗深按眼球几何反推(球心+球半径+间隙, 见 eye_socket_config 推导),
+    # 替代固定 CUP_DEPTH=15mm —— 旧15mm碗底仍在脸面基准之前, 眼球后极还戳穿碗底10.7mm.
+    max_depth = SOCKET_CUP_DEPTH
     
     bpy.context.view_layer.objects.active = obj
     bpy.ops.object.mode_set(mode='EDIT')
