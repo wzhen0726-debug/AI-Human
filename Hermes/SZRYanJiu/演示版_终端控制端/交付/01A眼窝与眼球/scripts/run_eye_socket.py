@@ -128,6 +128,13 @@ def main():
     # v39: UV分配已在make_eye_cup内完成(防止被update_edit_mesh覆盖), 这里不再重复分配.
 
     # 保存
+    # 存盘前切回对象模式(否则文件会以编辑模式保存)
+    try:
+        if bpy.context.mode != 'OBJECT':
+            bpy.ops.object.mode_set(mode='OBJECT')
+    except Exception:
+        pass
+
     bpy.ops.wm.save_as_mainfile(filepath=OUT_BLEND)
     print(f"Saved: {OUT_BLEND}")
     

@@ -501,6 +501,195 @@ def _seg_int_xz(a1, a2, b1, b2):
     return None
 
 
+def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
+    """v85(D2): 沿【整圈】rim 重建皮肤带 —— 一次解决 rim 全部缺陷(折返尖/锯齿/间距不均)。
+
+    做法: ①删掉沿手描轮廓 W mm 宽的一圈皮肤面(洞被扩大到该带的外缘)
+          ②该带外缘(此时是唯一的洞边界)细分到 ≤ARC_MM
+          ③内圈 = 手描轮廓本身, 重采样到与外圈【同点数】
+          ④按点对点条带三角化缝回 → rim 环严格等于手描轮廓, 且均匀无折返
+    皮肤带之外的皮肤一个顶点不动。
+    """
+    if not RIM_BAND_ENABLE:
+        return
+    if W_mm is None:
+        W_mm = RIM_BAND_W_MM
+    cv = Vector((float(center[0]), float(center[1]), float(center[2])))
+    cy = cv.y
+    mesh = obj.data
+    CP = np.array([[float(p[0]), float(p[1])] for p in poly], dtype=np.float64)   # 手描/光滑轮廓 XZ(mm? 否: 米)
+    NP = len(CP)
+    # 轮廓每点沿 Y 打到原表面的深度
+    y_ray = cy - 0.080
+    CY = []
+    for (px, pz) in poly:
+        ok, loc, nor, idx = obj.ray_cast(Vector((float(px), y_ray, float(pz))), Vector((0.0, 1.0, 0.0)))
+        CY.append(loc.y if ok else cy)
+    CY = np.array(CY, dtype=np.float64)
+
+    # ---- ① 删轮廓 W mm 内的皮肤面 ----
+    bm = bmesh.new()
+    bm.from_mesh(mesh)
+    bm.faces.ensure_lookup_table()
+    W = W_mm / 1000.0
+    victims = []
+    for f in bm.faces:
+        c = f.calc_center_median()
+        if c.y > cy + 0.010:
+            continue
+        if (c - cv).xz.length > 0.030:
+            continue
+        # 用【任一顶点贴近轮廓】删: 只看面心会漏掉粗面(面心离得远但整面横跨轮廓) → 它会戳进洞里
+        dmin = min(np.sqrt((CP[:, 0] - v.co.x) ** 2 + (CP[:, 1] - v.co.z) ** 2).min() for v in f.verts)
+        if dmin < W:
+            victims.append(f)
+    nv0 = len(victims)
+    if nv0 < 5:
+        bm.free()
+        print(f"rebuild_rim_band {side}: 带内仅 {nv0} 面, 跳过")
+        return
+    if nv0 > RIM_BAND_MAX_FACES:
+        bm.free()
+        print(f"rebuild_rim_band {side}: 带内 {nv0} 面 > 上限{RIM_BAND_MAX_FACES}, 放弃")
+        return
+    bmesh.ops.delete(bm, geom=victims, context='FACES')
+    bm.verts.ensure_lookup_table()
+    bm.edges.ensure_lookup_table()
+
+    # ---- ② 带外缘细分 ----
+    for _ in range(5):
+        bm.edges.ensure_lookup_table()
+        _la = [e for e in bm.edges if len(e.link_faces) == 1
+               and (e.verts[0].co - cv).xz.length < 0.030
+               and e.verts[0].co.y < cy + 0.010
+               and (e.verts[0].co - e.verts[1].co).length > RIM_BAND_ARC_MM / 1000.0]
+        if not _la:
+            break
+        bmesh.ops.subdivide_edges(bm, edges=_la, cuts=1, use_grid_fill=False)
+
+    # ---- ③ 取边界环(应为单一闭环) ----
+    nadj = {}
+    for e in bm.edges:
+        if len(e.link_faces) != 1:
+            continue
+        if (e.verts[0].co - cv).xz.length > 0.030 or e.verts[0].co.y > cy + 0.010:
+            continue
+        nadj.setdefault(e.verts[0].index, []).append(e.verts[1].index)
+        nadj.setdefault(e.verts[1].index, []).append(e.verts[0].index)
+    st = [k for k in nadj if len(nadj[k]) == 2]
+    if not st:
+        bm.free()
+        print(f"rebuild_rim_band {side}: 找不到边界环")
+        return
+    ring = [st[0]]; prev, cur = -1, st[0]
+    while cur in nadj:
+        cand = [n for n in nadj[cur] if n != prev]
+        if not cand:
+            break
+        nxt = cand[0]
+        if nxt == ring[0]:
+            break
+        ring.append(nxt); prev, cur = cur, nxt
+        if len(ring) > 200000:
+            break
+    if len(ring) != len(st):
+        bm.free()
+        print(f"rebuild_rim_band {side}: 边界不是单一闭环({len(ring)}/{len(st)}), 回退")
+        return
+    vmap = {v.index: v for v in bm.verts}
+    outer = [vmap[k] for k in ring]
+    K = len(outer)
+    # ---- ③ 内圈 = 手描轮廓, 但【逐个外圈顶点对齐】: 每个外圈点求其在轮廓上的最近参数,
+    #         再沿外圈顺序"解绕"成单调 → 内圈与它一一对应, 绝不跨越洞口
+    spt_all = np.concatenate([[0.0], np.cumsum(np.linalg.norm(np.roll(CP, -1, axis=0) - CP, axis=1))])
+    total = spt_all[-1]
+    Px = np.append(CP[:, 0], CP[0, 0])
+    Pz = np.append(CP[:, 1], CP[0, 1])
+    Py = np.append(CY, CY[0])
+    raw = []
+    for v in outer:
+        d = (CP[:, 0] - v.co.x) ** 2 + (CP[:, 1] - v.co.z) ** 2
+        raw.append(float(spt_all[int(np.argmin(d))]))
+    uu = [raw[0]]
+    for _i in range(1, len(raw)):
+        d = raw[_i] - uu[-1]
+        while d < -total / 2.0:
+            d += total
+        while d > total / 2.0:
+            d -= total
+        uu.append(uu[-1] + d)
+    if len(uu) > 2 and (uu[-1] - uu[0]) < 0:
+        outer = outer[::-1]
+        raw = []
+        for v in outer:
+            d = (CP[:, 0] - v.co.x) ** 2 + (CP[:, 1] - v.co.z) ** 2
+            raw.append(float(spt_all[int(np.argmin(d))]))
+        uu = [raw[0]]
+        for _i in range(1, len(raw)):
+            d = raw[_i] - uu[-1]
+            while d < -total / 2.0:
+                d += total
+            while d > total / 2.0:
+                d -= total
+            uu.append(uu[-1] + d)
+    _minstep = total / max(1.0, K) * 0.5
+    _mono = [float(uu[0])]
+    for _t in range(1, len(uu)):
+        _mono.append(max(float(uu[_t]), _mono[-1] + _minstep))
+    us = np.mod(np.array(_mono), total)
+    X = np.interp(us, spt_all, Px)
+    Z = np.interp(us, spt_all, Pz)
+    Y = np.interp(us, spt_all, Py)
+    inner = []
+    for t in range(K):
+        inner.append(bm.verts.new(Vector((float(X[t]), float(Y[t]), float(Z[t])))))
+    bm.verts.ensure_lookup_table()
+    # ---- ④ 一圈条带 ----
+    new_faces = []
+    made = 0
+    failed_k = []
+    for k in range(K):
+        k2 = (k + 1) % K
+        a, b, c, d = inner[k], inner[k2], outer[k2], outer[k]
+        ok = 0
+        for tri in ((a, b, c), (a, c, d)):
+            try:
+                new_faces.append(bm.faces.new(tri)); made += 1; ok += 1
+            except ValueError:
+                pass
+        if ok < 2:      # 三角失败 → 直接建整块四边形(不要换对角线, 那会把 rim 盖到自己身上)
+            try:
+                new_faces.append(bm.faces.new((a, b, c, d))); made += 1; ok += 1
+            except ValueError:
+                pass
+        if ok == 0:
+            failed_k.append(k)
+    # ---- ⑤ 逐面定向: 与共顶点的【非新建面】平均法线比对(避免整圈判据被污染) ----
+    bm.faces.ensure_lookup_table()
+    for f in new_faces:
+        ref = Vector((0.0, 0.0, 0.0))
+        for v in f.verts:
+            for nf in v.link_faces:
+                if nf is not f and nf not in new_faces:
+                    ref += nf.normal
+        if ref.length > 1e-12:
+            ref.normalize()
+            if f.normal.dot(ref) < 0:
+                f.normal_flip()
+        f.smooth = True
+    bm.to_mesh(mesh)
+    bm.free()
+    mesh.update()
+    if obj.mode != 'OBJECT':
+        bpy.context.view_layer.objects.active = obj
+        bpy.ops.object.mode_set(mode='OBJECT')
+    print(f"rebuild_rim_band {side}: 删带内皮肤面 {nv0}, 外缘 {K} 顶点(细分≤{RIM_BAND_ARC_MM}mm), "
+          f"内圈=手描轮廓 {K} 点, 新建面 {made}, 未能闭合格 {len(failed_k)}")
+    if failed_k:
+        _fk = failed_k[:6]
+        print("   未闭合格位置: " + "; ".join(f"dx{(inner[i].co.x-cv.x)*1000:+.2f} dz{(inner[i].co.z-cv.z)*1000:+.2f}" for i in _fk))
+
+
 def rebuild_rim_patch(obj, center, side, poly, R_out_mm=3.5, inner_tol_mm=0.35):
     """v73(D): 折返处 rim 边界重建（用户方案 D）.
 
@@ -1179,8 +1368,7 @@ def make_eye_socket(obj, center, side):
             if "SOCKET_CUT_TMP" in _mnames:
                 mesh.materials.pop(index=_mnames.index("SOCKET_CUT_TMP"))
             # 环去刺: ① 先对尖点处【表面】做局部去噪(根因: 表面在那儿有褶/噪点) ② 再对环上残余尖点做环内松弛
-            for _pi in range(3):        # 折返可能有多簇 → 逐簇重建(有半径/面数上限保护, 防越修越大)
-                rebuild_rim_patch(obj, center, side, poly)
+            rebuild_rim_band(obj, center, side, poly)   # v85 D2: 整圈 rim 皮肤带重建(替代局部补片)
             remove_ring_folds(obj, center, side)
             relax_surface_at_spikes(obj, center, side)
             relax_ring_spikes(obj, center, side)

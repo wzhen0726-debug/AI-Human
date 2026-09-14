@@ -110,6 +110,12 @@ RIM_REBUILD_RING = False
 RIM_REMOVE_FOLDS = False
 # v73(D): 折返处 rim 边界重建 —— 删折返处围绕 rim 的一小片皮肤, 沿手描轮廓重建内圈并缝合
 RIM_PATCH_ENABLE = True
+# v85(D2): 沿整圈 rim 重建皮肤带(一次解决折返/锯齿/间距不均)
+RIM_BAND_ENABLE = True
+RIM_BAND_W_MM = 1.2          # 沿轮廓向外删多宽的皮肤面
+RIM_BAND_ARC_MM = 0.5        # 带外缘边长上限(超过就细分)
+RIM_BAND_MAX_FACES = 6000    # 单次最多删多少面(安全闸)
+
 RIM_PATCH = {}  # 已改为自动定位折返, 此项留空   # side: (圆心相对眼中心 dx, dz, 圆盘外径mm)
 RIM_PATCH_DEPTH_PASSES = 20
 RIM_PATCH_CLUSTER_MM = 2.0     # 折返点聚类阈值(同一簇共用一个圆盘)
