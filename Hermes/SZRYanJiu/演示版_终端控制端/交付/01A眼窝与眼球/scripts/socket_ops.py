@@ -487,6 +487,340 @@ def relax_ring_spikes(obj, center, side):
         print(f"relax_ring_spikes {side}: 无 >{RIM_SPIKE_RELAX_THRESH_DEG}° 尖点")
 
 
+def _seg_int_xz(a1, a2, b1, b2):
+    """两条 XZ 线段求交(不含端点), 返回 (t,u) 或 None."""
+    d1 = a2 - a1
+    d2 = b2 - b1
+    den = d1[0] * d2[1] - d1[1] * d2[0]
+    if abs(den) < 1e-14:
+        return None
+    t = ((b1[0] - a1[0]) * d2[1] - (b1[1] - a1[1]) * d2[0]) / den
+    u = ((b1[0] - a1[0]) * d1[1] - (b1[1] - a1[1]) * d1[0]) / den
+    if 1e-9 < t < 1 - 1e-9 and 1e-9 < u < 1 - 1e-9:
+        return (t, u)
+    return None
+
+
+def rebuild_rim_patch(obj, center, side, poly, R_out_mm=3.5, inner_tol_mm=0.35):
+    """v73(D): 折返处 rim 边界重建（用户方案 D）.
+
+    问题: 切割面沿 Y 垂直切, 遇到"近垂直鼓包"时边界绕鼓包出去又折回 → XZ 上自交(折返尖)。
+    做法: ①删掉折返处围绕 rim 的一小片皮肤面(圆盘 R_out)
+          ②该处边界变成"轮廓段 + 圆盘外弧"
+          ③沿手描轮廓重建内圈(深度取弧长低通, 消掉鼓包造成的深度尖)
+          ④内圈与圆盘外弧按弧长缝合 → rim 环回到手描轮廓, 皮肤自轮廓向外一圈新面光滑过渡
+    圆盘之外的皮肤一个顶点不动。
+    验收: 折返数 0 / 无非流形 / 轮廓偏差 ≤0.2mm。
+    """
+    if not RIM_PATCH_ENABLE:
+        return
+    cv = Vector((float(center[0]), float(center[1]), float(center[2])))
+    inner_tol = inner_tol_mm / 1000.0
+    mesh = obj.data
+
+    # ---- 0. 预取: 手描轮廓(切割用的那条)每点沿 Y 打到原表面的深度 ----
+    cy = cv.y
+    y_ray = cy - 0.080
+    CP = []
+    for (px, pz) in poly:
+        ok, loc, nor, idx = obj.ray_cast(Vector((float(px), y_ray, float(pz))), Vector((0.0, 1.0, 0.0)))
+        CP.append(Vector((float(px), loc.y if ok else cy, float(pz))))
+    CPn = np.array([[p.x, p.z] for p in CP])
+    NP = len(CP)
+
+    # ---- 0b. 自动定位折返: 用原环的 XZ 自交点算圆盘圆心 + 半径 ----
+    bm0 = bmesh.new()
+    bm0.from_mesh(mesh)
+    bm0.verts.ensure_lookup_table()
+    bm0.edges.ensure_lookup_table()
+    nadj0 = {}
+    for e in bm0.edges:
+        if len(e.link_faces) != 1:
+            continue
+        if (e.verts[0].co - cv).xz.length > 0.030 or e.verts[0].co.y > cy + 0.010:
+            continue
+        nadj0.setdefault(e.verts[0].index, []).append(e.verts[1].index)
+        nadj0.setdefault(e.verts[1].index, []).append(e.verts[0].index)
+    st0 = [k for k in nadj0 if len(nadj0[k]) == 2]
+    if not st0:
+        bm0.free()
+        return
+    ring0 = [st0[0]]; prev0, cur0 = -1, st0[0]
+    while cur0 in nadj0:
+        cand = [n for n in nadj0[cur0] if n != prev0]
+        if not cand:
+            break
+        nxt = cand[0]
+        if nxt == ring0[0]:
+            break
+        ring0.append(nxt); prev0, cur0 = cur0, nxt
+        if len(ring0) > 100000:
+            break
+    v0 = {v.index: v for v in bm0.verts}
+    if any(k not in v0 for k in ring0):
+        bm0.free()
+        return
+    Q0 = np.array([[v0[k].co.x, v0[k].co.z] for k in ring0]) * 1000.0
+    N0 = len(ring0)
+    hits = []
+    for i in range(N0):
+        a1, a2 = Q0[i], Q0[(i + 1) % N0]
+        for j in range(i + 2, N0):
+            if (j + 1) % N0 == i or j == (i + 1) % N0:
+                continue
+            r = _seg_int_xz(a1, a2, Q0[j], Q0[(j + 1) % N0])
+            if r:
+                hits.append((i, j, r))
+    bm0.free()
+    if not hits:
+        print(f"rebuild_rim_patch {side}: 环无折返, 跳过")
+        return
+    pts = []
+    idx_inv = set()
+    for i, j, (t, u) in hits:
+        pts.append(Q0[i] + (Q0[(i + 1) % N0] - Q0[i]) * t)
+        idx_inv.update([i, (i + 1) % N0, j, (j + 1) % N0])
+    # 折返可能有多簇(实测 L 有两簇, 相距 ~5.5mm) → 本次只处理【最密的一簇】, 靠外层循环多次调用
+    P = np.array(pts)
+    used = [False] * len(P)
+    clusters = []
+    for a in range(len(P)):
+        if used[a]:
+            continue
+        grp = [a]; used[a] = True
+        changed = True
+        while changed:
+            changed = False
+            for b in range(len(P)):
+                if used[b]:
+                    continue
+                if min(float(np.linalg.norm(P[b] - P[c])) for c in grp) < RIM_PATCH_CLUSTER_MM:
+                    grp.append(b); used[b] = True; changed = True
+        clusters.append(grp)
+    clusters.sort(key=len, reverse=True)
+    grp = clusters[0]
+    print(f"rebuild_rim_patch {side}: 折返 {len(hits)} 处 / {len(clusters)} 簇, 本次处理最大簇({len(grp)} 处)")
+    ctr_xz = np.mean(P[grp], axis=0)
+    ext = max(float(np.linalg.norm(Q0[k] - ctr_xz)) for k in idx_inv)
+    R_out = (ext + RIM_PATCH_PAD_MM) / 1000.0
+    if R_out * 1000.0 > RIM_PATCH_MAX_R_MM:
+        print(f"rebuild_rim_patch {side}: 圆盘 R={R_out*1000:.2f}mm 超过上限{RIM_PATCH_MAX_R_MM}mm, 放弃(避免大改)")
+        return
+    ctr = Vector((float(ctr_xz[0] / 1000.0), cv.y, float(ctr_xz[1] / 1000.0)))
+    print(f"rebuild_rim_patch {side}: 折返 {len(hits)} 处, 圆心(dx{ctr_xz[0]-cv.x*1000:+.2f},"
+          f"dz{ctr_xz[1]-cv.z*1000:+.2f})mm, 跨度 {ext:.2f}mm → 圆盘 R={R_out*1000:.2f}mm")
+
+    # ---- 1. 删圆盘内的皮肤面 ----
+    bm = bmesh.new()
+    bm.from_mesh(mesh)
+    bm.faces.ensure_lookup_table()
+    victims = []
+    for f in bm.faces:
+        c = f.calc_center_median()
+        if c.y > cy + 0.010:
+            continue
+        if (c - cv).xz.length > 0.030:
+            continue
+        if (c - ctr).xz.length < R_out:
+            victims.append(f)
+    nv0 = len(victims)
+    if nv0 > RIM_PATCH_MAX_FACES:
+        bm.free()
+        print(f"rebuild_rim_patch {side}: 圆盘内 {nv0} 面 > 上限{RIM_PATCH_MAX_FACES}, 放弃(避免大改)")
+        return
+    if not victims:
+        bm.free()
+        print(f"rebuild_rim_patch {side}: 圆盘内没有面, 跳过")
+        return
+    old_verts = set(bm.verts)      # 删面前记录顶点引用: 存活者=原环(内), 新建者=圆盘边界(外)
+    bmesh.ops.delete(bm, geom=victims, context='FACES')
+    bm.verts.ensure_lookup_table()
+    bm.edges.ensure_lookup_table()
+
+    # ---- 1b. 圆盘周界的长边先细分到 ≤RIM_PATCH_ARC_MM(否则缝合面会出现 5mm 长条 → 假折返) ----
+    for _sa in range(4):
+        bm.edges.ensure_lookup_table()
+        _la = [e for e in bm.edges if len(e.link_faces) == 1
+               and (e.verts[0].co - cv).xz.length < 0.030
+               and e.verts[0].co.y < cy + 0.010
+               and (e.verts[0].co - e.verts[1].co).length > RIM_PATCH_ARC_MM / 1000.0]
+        if not _la:
+            break
+        bmesh.ops.subdivide_edges(bm, edges=_la, cuts=1, use_grid_fill=False)
+
+    # ---- 2. 取眼周开放边, 分环 ----
+    oedges = [e for e in bm.edges if len(e.link_faces) == 1
+              and (e.verts[0].co - cv).xz.length < 0.030
+              and e.verts[0].co.y < cy + 0.010]
+    if not oedges:
+        bm.free()
+        print(f"rebuild_rim_patch {side}: 删面后找不到开放边, 回退")
+        return
+    nadj = {}
+    for e in oedges:
+        for a, b in ((e.verts[0], e.verts[1]), (e.verts[1], e.verts[0])):
+            nadj.setdefault(a.index, []).append(b.index)
+    st = [k for k in nadj if len(nadj[k]) == 2]
+    ring = [st[0]]; prev, cur = -1, st[0]
+    while cur in nadj:
+        cand = [n for n in nadj[cur] if n != prev]
+        if not cand:
+            break
+        nxt = cand[0]
+        if nxt == ring[0]:
+            break
+        ring.append(nxt); prev, cur = cur, nxt
+        if len(ring) > 100000:
+            break
+    vmap = {v.index: v for v in bm.verts}
+    if len(ring) != len(st) or any(k not in vmap for k in ring):
+        n_loops = len(st) - len(ring) + 1
+        print(f"rebuild_rim_patch {side}: 边界不是单一闭环(环上{len(ring)}/{len(st)}顶点), 回退")
+        bm.free()
+        return
+
+    # ---- 3. 分类: 贴轮廓(内) / 圆盘外弧(外) ----
+    def d2contour(x, z):
+        d = np.sqrt((CPn[:, 0] - x) ** 2 + (CPn[:, 1] - z) ** 2)
+        i = int(np.argmin(d))
+        return float(d[i]), i
+
+    cls = []
+    for k in ring:
+        v = vmap[k]
+        d, ci = d2contour(v.co.x, v.co.z)
+        cls.append((d < inner_tol, ci, d))
+    _dmax = max(c[2] for c in cls) * 1000.0
+    _dmin = min(c[2] for c in cls) * 1000.0
+    n_out = sum(1 for c in cls if not c[0])
+    if n_out == 0 or n_out == len(ring):
+        bm.free()
+        print(f"rebuild_rim_patch {side}: 分类异常(外弧 {n_out}/{len(ring)}), 回退")
+        return
+    # 外弧 = 一段连续 run。注意: 必须从"内"点起算, 否则跨越 0 号索引的 run 会被算成两段
+    M0 = len(ring)
+    _s0 = next(i for i, c in enumerate(cls) if c[0])
+    order = [(_s0 + t) % M0 for t in range(M0)]
+    runs = []
+    _cur = None
+    for t, idx in enumerate(order):
+        if not cls[idx][0]:
+            _cur = [t] if _cur is None else (_cur + [t])
+        elif _cur is not None:
+            runs.append(_cur); _cur = None
+    if _cur is not None:
+        runs.append(_cur)
+    if len(runs) != 1:
+        print(f"rebuild_rim_patch {side}: 外弧 {len(runs)} 段(期望1段), 回退 "
+              f"[环上到轮廓距离 min{_dmin:.3f}/max{_dmax:.3f}mm, 阈值{inner_tol*1000:.2f}mm]")
+        bm.free()
+        return
+    outer_pos = runs[0]
+    a_p, b_p = outer_pos[0], outer_pos[-1]
+    N = len(ring)
+    ja = ring[order[(a_p - 1) % M0]]      # 外弧之前的环点(交界 A)
+    jb = ring[order[(b_p + 1) % M0]]      # 外弧之后的环点(交界 B)
+    n_out_v = len(outer_pos)
+    outer_idx = [ring[order[p]] for p in outer_pos]
+    _, ia = d2contour(vmap[ja].co.x, vmap[ja].co.z)
+    _, ib = d2contour(vmap[jb].co.x, vmap[jb].co.z)
+    _, ic = d2contour(ctr.x, ctr.z)
+    # 从 ia 走到 ib, 使其经过圆盘中心对应的轮廓点 ic
+    def _fwd(x, y, n):
+        return (y - x) % n
+    if _fwd(ia, ic, NP) <= _fwd(ia, ib, NP):
+        seq = [(ia + s) % NP for s in range(0, _fwd(ia, ib, NP) + 1)]
+    else:
+        seq = [(ia - s) % NP for s in range(0, _fwd(ib, ia, NP) + 1)][::-1]
+    if len(seq) < 2:
+        bm.free()
+        print(f"rebuild_rim_patch {side}: 轮廓段太短, 回退")
+        return
+    # ---- 4. 内圈深度: 弧长低通, 两端拉回交界点真实 y ----
+    ys = np.array([CP[i].y for i in seq], dtype=np.float64)
+    y0 = ys.copy()
+    dmax = 0.0
+    for _ in range(RIM_PATCH_DEPTH_PASSES):
+        nxt = 0.5 * (np.roll(ys, 1) + np.roll(ys, -1))
+        dev = float(np.abs(nxt - y0).max()) * 1000.0
+        if dev > RIM_PATCH_DEPTH_CAP_MM:
+            break
+        ys = nxt
+        dmax = dev
+    corr = ys - y0
+    m = len(seq)
+    ramp = np.minimum(np.arange(m), np.arange(m)[::-1])
+    ramp = np.clip(ramp / max(1.0, RIM_PATCH_RAMP), 0.0, 1.0)
+    ys = y0 + corr * ramp
+    ya_real = vmap[ja].co.y
+    yb_real = vmap[jb].co.y
+    ys[0] = ya_real
+    ys[-1] = yb_real
+    if m > 2:
+        ys[1] = 0.5 * (ya_real + ys[1])
+        ys[-2] = 0.5 * (yb_real + ys[-2])
+
+    # ---- 5. 内圈按【外弧点数】重采样 + 标准条带三角化(保证无跳过/无长边) ----
+    outer = [vmap[k] for k in outer_idx]
+    K = len(outer)
+    if K < 3:
+        bm.free()
+        print(f"rebuild_rim_patch {side}: 外弧太短({K}), 回退")
+        return
+    # 用统一走法确定 inner/outer 的方向
+    if (outer[0].co - vmap[ja].co).length > (outer[-1].co - vmap[ja].co).length:
+        outer = outer[::-1]
+    pick_t = np.linspace(0.0, float(m - 1), K)
+    pick_i = [seq[int(round(t))] for t in pick_t]
+    pick_y = np.interp(pick_t, np.arange(m), ys)
+    inner = []
+    for t in range(K):
+        if t == 0:
+            inner.append(vmap[ja])
+        elif t == K - 1:
+            inner.append(vmap[jb])
+        else:
+            v = bm.verts.new(Vector((CP[pick_i[t]].x, float(pick_y[t]), CP[pick_i[t]].z)))
+            inner.append(v)
+    bm.verts.ensure_lookup_table()
+    new_faces = []
+    made = 0
+    for k in range(K - 1):
+        quad = (inner[k], inner[k + 1], outer[k + 1], outer[k])
+        try:
+            new_faces.append(bm.faces.new(quad[:3]))
+            made += 1
+        except ValueError:
+            pass
+        try:
+            new_faces.append(bm.faces.new((quad[0], quad[2], quad[3])))
+            made += 1
+        except ValueError:
+            pass
+    if True:
+        pass
+    # ---- 6. 只对新建面统一朝外法线(绝不能动整个网格的面!) ----
+    bm.faces.ensure_lookup_table()
+    nrm = Vector((0.0, 0.0, 0.0))
+    for k in outer_idx:
+        v = vmap[k]
+        for f in v.link_faces:
+            if f not in new_faces:
+                nrm += f.normal
+    if nrm.length < 1e-9:
+        nrm = Vector((0.0, -1.0, 0.0))
+    nrm.normalize()
+    for f in new_faces:
+        if f.normal.dot(nrm) < 0:
+            f.normal_flip()
+        f.smooth = True
+    bm.to_mesh(mesh)
+    bm.free()
+    mesh.update()
+    print(f"rebuild_rim_patch {side}: 删皮肤面 {nv0}, 圆盘外弧 {n_out_v} 顶点, 轮廓段 {m} 点"
+          f"(深度低通 {dmax:.3f}mm/上限{RIM_PATCH_DEPTH_PASSES}passes), 新建面 {made}")
+
+
 def remove_ring_folds(obj, center, side, max_iter=10):
     """v70: 去掉 rim 环在 XZ 上的【自交折返小尖】.
 
@@ -845,6 +1179,8 @@ def make_eye_socket(obj, center, side):
             if "SOCKET_CUT_TMP" in _mnames:
                 mesh.materials.pop(index=_mnames.index("SOCKET_CUT_TMP"))
             # 环去刺: ① 先对尖点处【表面】做局部去噪(根因: 表面在那儿有褶/噪点) ② 再对环上残余尖点做环内松弛
+            for _pi in range(3):        # 折返可能有多簇 → 逐簇重建(有半径/面数上限保护, 防越修越大)
+                rebuild_rim_patch(obj, center, side, poly)
             remove_ring_folds(obj, center, side)
             relax_surface_at_spikes(obj, center, side)
             relax_ring_spikes(obj, center, side)

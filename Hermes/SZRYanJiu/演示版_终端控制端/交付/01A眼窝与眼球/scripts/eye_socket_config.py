@@ -107,7 +107,20 @@ RIM_DEPTH_SMOOTH = False
 # v68: 环重建(等弧长重采样 + 深度按弧长低通) —— 不碰表面/不碰轮廓线, 代价是环略离面
 RIM_REBUILD_RING = False
 # v70: 去 rim 环的自交折返小尖(实测 L 环 XZ 自交 6 处, 全在下睑外侧那 3mm —— 用户看到的"缺口")
-RIM_REMOVE_FOLDS = False  # 实测两次都把握不好(切边+焊接 / 删段+焊接 都会把环弄烂) → 先关
+RIM_REMOVE_FOLDS = False
+# v73(D): 折返处 rim 边界重建 —— 删折返处围绕 rim 的一小片皮肤, 沿手描轮廓重建内圈并缝合
+RIM_PATCH_ENABLE = True
+RIM_PATCH = {}  # 已改为自动定位折返, 此项留空   # side: (圆心相对眼中心 dx, dz, 圆盘外径mm)
+RIM_PATCH_DEPTH_PASSES = 20
+RIM_PATCH_CLUSTER_MM = 2.0     # 折返点聚类阈值(同一簇共用一个圆盘)
+RIM_PATCH_ARC_MM = 0.5        # 圆盘周界边长于此就细分(保证缝合均匀)
+RIM_PATCH_MAX_R_MM = 6.0      # 圆盘半径上限(超过就放弃, 防越修越大)
+RIM_PATCH_MAX_FACES = 300     # 单次补片最多删多少面
+RIM_PATCH_PAD_MM = 3.0        # 圆盘半径 = 折返跨度 + 该值
+RIM_PATCH_DEPTH_CAP_MM = 0.30 # 内圈深度偏离原表面的硬上限
+            # 内圈深度弧长低通次数
+RIM_PATCH_RAMP = 6                     # 两端几段内把深度修正拉回真实交界点
+  # 实测两次都把握不好(切边+焊接 / 删段+焊接 都会把环弄烂) → 先关
    # 先关(它把折返暴露/放大); 折返修好后再评估
 RIM_REBUILD_PASSES = 60
 RIM_REBUILD_LAMBDA = 0.40
