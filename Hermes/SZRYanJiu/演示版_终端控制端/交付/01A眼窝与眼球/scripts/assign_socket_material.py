@@ -100,6 +100,33 @@ _yminL=_RLy.min()-0.0005; _yminR=_RRy.min()-0.0005
 #   tag碗面基线自身XZ超rim>2mm=0% → 补红面也不应超. 加: 面心距rim>2mm不补.
 _RL3=np.array([q for q in _cont["L"]["rim_3d"] if q is not None])
 _RR3=np.array([q for q in _cont["R"]["rim_3d"] if q is not None])
+# v61(2026-09-14 用户GUI截图报"红材质溢出到rim环外的三角面"):
+#   根因: 上面两道闸只用【到轮廓折线的3D距离≤2mm】, 没要求面心在轮廓【内】.
+#   环外的皮肤面只要碰巧与碗面近共面(<0.5mm)+距折线<2mm 就被整面染红 → 红色三角片溢到周围皮肤.
+#   实测(环多边形判定): 环外红面 L=43/R=66, 其中补红占 41/39 = 溢出主体; 方位集中在眼角(-45~0°/135~180°).
+#   修: 加第三道闸 — 面心XZ必须在眼睑轮廓多边形内(容差0.3mm, 因环顶点随面大小可能略超轮廓).
+_RLxz = np.array([[q[0], q[2]] for q in _cont["L"]["rim_3d"] if q is not None])
+_RRxz = np.array([[q[0], q[2]] for q in _cont["R"]["rim_3d"] if q is not None])
+def _pip_xz(x, z, P):
+    """XZ平面点在多边形内(射线法)"""
+    ins = False; _n = len(P); j = _n - 1
+    for i in range(_n):
+        xi, zi = P[i]; xj, zj = P[j]
+        if ((zi > z) != (zj > z)) and (x < (xj - xi) * (z - zi) / (zj - zi + 1e-18) + xi):
+            ins = not ins
+        j = i
+    return ins
+def _seg_d2_xz(px, pz, P):
+    """XZ平面点到多边形折线的最近距离"""
+    best = 1e9
+    for i in range(len(P)):
+        ax, az = P[i]; bx, bz = P[(i + 1) % len(P)]
+        vx, vz = bx - ax, bz - az
+        L2 = vx * vx + vz * vz + 1e-18
+        t = max(0.0, min(1.0, ((px - ax) * vx + (pz - az) * vz) / L2))
+        dx, dz = ax + t * vx - px, az + t * vz - pz
+        best = min(best, (dx * dx + dz * dz) ** 0.5)
+    return best
 def _seg_d3(Pts,P):
     S0=P[None,:,:]; S1=np.roll(P,-1,axis=0)[None,:,:]; SD=S1-S0
     SDl2=np.einsum('inj,inj->in',SD,SD)+1e-18; d=Pts[:,None,:]-S0
@@ -110,6 +137,19 @@ for _fi in _cand:
     _c = _C[_fi]
     if (_c[0] < 0 and _c[1] < _yminL) or (_c[0] > 0 and _c[1] < _yminR): continue   # 睑前面不补
     if min(_seg_d3(_c[None,:],_RL3)[0], _seg_d3(_c[None,:],_RR3)[0]) > 0.002: continue  # 距rim>2mm不补
+    _Pxz = _RLxz if _c[0] < 0 else _RRxz
+    # v61b(2026-09-14): 只判【面心在轮廓内】不够 — 大皮肤三角常"面心在内、顶点戳出轮廓":
+    #   整面染红后就是戳在皮肤上的红色小三角片(用户GUI截图所见"红材质溢出到环外三角面").
+    #   实测: 76个补红面里52(L)/59(R)个有顶点在轮廓外>0.5mm; 上色渲染确认这些正是戳出的红牙.
+    #   改为: 【所有顶点】都必须在轮廓内(容差0.3mm).
+    _ok_v = True
+    for _vi in me.polygons[_fi].vertices:
+        _v = _VW[_vi]
+        if (not _pip_xz(_v[0], _v[2], _Pxz)) and _seg_d2_xz(_v[0], _v[2], _Pxz) > 0.0003:
+            _ok_v = False
+            break
+    if not _ok_v:
+        continue
     _pl = _c@_inv_mw[:3,:3].T + _inv_mw[:3,3]
     _h = _svc_b.find_nearest(_pl)
     if _h[0] is not None and abs(_h[3]) < 0.0005:      # 面心贴原始碗面<0.5mm = 共面重复面
