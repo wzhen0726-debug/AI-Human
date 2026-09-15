@@ -280,10 +280,10 @@ def denoise_rim_band(obj, center, side, poly):
     bm.verts.ensure_lookup_table()
     w = {}
     for v in bm.verts:
-        if v.co.y > center.y + 0.010:                       # 只碰眼区正面, 不碰颅内/后脑
+        if v.co.y > center.y + Y_FRONT_M:                       # 只碰眼区正面, 不碰颅内/后脑
             continue
         dx, dz = v.co.x - center.x, v.co.z - center.z
-        if dx * dx + dz * dz > 0.030 ** 2:
+        if dx * dx + dz * dz > EYE_AREA_R ** 2:
             continue
         d = point_poly_dist(v.co.x, v.co.z, poly)
         if d < band:
@@ -368,7 +368,7 @@ def relax_surface_at_spikes(obj, center, side):
     bm.verts.ensure_lookup_table()
     nadj = {}
     for v in bm.verts:
-        if (v.co - cv).xz.length > 0.030 or v.co.y > cv.y + 0.010:
+        if (v.co - cv).xz.length > EYE_AREA_R or v.co.y > cv.y + Y_FRONT_M:
             continue
         nb = [e.other_vert(v) for e in v.link_edges if len(e.link_faces) == 1]
         if len(nb) == 2:
@@ -445,7 +445,7 @@ def relax_ring_spikes(obj, center, side):
     # 环邻接(只认"边界边": link_faces==1)
     nadj = {}
     for v in bm.verts:
-        if (v.co - cv).xz.length > 0.030 or v.co.y > cv.y + 0.010:
+        if (v.co - cv).xz.length > EYE_AREA_R or v.co.y > cv.y + Y_FRONT_M:
             continue
         nb = [e.other_vert(v) for e in v.link_edges if len(e.link_faces) == 1]
         if len(nb) == 2:
@@ -487,6 +487,99 @@ def relax_ring_spikes(obj, center, side):
         print(f"relax_ring_spikes {side}: 无 >{RIM_SPIKE_RELAX_THRESH_DEG}° 尖点")
 
 
+# ===================== 按模型推导的尺度参数(程序化, 换头/换眼型自动适配) =====================
+# 原则: 代码里不再出现"只对当前这个头成立"的绝对 mm 值; 一切由
+#   ①头对象 bbox(前伸/后伸/深度)  ②该侧眼睛自身尺寸(3ddfa width_mm/height_mm)
+#   ③眼区局部网格分辨率(中位边长)  推导而来。
+CUR = {}
+
+
+def derive_scale(obj, center, side, dl=None):
+    """推导并写入本侧尺度参数(模块级, 供后面所有函数使用)。"""
+    global EYE_AREA_R, Y_FRONT_M, Y_BACK_SPLIT, PRISM_FRONT_MM, PRISM_BACK_MM
+    global RIM_BAND_W_MM, RIM_BAND_ARC_MM, RIM_BAND_FINE_MM, RIM_WELD_MM
+    global RIM_CONTOUR_RESAMPLE, RIM_SPIKE_SURF_R_MM
+    import numpy as _np
+    me = obj.data
+    nv = len(me.vertices)
+    co = _np.empty(nv * 3, dtype=_np.float64)
+    me.vertices.foreach_get("co", co)
+    co = co.reshape(nv, 3)
+    y_min, y_max = float(co[:, 1].min()), float(co[:, 1].max())
+    x_min, x_max = float(co[:, 0].min()), float(co[:, 0].max())
+    z_min, z_max = float(co[:, 2].min()), float(co[:, 2].max())
+    depth = y_max - y_min
+    # 眼睛自身尺寸: 优先 3ddfa width/height, 否则用轮廓点跨度
+    w_m = h_m = None
+    if dl and dl.get("width_mm"):
+        w_m = float(dl["width_mm"]) / 1000.0
+        h_m = float(dl.get("height_mm") or (w_m * 1000 * 0.35)) / 1000.0
+    if w_m is None:
+        try:
+            rp = _np.array([[r[0], r[2]] for r in dl["rim_3d"] if r is not None], dtype=_np.float64)
+            w_m = float(rp[:, 0].ptp()); h_m = float(rp[:, 1].ptp())
+        except Exception:
+            w_m, h_m = 0.035, 0.012
+    eye_w = max(w_m, 1e-4)
+    # ① 眼区判定半径(原硬编码 0.030): 0.86 × 眼宽
+    EYE_AREA_R = 0.86 * eye_w
+    # ② "眼中心之前"的 y 阈值(原硬编码 +0.010): 0.29 × 眼宽
+    Y_FRONT_M = 0.29 * eye_w
+    # ③ 后脑/前脸分界(原硬编码 -0.020): bbox 前 44% 处
+    Y_BACK_SPLIT = y_min + 0.44 * depth
+    # ④ 棱柱前后伸出量(原硬编码 80/45): 以眼中心为界 + 20% 头深余量
+    PRISM_FRONT_MM = (center.y - y_min) * 1000.0 + 0.20 * depth * 1000.0
+    PRISM_BACK_MM = (y_max - center.y) * 1000.0 + 0.20 * depth * 1000.0
+    # ⑤ 眼区局部网格分辨率(中位边长, 用顶点在眼区内的边统计)
+    ne = len(me.edges)
+    ev = _np.empty(ne * 2, dtype=_np.int32)
+    me.edges.foreach_get("vertices", ev)
+    ev = ev.reshape(ne, 2)
+    cx, cz = float(center[0]), float(center[2])
+    # 只统计【rim 轮廓 3mm 内】的网格 —— 那才是 rim 重建真正要删/要细分的那圈,
+    # 用整块 30mm 区域会把眉毛/脸颊的粗面算进来(实测中位被拉到 1.39mm → 带被放大 4 倍 → 越修越坏)
+    try:
+        _rp = _np.array([[r[0], r[2]] for r in dl["rim_3d"] if r is not None], dtype=_np.float64)
+    except Exception:
+        _rp = None
+    if _rp is not None and len(_rp) > 5:
+        _px = co[ev[:, 0], 0][:, None] - _rp[None, :, 0]
+        _pz = co[ev[:, 0], 2][:, None] - _rp[None, :, 1]
+        _dmin = _np.sqrt(_px ** 2 + _pz ** 2).min(axis=1)
+        m = (_dmin < 0.003) & (co[ev[:, 0], 1] < center.y + 0.29 * eye_w)
+    else:
+        d2 = (co[ev[:, 0], 0] - cx) ** 2 + (co[ev[:, 0], 2] - cz) ** 2
+        m = (d2 < (0.86 * eye_w) ** 2) & (co[ev[:, 0], 1] < center.y + 0.29 * eye_w)
+    if int(m.sum()) >= 30:
+        a = co[ev[m, 0]]; b = co[ev[m, 1]]
+        med = float(_np.median(_np.linalg.norm(a - b, axis=1)))
+    else:
+        med = 0.0003
+    med = max(med, 5e-5)
+    # 带宽按【眼睛自身尺寸】定(0.035×眼宽 ≈ 1.2mm@35mm眼), 其余阈值按带宽比例定 ——
+    # 与网格密度无关(输入网格 rim 附近中位边长实测 1.3mm, 按它推会把带放大 4 倍)
+    RIM_BAND_W_MM = 35.0 * eye_w / 1000.0 * 1000.0 * 0.035
+    RIM_BAND_W_MM = 0.035 * eye_w * 1000.0
+    RIM_BAND_FINE_MM = 0.65 * RIM_BAND_W_MM
+    RIM_BAND_ARC_MM = 0.42 * RIM_BAND_W_MM
+    RIM_WELD_MM = 0.05 * RIM_BAND_W_MM
+    RIM_SPIKE_SURF_R_MM = 2.5 * RIM_BAND_W_MM
+    # ⑥ 轮廓重采样点数: 周长 / 0.35mm, 限 120~600
+    try:
+        rp3 = _np.array([[r[0], r[2]] for r in dl["rim_3d"] if r is not None], dtype=_np.float64)
+        per = float(_np.linalg.norm(_np.roll(rp3, -1, axis=0) - rp3, axis=1).sum())
+    except Exception:
+        per = 0.084
+    RIM_CONTOUR_RESAMPLE = int(min(600, max(120, round(per / 0.00035))))
+    CUR.update(dict(side=side, eye_w=eye_w, eye_h=h_m, med_edge=med,
+                    bbox=(x_min, x_max, y_min, y_max, z_min, z_max), depth=depth))
+    print(f"derive_scale {side}: 眼宽{eye_w*1000:.2f}mm 头深{depth*1000:.1f}mm "
+          f"| 眼区半径{EYE_AREA_R*1000:.2f}mm 前阈值{Y_FRONT_M*1000:.2f}mm 后分界{Y_BACK_SPLIT*1000:.1f}mm "
+          f"| 棱柱前{PRISM_FRONT_MM:.0f}/后{PRISM_BACK_MM:.0f}mm | 局部中位边长{med*1000:.3f}mm "
+          f"→ 带宽{RIM_BAND_W_MM:.2f} 弧长{RIM_BAND_ARC_MM:.2f} 细分{RIM_BAND_FINE_MM:.2f} 焊{RIM_WELD_MM:.3f}mm "
+          f"| 轮廓重采样{RIM_CONTOUR_RESAMPLE}点")
+
+
 def _seg_int_xz(a1, a2, b1, b2):
     """两条 XZ 线段求交(不含端点), 返回 (t,u) 或 None."""
     d1 = a2 - a1
@@ -526,7 +619,7 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
     # 深度不自己采样: 沿用【原 rim 边界】在相同角度上的 y (它就在表面上, 是真值) ——
     # 自采样(ray_cast 会穿透 / closest_point 会取到深处内壁)都会改变 rim 的 3D 形态(用户: "变形")
     _ob = [e for e in bm_pre.edges if len(e.link_faces) == 1
-           and (e.verts[0].co - cv).xz.length < 0.030 and e.verts[0].co.y < cy + 0.010]
+           and (e.verts[0].co - cv).xz.length < EYE_AREA_R and e.verts[0].co.y < cy + Y_FRONT_M]
     _ovs = set()
     for e in _ob:
         _ovs.add(e.verts[0]); _ovs.add(e.verts[1])
@@ -556,7 +649,7 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
         _se = []
         for f in bm.faces:
             c = f.calc_center_median()
-            if c.y > cy + 0.010 or (c - cv).xz.length > 0.030:
+            if c.y > cy + Y_FRONT_M or (c - cv).xz.length > EYE_AREA_R:
                 continue
             if np.sqrt((CP[:, 0] - c.x) ** 2 + (CP[:, 1] - c.z) ** 2).min() > 3.5 * W:
                 continue
@@ -574,9 +667,9 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
     _NCP = len(_CPs)
     for f in bm.faces:
         c = f.calc_center_median()
-        if c.y > cy + 0.010:
+        if c.y > cy + Y_FRONT_M:
             continue
-        if (c - cv).xz.length > 0.030:
+        if (c - cv).xz.length > EYE_AREA_R:
             continue
         dc = np.sqrt((_CPs[:, 0] - c.x) ** 2 + (_CPs[:, 1] - c.z) ** 2).min()
         if dc < W:
@@ -620,7 +713,7 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
 
     # ---- ②/③ 循环: 带外缘细分 → 取边界环; 若不是单一闭环就删掉问题顶点周围的面再试 ----
     def _near_eye(v):
-        return (v.co - cv).xz.length < 0.030 and v.co.y < cy + 0.010
+        return (v.co - cv).xz.length < EYE_AREA_R and v.co.y < cy + Y_FRONT_M
     outer = None
     for _try in range(6):
         # ② 带外缘细分到 ≤ARC_MM
@@ -789,7 +882,7 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
     # (先平均→只保留与平均同向的再平均 = 排除少数异向面; 绝不能写成 ref=-ref, 那等于不翻转)
     _fl = [f.normal.copy() for f in bm.faces
            if f not in new_faces
-           and (f.calc_center_median() - cv).xz.length < 0.030
+           and (f.calc_center_median() - cv).xz.length < EYE_AREA_R
            and f.calc_center_median().y < -0.020]
     gref = Vector((0.0, 0.0, 0.0))
     for n in _fl:
@@ -821,7 +914,7 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
     _fixall = 0
     for f in bm.faces:
         c = f.calc_center_median()
-        if (c - cv).xz.length > 0.030 or c.y > -0.020:   # 只排除后脑(眼周皮肤在 -0.09~-0.13)
+        if (c - cv).xz.length > EYE_AREA_R or c.y > Y_BACK_SPLIT:   # 只排除后脑(眼周皮肤在 -0.09~-0.13)
             continue
         # 判据与用户看到的一致: 正视相机下 法线朝后(+Y) = 面朝向显示里的红
         if f.normal.y > RIM_BAND_FLIP_Y:
@@ -831,7 +924,7 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
     _left = 0
     for f in bm.faces:
         c = f.calc_center_median()
-        if (c - cv).xz.length > 0.030 or c.y > -0.020:
+        if (c - cv).xz.length > EYE_AREA_R or c.y > Y_BACK_SPLIT:
             continue
         if f.normal.y > RIM_BAND_FLIP_Y:
             _left += 1
@@ -889,7 +982,7 @@ def rebuild_rim_patch(obj, center, side, poly, R_out_mm=3.5, inner_tol_mm=0.35):
     for e in bm0.edges:
         if len(e.link_faces) != 1:
             continue
-        if (e.verts[0].co - cv).xz.length > 0.030 or e.verts[0].co.y > cy + 0.010:
+        if (e.verts[0].co - cv).xz.length > EYE_AREA_R or e.verts[0].co.y > cy + Y_FRONT_M:
             continue
         nadj0.setdefault(e.verts[0].index, []).append(e.verts[1].index)
         nadj0.setdefault(e.verts[1].index, []).append(e.verts[0].index)
@@ -969,9 +1062,9 @@ def rebuild_rim_patch(obj, center, side, poly, R_out_mm=3.5, inner_tol_mm=0.35):
     victims = []
     for f in bm.faces:
         c = f.calc_center_median()
-        if c.y > cy + 0.010:
+        if c.y > cy + Y_FRONT_M:
             continue
-        if (c - cv).xz.length > 0.030:
+        if (c - cv).xz.length > EYE_AREA_R:
             continue
         if (c - ctr).xz.length < R_out:
             victims.append(f)
@@ -993,8 +1086,8 @@ def rebuild_rim_patch(obj, center, side, poly, R_out_mm=3.5, inner_tol_mm=0.35):
     for _sa in range(4):
         bm.edges.ensure_lookup_table()
         _la = [e for e in bm.edges if len(e.link_faces) == 1
-               and (e.verts[0].co - cv).xz.length < 0.030
-               and e.verts[0].co.y < cy + 0.010
+               and (e.verts[0].co - cv).xz.length < EYE_AREA_R
+               and e.verts[0].co.y < cy + Y_FRONT_M
                and (e.verts[0].co - e.verts[1].co).length > RIM_PATCH_ARC_MM / 1000.0]
         if not _la:
             break
@@ -1002,8 +1095,8 @@ def rebuild_rim_patch(obj, center, side, poly, R_out_mm=3.5, inner_tol_mm=0.35):
 
     # ---- 2. 取眼周开放边, 分环 ----
     oedges = [e for e in bm.edges if len(e.link_faces) == 1
-              and (e.verts[0].co - cv).xz.length < 0.030
-              and e.verts[0].co.y < cy + 0.010]
+              and (e.verts[0].co - cv).xz.length < EYE_AREA_R
+              and e.verts[0].co.y < cy + Y_FRONT_M]
     if not oedges:
         bm.free()
         print(f"rebuild_rim_patch {side}: 删面后找不到开放边, 回退")
@@ -1193,7 +1286,7 @@ def remove_ring_folds(obj, center, side, max_iter=10):
     def get_ring(bm):
         nadj = {}
         for v in bm.verts:
-            if (v.co - cv).xz.length > 0.030 or v.co.y > cv.y + 0.010:
+            if (v.co - cv).xz.length > EYE_AREA_R or v.co.y > cv.y + Y_FRONT_M:
                 continue
             nb = [e.other_vert(v).index for e in v.link_edges if len(e.link_faces) == 1]
             if len(nb) == 2:
@@ -1301,7 +1394,7 @@ def rebuild_ring_arc_length(obj, center, side):
     bm.verts.ensure_lookup_table()
     nadj = {}
     for v in bm.verts:
-        if (v.co - cv).xz.length > 0.030 or v.co.y > cv.y + 0.010:
+        if (v.co - cv).xz.length > EYE_AREA_R or v.co.y > cv.y + Y_FRONT_M:
             continue
         nb = [e.other_vert(v).index for e in v.link_edges if len(e.link_faces) == 1]
         if len(nb) == 2:
@@ -1344,7 +1437,7 @@ def rebuild_ring_arc_length(obj, center, side):
             bmesh.update_edit_mesh(mesh)
             bm.verts.ensure_lookup_table(); bm.edges.ensure_lookup_table()
         ring_v = [v for v in bm.verts
-                  if (v.co - cv).xz.length < 0.030 and v.co.y < cv.y + 0.010
+                  if (v.co - cv).xz.length < EYE_AREA_R and v.co.y < cv.y + Y_FRONT_M
                   and sum(1 for e in v.link_edges if len(e.link_faces) == 1) == 2]
         if ring_v:
             bmesh.ops.remove_doubles(bm, verts=ring_v, dist=RIM_REBUILD_MIN_MM / 1000.0)
@@ -1353,7 +1446,7 @@ def rebuild_ring_arc_length(obj, center, side):
         # 重新排序
         nadj = {}
         for v in bm.verts:
-            if (v.co - cv).xz.length > 0.030 or v.co.y > cv.y + 0.010:
+            if (v.co - cv).xz.length > EYE_AREA_R or v.co.y > cv.y + Y_FRONT_M:
                 continue
             nb = [e.other_vert(v).index for e in v.link_edges if len(e.link_faces) == 1]
             if len(nb) == 2:
@@ -1419,7 +1512,7 @@ def smooth_ring_depth(obj, center, side):
     bm.verts.ensure_lookup_table()
     nadj = {}
     for v in bm.verts:
-        if (v.co - cv).xz.length > 0.030 or v.co.y > cv.y + 0.010:
+        if (v.co - cv).xz.length > EYE_AREA_R or v.co.y > cv.y + Y_FRONT_M:
             continue
         nb = [e.other_vert(v).index for e in v.link_edges if len(e.link_faces) == 1]
         if len(nb) == 2:
@@ -1459,7 +1552,16 @@ def make_eye_socket(obj, center, side):
     旧路径(floodfill, SOCKET_CUT_MODE 切换)保留作A/B与回退."""
     mesh = obj.data
     center = Vector(center)
-    
+
+    # 按当前模型推导全部尺度参数(换头/换眼型自动适配; 替代硬编码 mm)
+    try:
+        import json as _j
+        with open(EYELID_CONTOUR_JSON, encoding="utf-8") as _f:
+            _dl = _j.load(_f).get(side)
+    except Exception:
+        _dl = None
+    derive_scale(obj, center, side, _dl)
+
     bpy.context.view_layer.objects.active = obj
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='DESELECT')
@@ -1488,7 +1590,7 @@ def make_eye_socket(obj, center, side):
         # ================= v62: 棱柱 boolean 切割 =================
         # ① 轮廓内面(切割前统计, 仅供 v43 UV样本映射)
         in_poly = [f for f in bm.faces
-                   if (f.calc_center_median() - center).xz.length < 0.030
+                   if (f.calc_center_median() - center).xz.length < EYE_AREA_R
                    and inside_poly(f.calc_center_median())]
         uv_layer_src = bm.loops.layers.uv.active
         samples = []
@@ -1521,7 +1623,7 @@ def make_eye_socket(obj, center, side):
             bm.verts.ensure_lookup_table()
             _ring_v = [v for v in bm.verts
                        if any(len(e.link_faces) == 1 for e in v.link_edges)
-                       and (v.co - center).xz.length < 0.030 and v.co.y < center.y + 0.010]
+                       and (v.co - center).xz.length < EYE_AREA_R and v.co.y < center.y + Y_FRONT_M]
             _n0 = len(_ring_v)
             if _ring_v:
                 bmesh.ops.remove_doubles(bm, verts=_ring_v, dist=RIM_WELD_MM / 1000.0)   # 焊接环上退化小边
@@ -1541,8 +1643,8 @@ def make_eye_socket(obj, center, side):
             bm = bmesh.from_edit_mesh(mesh)
             bm.edges.ensure_lookup_table()
             _oe = [e for e in bm.edges if len(e.link_faces) == 1
-                   and (e.verts[0].co - center).xz.length < 0.030
-                   and e.verts[0].co.y < center.y + 0.010]
+                   and (e.verts[0].co - center).xz.length < EYE_AREA_R
+                   and e.verts[0].co.y < center.y + Y_FRONT_M]
             bpy.ops.object.mode_set(mode='OBJECT')
             print(f"make_eye_socket {side}: boolean掏空环内完成, 删坑面 {len(_cutf)}, "
                   f"rim环顶点 {_n0}→{len(_oe)}")
@@ -2225,7 +2327,7 @@ def make_eye_cup(obj, center, side):
         dx = v.co.x - center.x; dz = v.co.z - center.z
         dxz = math.sqrt(dx*dx + dz*dz)
         # v42b: 下眼睑皮肤区(dz<0下侧), 碗外18-30mm, 脸部前缘
-        if dz < -0.008 and 0.018 < dxz < 0.030 and v.co.y < center.y:
+        if dz < -0.008 and 0.6 * EYE_AREA_R < dxz < EYE_AREA_R and v.co.y < center.y:
             for loop in v.link_loops:
                 uv = loop[uv_layer].uv
                 if 0.01 < uv.x < 0.99 and 0.01 < uv.y < 0.99:
@@ -2380,7 +2482,7 @@ def finish_socket_boolean(obj, center, side):
     for v in bm.verts:
         dx = v.co.x - center.x; dz = v.co.z - center.z
         dxz = math.sqrt(dx*dx + dz*dz)
-        if dz < -0.008 and 0.018 < dxz < 0.030 and v.co.y < center.y:
+        if dz < -0.008 and 0.6 * EYE_AREA_R < dxz < EYE_AREA_R and v.co.y < center.y:
             for loop in v.link_loops:
                 uv = loop[uv_layer].uv
                 if 0.01 < uv.x < 0.99 and 0.01 < uv.y < 0.99 and _uv_bright(uv.x, uv.y) > 0.40:

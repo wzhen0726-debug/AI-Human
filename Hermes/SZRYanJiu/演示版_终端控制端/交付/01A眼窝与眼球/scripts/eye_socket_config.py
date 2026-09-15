@@ -9,12 +9,12 @@ DELIVERY = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端�
 # 测试阶段产物位置(用户约定 2026-09-09: 测试期产物写各stage的 输出/, 交付/ 只在定稿后整理)
 WORK = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端\01a眼窝眼球\输出"
 os.makedirs(WORK, exist_ok=True)
-IN_BLEND = os.path.join(r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端", "01高模修复", "输出", "01_highpoly_repair.blend")
-OUT_BLEND = os.path.join(WORK, "01_1_eye_socket.blend")
-SHOT_DIR = os.path.join(WORK, "screenshots")
+IN_BLEND = os.environ.get("EYE_IN_BLEND") or os.path.join(r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端", "01高模修复", "输出", "01_highpoly_repair.blend")
+OUT_BLEND = os.environ.get("EYE_OUT_BLEND") or os.path.join(WORK, "01_1_eye_socket.blend")
+SHOT_DIR = os.environ.get("EYE_SHOT_DIR") or os.path.join(WORK, "screenshots")
 
 # 3DDFA反投影结果 (精确定位眼部, 替代暗像素法)
-DDFA_JSON = os.path.join(DELIVERY, "01A眼窝与眼球", "screenshots", "3ddfa", "iris_3ddfa.json")
+DDFA_JSON = os.environ.get("EYE_DDFA_JSON") or os.path.join(DELIVERY, "01A眼窝与眼球", "screenshots", "3ddfa", "iris_3ddfa.json")
 USE_3DDFA = True   # True=用3DDFA语义定位, False=回退暗像素法(已暂停)
 
 # 虹膜中心 (实测, 脚本会重新自动检测校正)
@@ -28,7 +28,7 @@ HOLE_RZ = 0.009   # 半高 (上下眼睑方向)
 # 2026-08-07: 真实眼形=3DDFA眼睑轮廓(杏仁形26.8x9.7mm, 宽高比2.75, 两头尖).
 # 之前的对称椭圆(rz=9mm)太圆太高, 宽高比仅1.44, 开出来像"球"不像杏仁.
 # 2026-08-20: 3DDFA眼裂偏小偏上, 改用GUI半自动标记点提取的真实眼窝边界(eyelid_contour_manual.json)
-EYELID_CONTOUR_JSON = os.path.join(DELIVERY, "01A眼窝与眼球", "screenshots", "3ddfa", "eyelid_contour_manual.json")
+EYELID_CONTOUR_JSON = os.environ.get("EYE_CONTOUR_JSON") or os.path.join(DELIVERY, "01A眼窝与眼球", "screenshots", "3ddfa", "eyelid_contour_manual.json")
 EYELID_CONTOUR_3DDFA_JSON = os.path.join(DELIVERY, "01A眼窝与眼球", "screenshots", "3ddfa", "eyelid_contour.json")
 USE_EYELID_CONTOUR = True   # True=用眼睑轮廓开孔(杏仁), False=回退对称椭圆
 
@@ -78,6 +78,11 @@ SOCKET_RELAX_LAMBDA = 0.5    # 松弛步长
 #   耗时 7.9s(1.93M面); 旧方案边界84顶点、偏差中位0.09~0.15 最大0.90~1.00mm.
 # "floodfill" = 旧路径, 保留作 A/B 对比与回退.
 SOCKET_CUT_MODE = "boolean"
+# --- 尺度参数默认值(仅兜底; 运行时由 socket_ops.derive_scale 按模型覆盖) ---
+EYE_AREA_R = 0.030        # 眼区判定半径(米) ← 0.86×眼宽
+Y_FRONT_M = 0.010         # "眼中心之前"的 y 阈值(米) ← 0.29×眼宽
+Y_BACK_SPLIT = -0.020     # 后脑/前脸分界(世界 y, 米) ← bbox 前 44%
+
 PRISM_FRONT_MM = 80.0        # 棱柱前端伸出眼中心的距离(需在脸面之前)
 PRISM_BACK_MM = 45.0
 # v67: 切割方向跟随局部表面法向(用户诊断: 沿Y垂切遇到"跟前视图近似平行"的面, 交线会跳→环折)
