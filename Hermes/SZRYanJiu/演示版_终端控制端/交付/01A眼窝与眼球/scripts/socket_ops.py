@@ -1165,6 +1165,27 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
                 print(f"rebuild_rim_band {side}: 环XZ低通 {n3} 点 平均位移{dl.mean()*1000:.3f}mm 最大{mv*1000:.3f}mm")
     except Exception as _e:
         print(f"rebuild_rim_band {side}: 环XZ低通失败(已跳过) {_e}")
+    # ---- ⑦k 带内短边清理: 缝合带里 <0.3mm 的【内部】短边(细长面/凹面根源, 实测 0.13~0.25mm)
+    #      溶掉; 只动 link_faces==2 的内部边, 绝不碰 rim 环(边界边) ----
+    try:
+        _sh = [e for e in bm.edges if len(e.link_faces) == 2 and e.calc_length() < 0.00030
+               and (e.verts[0].co - cv).xz.length < 3.0 * EYE_AREA_R and e.verts[0].co.y < Y_BACK_SPLIT
+               and (e.verts[1].co - cv).xz.length < 3.0 * EYE_AREA_R and e.verts[1].co.y < Y_BACK_SPLIT
+               and float(np.sqrt((CP[:, 0] - ((e.verts[0].co.x + e.verts[1].co.x) * 0.5)) ** 2
+                                 + (CP[:, 1] - ((e.verts[0].co.z + e.verts[1].co.z) * 0.5)) ** 2).min()) < 0.003]
+        if _sh:
+            bmesh.ops.dissolve_degenerate(bm, dist=0.00030, edges=_sh)
+            print(f"rebuild_rim_band {side}: 带内短边清理 {len(_sh)} 条")
+            bm.verts.index_update(); bm.verts.ensure_lookup_table()
+            bm.faces.index_update(); bm.faces.ensure_lookup_table(); bm.normal_update()
+            _ng5 = [f for f in bm.faces if len(f.verts) > 4
+                    and (f.calc_center_median() - cv).xz.length < 3.0 * EYE_AREA_R
+                    and f.calc_center_median().y < Y_BACK_SPLIT]
+            if _ng5:
+                bmesh.ops.triangulate(bm, faces=_ng5, quad_method='BEAUTY', ngon_method='BEAUTY')
+    except Exception as _e:
+        print(f"rebuild_rim_band {side}: 带内短边清理失败(已跳过) {_e}")
+    bm.normal_update()
     # ---- ⑦g 折叠面翻转: 面法线与邻面平均相反(=用户看到的红/黑错乱面) ----
     bm.normal_update()
     _fold = 0
