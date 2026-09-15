@@ -1,8 +1,8 @@
 import bpy, os, json, numpy as np, bmesh
 from mathutils import Vector
 D=r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端"
-J=json.load(open(os.path.join(D,"交付","01A眼窝与眼球","screenshots","3ddfa","eyelid_contour_manual.json"),encoding="utf-8"))
-bpy.ops.wm.open_mainfile(filepath=os.path.join(D,"01a眼窝眼球","输出","01_1_eye_socket.blend"))
+J=json.load(open(os.environ.get("EYE_CONTOUR_JSON") or os.path.join(D,"交付","01A眼窝与眼球","screenshots","3ddfa","eyelid_contour_manual.json"),encoding="utf-8"))
+bpy.ops.wm.open_mainfile(filepath=os.environ.get("CHK_BLEND") or os.path.join(D,"01a眼窝眼球","输出","01_1_eye_socket.blend"))
 head=max([x for x in bpy.data.objects if x.type=='MESH'],key=lambda x:len(x.data.vertices))
 bm=bmesh.new(); bm.from_mesh(head.data); bm.edges.ensure_lookup_table(); bm.verts.ensure_lookup_table(); bm.normal_update()
 for s in ("L","R"):
