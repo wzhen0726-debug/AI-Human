@@ -1022,6 +1022,116 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
             print(f"rebuild_rim_band {side}: 退化边清除 {len(_de)} 条")
         except Exception as _e:
             print(f"rebuild_rim_band {side}: 退化边清除失败 {_e}")
+    # ---- ⑦f 局部表面松弛(用户: 左眼下睑外侧不圆/多凸起, 参考右眼曲率) ----
+    # 只动"离轮廓 <2.5mm"的前表面顶点; 锚定权重随距离衰减(远处不动 → 不产生新棱);
+    # 位移硬上限 RIM_RELAX_MAX_MM。目的: 去掉缝合带与粗面台阶造成的波浪/褶皱。
+    bm.verts.index_update()
+    bm.verts.ensure_lookup_table()
+    _r_sm = 0.0025
+    _near = []
+    for v in bm.verts:
+        if v.co.y >= Y_BACK_SPLIT or (v.co - cv).xz.length > 2.5 * EYE_AREA_R:
+            continue
+        _dd = float(np.sqrt((CP[:, 0] - v.co.x) ** 2 + (CP[:, 1] - v.co.z) ** 2).min())
+        if _dd < _r_sm:
+            _near.append((v.index, _dd))
+    try:
+      if len(_near) > 40:
+        _idx = {vi: i for i, (vi, _) in enumerate(_near)}
+        _co0 = np.array([bm.verts[vi].co[:] for vi, _ in _near])
+        _w = np.exp(-(np.array([d for _, d in _near]) / 0.0012) ** 2)   # 锚定权重
+        _ed = []
+        for e in bm.edges:
+            a, b = e.verts[0].index, e.verts[1].index
+            if a in _idx and b in _idx:
+                _ed.append((_idx[a], _idx[b]))
+        if _ed:
+            _ea = np.array([x for x, _ in _ed]); _eb = np.array([y for _, y in _ed])
+            _deg = np.zeros(len(_near))
+            np.add.at(_deg, _ea, 1.0); np.add.at(_deg, _eb, 1.0)
+            _deg[_deg == 0] = 1.0
+            _co = _co0.copy()
+            for _it in range(30):
+                _acc = np.zeros_like(_co)
+                np.add.at(_acc, _ea, _co[_eb]); np.add.at(_acc, _eb, _co[_ea])
+                _lap = _acc / _deg[:, None]
+                _co = _co + 0.45 * _w[:, None] * (_lap - _co)
+            _dvec = _co - _co0
+            _dl = np.linalg.norm(_dvec, axis=1)
+            _mx = 0.00045                       # 位移硬上限 0.45mm
+            _sc = np.where(_dl > _mx, _mx / np.maximum(_dl, 1e-12), 1.0)
+            _co = _co0 + _dvec * _sc[:, None]
+            for vi, i in _idx.items():
+                bm.verts[vi].co = _co[i]
+            bm.normal_update()
+            print(f"rebuild_rim_band {side}: 局部松弛 {len(_near)} 顶点 位移max{min(_dl.max(), _mx)*1000:.3f}mm")
+    except Exception as _e:
+        print(f"rebuild_rim_band {side}: 局部松弛失败(已跳过) {_e}")
+    # ---- ⑦f2 松弛后再清一次退化边 + 短边焊接(松弛会把顶点挪近, 产生新的微折角) ----
+    _de2 = [e for e in bm.edges if e.calc_length() < 0.00008
+            and (e.verts[0].co - cv).xz.length < 3.0 * EYE_AREA_R
+            and e.verts[0].co.y < Y_BACK_SPLIT
+            and (e.verts[1].co - cv).xz.length < 3.0 * EYE_AREA_R
+            and e.verts[1].co.y < Y_BACK_SPLIT]
+    if _de2:
+        try:
+            bmesh.ops.dissolve_degenerate(bm, dist=0.00008, edges=_de2)
+            print(f"rebuild_rim_band {side}: 松弛后退化清除 {len(_de2)} 条")
+        except Exception as _e:
+            print(f"rebuild_rim_band {side}: 松弛后退化清除失败 {_e}")
+    # 环上 >60° 的微折角: 把折角顶点向两侧邻点中点收(只动亚毫米)
+    bm.verts.index_update()
+    bm.verts.ensure_lookup_table()
+    bm.normal_update()
+    try:
+      for _rnd in range(3):
+        _oe2 = [e for e in bm.edges if len(e.link_faces) == 1
+                and (e.verts[0].co - cv).xz.length < 0.05 and e.verts[0].co.y < Y_BACK_SPLIT]
+        _dg = {}
+        for e in _oe2:
+            a, b = e.verts[0], e.verts[1]
+            _dg.setdefault(a.index, []).append(b.index)
+            _dg.setdefault(b.index, []).append(a.index)
+        _fixed = 0
+        for vi, nb in _dg.items():
+            if len(nb) != 2:
+                continue
+            a = bm.verts[vi].co; b1 = bm.verts[nb[0]].co; b2 = bm.verts[nb[1]].co
+            v1 = a - b1; v2 = b2 - a
+            if v1.length < 1e-9 or v2.length < 1e-9:
+                continue
+            ang = np.degrees(np.arccos(np.clip(v1.normalized().dot(v2.normalized()), -1, 1)))
+            if ang > 60:
+                mid = (b1 + b2) * 0.5
+                bm.verts[vi].co = a + (mid - a) * 0.35
+                _fixed += 1
+        if not _fixed:
+            break
+      if _fixed:
+        print(f"rebuild_rim_band {side}: 环微折角收拢 {_fixed} 个")
+    except Exception as _e:
+        print(f"rebuild_rim_band {side}: 微折角收拢失败(已跳过) {_e}")
+    bm.normal_update()
+    # ---- ⑦g 折叠面翻转: 面法线与邻面平均相反(=用户看到的红/黑错乱面) ----
+    bm.normal_update()
+    _fold = 0
+    for f in bm.faces:
+        c0 = f.calc_center_median()
+        if (c0 - cv).xz.length > 3.0 * EYE_AREA_R or c0.y > Y_BACK_SPLIT:
+            continue
+        acc = Vector((0.0, 0.0, 0.0)); wsum = 0.0
+        for e in f.edges:
+            for g in e.link_faces:
+                if g is f:
+                    continue
+                acc += g.normal * g.calc_area(); wsum += g.calc_area()
+        if wsum <= 0:
+            continue
+        if f.normal.dot(acc) < 0:
+            f.normal_flip(); _fold += 1
+    bm.normal_update()
+    if _fold:
+        print(f"rebuild_rim_band {side}: 折叠面翻转 {_fold} 面")
     _ev = [v for v in bm.verts if (v.co - cv).xz.length < 3.0 * EYE_AREA_R and v.co.y < Y_BACK_SPLIT]
     if _ev:
         try:
