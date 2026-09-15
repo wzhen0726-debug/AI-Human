@@ -1181,25 +1181,30 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
                 _d3 = np.linalg.norm(np.roll(P3, -1, axis=0) - P3, axis=1)
                 sp3 = np.concatenate([[0.0], np.cumsum(_d3)[:-1]])
                 per3 = sp3[-1] + _d3[-1]
-                sig = 0.0040   # 4mm 高斯窗(用户: 下睑还不够顺 → 加力)
-                SX = np.zeros(n3); SZ = np.zeros(n3)
+                # 随动: 高斯窗与位移上限由【眼宽】推导(不再写死) —— 换模型自动适配
+                sig = 0.114 * eye_w          # ≈4.0mm @35mm 眼宽
+                cap = 0.023 * eye_w          # ≈0.8mm @35mm 眼宽
+                SX = np.zeros(n3); SY = np.zeros(n3); SZ = np.zeros(n3)
                 for i in range(n3):
                     ds = np.abs(sp3 - sp3[i]); ds = np.minimum(ds, per3 - ds)
                     w = np.exp(-0.5 * (ds / sig) ** 2)
-                    SX[i] = (P3[:, 0] * w).sum() / w.sum()
-                    SZ[i] = (P3[:, 2] * w).sum() / w.sum()
-                ddx = SX - P3[:, 0]; ddz = SZ - P3[:, 2]
-                dl = np.sqrt(ddx ** 2 + ddz ** 2)
-                cap = 0.0008   # 位移上限 0.8mm
+                    w = w / w.sum()
+                    SX[i] = (P3[:, 0] * w).sum()
+                    SY[i] = (P3[:, 1] * w).sum()   # ★ 深度 Y 也低通(此前漏掉 → 下睑外侧残留波浪)
+                    SZ[i] = (P3[:, 2] * w).sum()
+                ddx = SX - P3[:, 0]; ddy = SY - P3[:, 1]; ddz = SZ - P3[:, 2]
+                dl = np.sqrt(ddx ** 2 + ddy ** 2 + ddz ** 2)
+                dl_xy = np.sqrt(ddx ** 2 + ddz ** 2)
                 sc = np.where(dl > cap, cap / np.maximum(dl, 1e-12), 1.0)
                 mv = 0.0
                 for i, k in enumerate(ring3):
                     v = bm.verts[k]
-                    v.co = Vector((v.co.x + float(ddx[i] * sc[i]), v.co.y, v.co.z + float(ddz[i] * sc[i])))
+                    v.co = Vector((v.co.x + float(ddx[i] * sc[i]), v.co.y + float(ddy[i] * sc[i]),
+                                   v.co.z + float(ddz[i] * sc[i])))
                     _MOVED.add(k)
                     mv = max(mv, float(dl[i] * sc[i]))
                 bm.normal_update()
-                print(f"rebuild_rim_band {side}: 环XZ低通 {n3} 点 平均位移{dl.mean()*1000:.3f}mm 最大{mv*1000:.3f}mm")
+                print(f"rebuild_rim_band {side}: 环3D低通 {n3} 点 平均位移{dl.mean()*1000:.3f}mm 最大{mv*1000:.3f}mm (y分量均值{np.abs(ddy).mean()*1000:.3f}mm)")
     except Exception as _e:
         print(f"rebuild_rim_band {side}: 环XZ低通失败(已跳过) {_e}")
     # ---- ⑦g 折叠面翻转: 面法线与邻面平均相反(=用户看到的红/黑错乱面) ----
