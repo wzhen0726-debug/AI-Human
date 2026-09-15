@@ -1025,6 +1025,7 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
             print(f"rebuild_rim_band {side}: 退化边清除 {len(_de)} 条")
         except Exception as _e:
             print(f"rebuild_rim_band {side}: 退化边清除失败 {_e}")
+    _MOVED = set()
     # ---- ⑦f 局部表面松弛(用户: 左眼下睑外侧不圆/多凸起, 参考右眼曲率) ----
     # 只动"离轮廓 <2.5mm"的前表面顶点; 锚定权重随距离衰减(远处不动 → 不产生新棱);
     # 位移硬上限 RIM_RELAX_MAX_MM。目的: 去掉缝合带与粗面台阶造成的波浪/褶皱。
@@ -1066,6 +1067,7 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
             _co = _co0 + _dvec * _sc[:, None]
             for vi, i in _idx.items():
                 bm.verts[vi].co = _co[i]
+                _MOVED.add(vi)
             bm.normal_update()
             print(f"rebuild_rim_band {side}: 局部松弛 {len(_near)} 顶点 位移max{min(_dl.max(), _mx)*1000:.3f}mm")
     except Exception as _e:
@@ -1157,6 +1159,7 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
                 for i, k in enumerate(ring3):
                     v = bm.verts[k]
                     v.co = Vector((v.co.x + float(ddx[i] * sc[i]), v.co.y, v.co.z + float(ddz[i] * sc[i])))
+                    _MOVED.add(k)
                     mv = max(mv, float(dl[i] * sc[i]))
                 bm.normal_update()
                 print(f"rebuild_rim_band {side}: 环XZ低通 {n3} 点 平均位移{dl.mean()*1000:.3f}mm 最大{mv*1000:.3f}mm")
