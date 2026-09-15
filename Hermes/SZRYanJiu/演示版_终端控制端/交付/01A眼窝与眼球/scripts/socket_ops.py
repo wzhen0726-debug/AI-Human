@@ -1319,8 +1319,9 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
                         st = 0.5 * ((b2-a2).length + (c2-b2).length)
                         g[i2] = np.degrees(2*np.arcsin(min(1.0, st/(2*_Rt))))
                     return g
-                _cap4 = 1.2 * RIM_SKIN_EDGE_M
+                _cap4 = 0.8 * RIM_SKIN_EDGE_M
                 _org4 = {k: bm.verts[k].co.copy() for k in ring4}
+                _lock4 = set()
                 _nfix = 0
                 for _it in range(120):
                     t1 = _turns()
@@ -1329,24 +1330,69 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
                     if not hot:
                         break
                     for i in hot:
+                        if i in _lock4:
+                            continue
                         v = bm.verts[ring4[i]]
                         a1 = bm.verts[ring4[(i - 1) % n4]].co
                         c1 = bm.verts[ring4[(i + 1) % n4]].co
                         mid = (a1 + c1) * 0.5
                         step = (mid - v.co) * 0.5
-                        if step.length > _cap4 * 0.25:
-                            step = step.normalized() * _cap4 * 0.25
-                        v.co = v.co + step
-                        _nfix += 1
+                        # ★源头约束1: "向外"分量卡紧(凸出太高=凹折点被往外推); 向内(收)按常规上限
+                        _out = Vector((v.co.x - cv.x, 0.0, v.co.z - cv.z))
+                        if _out.length > 1e-9 and step.xz.length > 1e-12:
+                            _rad = step.xz.normalized().dot(_out.normalized())
+                            _lim = (0.15 * RIM_SKIN_EDGE_M) if _rad > 0 else (_cap4 * 0.25)
+                            if step.length > _lim:
+                                step = step.normalized() * _lim
+                        # ★源头约束2: 移动前记录相邻 strip 面法线, 移动后若被翻(点积<0.2) → 撤销+锁定该点
+                        _old_c = v.co.copy()
+                        _fn0 = []
+                        for _f in v.link_faces:
+                            _vs = list(_f.verts)
+                            try:
+                                _n0 = (_vs[1].co - _vs[0].co).cross(_vs[2].co - _vs[0].co)
+                            except Exception:
+                                _n0 = Vector((0, 0, 0))
+                            _fn0.append((_f, _n0))
+                        v.co = _old_c + step
+                        _ok = True
+                        for _f, _n0 in _fn0:
+                            _vs = list(_f.verts)
+                            try:
+                                _n1 = (_vs[1].co - _vs[0].co).cross(_vs[2].co - _vs[0].co)
+                            except Exception:
+                                _n1 = Vector((0, 0, 0))
+                            if _n0.length > 1e-12 and _n1.length > 1e-12 and _n0.normalized().dot(_n1.normalized()) < 0.5:
+                                _ok = False
+                                break
+                        if _ok:
+                            _nfix += 1
+                        else:
+                            v.co = _old_c
+                            _lock4.add(i)
                 for k in ring4:
                     v = bm.verts[k]; o = _org4[k]
                     if (v.co - o).length > _cap4:
                         v.co = o + (v.co - o).normalized() * _cap4
                 bm.normal_update()
                 _t2 = _turns()
-                print(f"rebuild_rim_band {side}: 眼角圆化 目标半径{_Rt*1000:.2f}mm 转角max {t0.max():.1f}°→{_t2.max():.1f}°(逐点阈值) 调整{_nfix}次 上限{_cap4*1000:.2f}mm")
+                print(f"rebuild_rim_band {side}: 眼角圆化 目标半径{_Rt*1000:.2f}mm 转角max {t0.max():.1f}°→{_t2.max():.1f}°(逐点阈值) 调整{_nfix}次 撤销锁定{len(_lock4)}点 上限{_cap4*1000:.2f}mm")
     except Exception as _e:
         print(f"rebuild_rim_band {side}: 眼角圆化失败(已跳过) {_e}")
+    # ---- 自检: 环 vs 用户手描原始轮廓(标记点) 的偏差 ----
+    try:
+        _op = CUR.get('orig_poly_' + side)
+        if _op and len(ring4) > 10:
+            _O = np.asarray(_op, dtype=np.float64)
+            _P = np.array([[bm.verts[k].co.x, bm.verts[k].co.z] for k in ring4])
+            _dd = []
+            for _q in _P:
+                _d3 = np.linalg.norm(_O - _q, axis=1)
+                _dd.append(float(_d3.min()))
+            _dd = np.asarray(_dd) * 1000.0
+            print(f"rebuild_rim_band {side}: 环 vs 手描标记点偏差 中位{np.median(_dd):.3f}mm p90{np.percentile(_dd,90):.3f}mm max{_dd.max():.3f}mm")
+    except Exception as _e:
+        print(f"rebuild_rim_band {side}: 标记点偏差自检失败 {_e}")
     bm.normal_update()
     # ---- ⑦g 折叠面翻转: 面法线与邻面平均相反(=用户看到的红/黑错乱面) ----
     bm.normal_update()
@@ -1375,6 +1421,25 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
         except Exception:
             pass
     bm.normal_update()
+    # ---- ⑦g2 焊接后二次翻转(源头: remove_doubles 会重构面 → 可能留下翻转的微小面, 用户实测右眼 1 面) ----
+    _fold2 = 0
+    for f in bm.faces:
+        c0 = f.calc_center_median()
+        if (c0 - cv).xz.length > 3.0 * EYE_AREA_R or c0.y > Y_BACK_SPLIT:
+            continue
+        acc = Vector((0.0, 0.0, 0.0)); wsum = 0.0
+        for e in f.edges:
+            for g in e.link_faces:
+                if g is f:
+                    continue
+                acc += g.normal * g.calc_area(); wsum += g.calc_area()
+        if wsum <= 0:
+            continue
+        if f.normal.dot(acc) < 0:
+            f.normal_flip(); _fold2 += 1
+    bm.normal_update()
+    if _fold2:
+        print(f"rebuild_rim_band {side}: ⑦g2 焊接后二次翻转 {_fold2} 面")
     _smooth = 0
     _nonquad = 0
     for f in bm.faces:
@@ -2024,6 +2089,8 @@ def make_eye_socket(obj, center, side):
     bpy.ops.mesh.select_all(action='DESELECT')
     
     poly = load_eyelid_contour(side) if USE_EYELID_CONTOUR else None
+    if poly is not None and RIM_CONTOUR_SMOOTH:
+        CUR['orig_poly_' + side] = [(float(a), float(b)) for a, b in poly]   # 手描原始线(自检基准)
     if poly is not None and RIM_CONTOUR_SMOOTH:
         # ★自动谐波搜索(用户: "眼角曲率还需优化, 且要算法判断该修哪段"): 眼角"尖"的源头=手描线自身的角。
         #   从配置 K 往下搜, 直到【轮廓自身最小局部曲率半径 >= R_target=0.07×眼宽】(XZ, -Y 视图口径)。
