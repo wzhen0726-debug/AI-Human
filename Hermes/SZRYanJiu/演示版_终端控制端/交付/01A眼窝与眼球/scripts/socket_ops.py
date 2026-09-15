@@ -865,26 +865,63 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
     for t in range(K):
         inner.append(bm.verts.new(Vector((float(X[t]), float(Y[t]), float(Z[t])))))
     bm.verts.ensure_lookup_table()
-    # ---- ④ 一圈条带 ----
+    # ---- ④ 一圈条带: 优先用 Blender 原生 bridge_loops(官方支持两圈顶点数不同, 自带最优配对) ----
+    # 手写"逐点对拉+三角化"在两侧地形不同时会拉出细长/扭曲面(用户实测右眼更差);
+    # 桥接【不改变内圈=手描轮廓】, 只把"两圈之间的面型"交给原生算法。失败则回退手写路线。
     new_faces = []
     made = 0
     failed_k = []
+    def _edge_of(a, b):
+        e = bm.edges.get((a, b))
+        if e is None:
+            try:
+                e = bm.edges.new((a, b))
+            except ValueError:
+                e = bm.edges.get((a, b))
+        return e
+    _ie = []
     for k in range(K):
-        k2 = (k + 1) % K
-        a, b, c, d = inner[k], inner[k2], outer[k2], outer[k]
-        ok = 0
-        for tri in ((a, b, c), (a, c, d)):
-            try:
-                new_faces.append(bm.faces.new(tri)); made += 1; ok += 1
-            except ValueError:
-                pass
-        if ok < 2:      # 三角失败 → 直接建整块四边形(不要换对角线, 那会把 rim 盖到自己身上)
-            try:
-                new_faces.append(bm.faces.new((a, b, c, d))); made += 1; ok += 1
-            except ValueError:
-                pass
-        if ok == 0:
-            failed_k.append(k)
+        _e = _edge_of(inner[k], inner[(k + 1) % K])
+        if _e is not None:
+            _ie.append(_e)
+    _oe = []
+    for k in range(K):
+        _e = _edge_of(outer[k], outer[(k + 1) % K])
+        if _e is not None:
+            _oe.append(_e)
+    _bridged = False
+    if len(_ie) == K and len(_oe) == K:
+        try:
+            _r = bmesh.ops.bridge_loops(bm, edges=_ie + _oe, use_cyclic=True)
+            _bf = [g for g in _r.get("faces", []) if isinstance(g, bmesh.types.BMFace)]
+            if _bf:
+                bm.normal_update()
+                _amax = max(f.calc_area() for f in _bf) * 1e6
+                if len(_bf) >= max(4, K * 0.5) and _amax < 12.0:   # 配对失败会长出巨大面
+                    new_faces = _bf; made = len(_bf); _bridged = True
+                    print(f"rebuild_rim_band {side}: bridge_loops 桥接 {len(_bf)} 面 (最大面{_amax:.2f}mm2)")
+                else:
+                    print(f"rebuild_rim_band {side}: bridge_loops 结果异常({len(_bf)}面/最大{_amax:.1f}mm2) → 回退手写")
+                    bmesh.ops.delete(bm, geom=_bf, context='FACES')
+        except Exception as _e:
+            print(f"rebuild_rim_band {side}: bridge_loops 失败({_e}) → 回退手写")
+    if not _bridged:
+        for k in range(K):
+            k2 = (k + 1) % K
+            a, b, c, d = inner[k], inner[k2], outer[k2], outer[k]
+            ok = 0
+            for tri in ((a, b, c), (a, c, d)):
+                try:
+                    new_faces.append(bm.faces.new(tri)); made += 1; ok += 1
+                except ValueError:
+                    pass
+            if ok < 2:
+                try:
+                    new_faces.append(bm.faces.new((a, b, c, d))); made += 1; ok += 1
+                except ValueError:
+                    pass
+            if ok == 0:
+                failed_k.append(k)
     # ---- ⑤ 逐面定向: 与共顶点的【非新建面】平均法线比对(避免整圈判据被污染) ----
     bm.faces.ensure_lookup_table()
     bm.normal_update()   # 关键: 新建面的 f.normal 是惰性的, 不 update 会读到旧/零值 → 定向判据全部误判
