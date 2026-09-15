@@ -1207,6 +1207,74 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
                 print(f"rebuild_rim_band {side}: 环3D低通 {n3} 点 平均位移{dl.mean()*1000:.3f}mm 最大{mv*1000:.3f}mm (y分量均值{np.abs(ddy).mean()*1000:.3f}mm)")
     except Exception as _e:
         print(f"rebuild_rim_band {side}: 环XZ低通失败(已跳过) {_e}")
+    # ---- ⑦m 锐折痕软化(自适应, 两眼同规则): 眼周折痕角分布里 >p99 且 >50° 的边,
+    #      其端点顶点做小步松弛(位移上限=0.25×皮肤边长); 目的是降"台阶感", 不压平睑褶本身。
+    try:
+        import math as _math
+        bm.verts.index_update(); bm.verts.ensure_lookup_table(); bm.faces.ensure_lookup_table(); bm.normal_update()
+        _cr = []
+        for e in bm.edges:
+            lf2 = e.link_faces
+            if len(lf2) != 2:
+                continue
+            mid = (e.verts[0].co + e.verts[1].co) * 0.5
+            if (mid - cv).xz.length > 0.030 or mid.y > Y_BACK_SPLIT:
+                continue
+            dd = float(np.sqrt((CP[:, 0] - mid.x) ** 2 + (CP[:, 1] - mid.z) ** 2).min())
+            if dd > 0.009:
+                continue
+            _n1 = lf2[0].normal; _n2 = lf2[1].normal
+            if _n1.length < 1e-9 or _n2.length < 1e-9:
+                continue
+            a2 = _math.degrees(_math.acos(max(-1.0, min(1.0, _n1.dot(_n2)))))
+            _cr.append(a2)
+        if len(_cr) > 200:
+            _thr = max(50.0, float(np.percentile(_cr, 99.0)))
+            _vs = set()
+            for e in bm.edges:
+                lf2 = e.link_faces
+                if len(lf2) != 2:
+                    continue
+                mid = (e.verts[0].co + e.verts[1].co) * 0.5
+                if (mid - cv).xz.length > 0.030 or mid.y > Y_BACK_SPLIT:
+                    continue
+                dd = float(np.sqrt((CP[:, 0] - mid.x) ** 2 + (CP[:, 1] - mid.z) ** 2).min())
+                if dd > 0.009:
+                    continue
+                _n1 = lf2[0].normal; _n2 = lf2[1].normal
+                if _n1.length < 1e-9 or _n2.length < 1e-9:
+                    continue
+                if _math.degrees(_math.acos(max(-1.0, min(1.0, _n1.dot(_n2))))) >= _thr:
+                    _vs.add(e.verts[0].index); _vs.add(e.verts[1].index)
+            _cap = 0.25 * RIM_SKIN_EDGE_M
+            if _vs:
+                bm.verts.index_update(); bm.verts.ensure_lookup_table()
+                _orig = {vi: bm.verts[vi].co.copy() for vi in _vs}
+                for _it in range(10):
+                    _new = {}
+                    for vi in _vs:
+                        v = bm.verts[vi]
+                        acc = Vector((0.0, 0.0, 0.0)); n2 = 0
+                        for e2 in v.link_edges:
+                            acc += e2.other_vert(v).co; n2 += 1
+                        if n2 == 0:
+                            continue
+                        tgt2 = acc / n2
+                        step = (tgt2 - v.co) * 0.35
+                        if step.length > _cap * 0.5:
+                            step = step.normalized() * _cap * 0.5
+                        _new[vi] = v.co + step
+                    for vi, nc in _new.items():
+                        bm.verts[vi].co = nc
+                for vi, oc in _orig.items():
+                    v = bm.verts[vi]
+                    if (v.co - oc).length > _cap:
+                        v.co = oc + (v.co - oc).normalized() * _cap
+                bm.normal_update()
+                print(f"rebuild_rim_band {side}: 锐折痕软化 阈值{_thr:.0f}° 顶点{len(_vs)} 上限{_cap*1000:.2f}mm")
+    except Exception as _e:
+        print(f"rebuild_rim_band {side}: 锐折痕软化失败(已跳过) {_e}")
+    bm.normal_update()
     # ---- ⑦g 折叠面翻转: 面法线与邻面平均相反(=用户看到的红/黑错乱面) ----
     bm.normal_update()
     _fold = 0
