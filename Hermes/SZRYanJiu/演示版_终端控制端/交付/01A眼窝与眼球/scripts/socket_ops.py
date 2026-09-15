@@ -497,6 +497,7 @@ CUR = {}
 def derive_scale(obj, center, side, dl=None):
     """推导并写入本侧尺度参数(模块级, 供后面所有函数使用)。"""
     global EYE_AREA_R, Y_FRONT_M, Y_BACK_SPLIT, PRISM_FRONT_MM, PRISM_BACK_MM
+    global RIM_SKIN_EDGE_M
     global RIM_BAND_W_MM, RIM_BAND_ARC_MM, RIM_BAND_FINE_MM, RIM_WELD_MM
     global RIM_CONTOUR_RESAMPLE, RIM_SPIKE_SURF_R_MM
     import numpy as _np
@@ -563,12 +564,14 @@ def derive_scale(obj, center, side, dl=None):
     else:
         med = 0.0003
     med = max(med, 5e-5)
-    # 带宽按【眼睛自身尺寸】定(0.035×眼宽 ≈ 1.2mm@35mm眼), 其余阈值按带宽比例定 ——
-    # 与网格密度无关(输入网格 rim 附近中位边长实测 1.3mm, 按它推会把带放大 4 倍)
-    RIM_BAND_W_MM = 35.0 * eye_w / 1000.0 * 1000.0 * 0.035
+    RIM_SKIN_EDGE_M = med            # 模块级: 皮肤中位边长(米), 供 ⑦b 等使用
+    # 带宽按【眼睛自身尺寸】定(0.035×眼宽 ≈ 1.2mm@35mm眼)
     RIM_BAND_W_MM = 0.035 * eye_w * 1000.0
-    RIM_BAND_FINE_MM = 0.65 * RIM_BAND_W_MM
-    RIM_BAND_ARC_MM = 0.42 * RIM_BAND_W_MM
+    # 细分/边界阈值按【实测皮肤中位边长】推导 —— 让缝合带密度与周围皮肤一致,
+    # 避免"带内过密 → 线框远看发黑"(用户实测) 且不长于邻面。
+    _med_mm = med * 1000.0
+    RIM_BAND_FINE_MM = max(0.6, 0.90 * _med_mm)
+    RIM_BAND_ARC_MM = max(0.5, 1.40 * _med_mm)
     RIM_WELD_MM = 0.05 * RIM_BAND_W_MM
     RIM_SPIKE_SURF_R_MM = 2.5 * RIM_BAND_W_MM
     # ⑥ 轮廓重采样点数: 周长 / 0.35mm, 限 120~600
@@ -950,7 +953,7 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
     # ---- ⑦b 长边细分: 缝合时内圈密/外圈疏 → 拉出 >3mm 长条(用户实测最长 9.29mm) ----
     # 只改这段的三角化密度, 不动几何形状(QR 需要均匀细网格)
     _lc = 0
-    _thresh = RIM_BAND_ARC_MM / 1000.0 * 1.2   # ≈0.62mm: 让窄条两侧密度接近(宽长比≤4)
+    _thresh = max(0.0012, RIM_SKIN_EDGE_M * 1.05)  # ≈皮肤边长: 缝合带与皮肤同密度(用户: 带内过密会发黑)
     for _round in range(4):
         _lng = set()
         for f in bm.faces:
@@ -1011,7 +1014,7 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
             _left2 += 1
     print(f"rebuild_rim_band {side}: 细分后二次定向 翻正 {_fix2} 面, 残留 {_left2}")
     # ---- ⑦e 退化面清除: 极短边/零面积面(QR 直接会出错的东西) ----
-    _de = [e for e in bm.edges if e.calc_length() < 0.00008
+    _de = [e for e in bm.edges if len(e.link_faces) == 2 and e.calc_length() < 0.00008
            and (e.verts[0].co - cv).xz.length < 3.0 * EYE_AREA_R
            and e.verts[0].co.y < Y_BACK_SPLIT
            and (e.verts[1].co - cv).xz.length < 3.0 * EYE_AREA_R
@@ -1068,7 +1071,7 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
     except Exception as _e:
         print(f"rebuild_rim_band {side}: 局部松弛失败(已跳过) {_e}")
     # ---- ⑦f2 松弛后再清一次退化边 + 短边焊接(松弛会把顶点挪近, 产生新的微折角) ----
-    _de2 = [e for e in bm.edges if e.calc_length() < 0.00008
+    _de2 = [e for e in bm.edges if len(e.link_faces) == 2 and e.calc_length() < 0.00008
             and (e.verts[0].co - cv).xz.length < 3.0 * EYE_AREA_R
             and e.verts[0].co.y < Y_BACK_SPLIT
             and (e.verts[1].co - cv).xz.length < 3.0 * EYE_AREA_R
@@ -1112,6 +1115,53 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
     except Exception as _e:
         print(f"rebuild_rim_band {side}: 微折角收拢失败(已跳过) {_e}")
     bm.normal_update()
+    # ---- ⑦h 环 XZ 低通(去 1~3mm 尺度抖动; 纯算法, 输入=本模型自身几何) ----
+    # 用户要求: 不依赖任何人工画的线 —— 目标曲率=环自身在 2.8mm 高斯下的低频重建,
+    # 位移上限 0.6mm。保留眼睛整体弧度, 只抹掉边缘的小波浪。
+    bm.verts.index_update()
+    bm.verts.ensure_lookup_table()
+    try:
+        _oe3 = [e for e in bm.edges if len(e.link_faces) == 1
+                and (e.verts[0].co - cv).xz.length < 0.05 and e.verts[0].co.y < Y_BACK_SPLIT]
+        _dg3 = {}
+        for e in _oe3:
+            a_, b_ = e.verts[0], e.verts[1]
+            _dg3.setdefault(a_.index, []).append(b_.index)
+            _dg3.setdefault(b_.index, []).append(a_.index)
+        _st3 = [k for k in _dg3 if len(_dg3[k]) == 2]
+        if _st3:
+            ring3 = [_st3[0]]; _prev, _cur = -1, _st3[0]
+            while True:
+                _cand = [n for n in _dg3[_cur] if n != _prev]
+                if not _cand or _cand[0] == ring3[0]:
+                    break
+                ring3.append(_cand[0]); _prev, _cur = _cur, _cand[0]
+            if len(ring3) > 40:
+                P3 = np.array([bm.verts[k].co[:] for k in ring3])
+                n3 = len(ring3)
+                _d3 = np.linalg.norm(np.roll(P3, -1, axis=0) - P3, axis=1)
+                sp3 = np.concatenate([[0.0], np.cumsum(_d3)[:-1]])
+                per3 = sp3[-1] + _d3[-1]
+                sig = 0.0028
+                SX = np.zeros(n3); SZ = np.zeros(n3)
+                for i in range(n3):
+                    ds = np.abs(sp3 - sp3[i]); ds = np.minimum(ds, per3 - ds)
+                    w = np.exp(-0.5 * (ds / sig) ** 2)
+                    SX[i] = (P3[:, 0] * w).sum() / w.sum()
+                    SZ[i] = (P3[:, 2] * w).sum() / w.sum()
+                ddx = SX - P3[:, 0]; ddz = SZ - P3[:, 2]
+                dl = np.sqrt(ddx ** 2 + ddz ** 2)
+                cap = 0.0006
+                sc = np.where(dl > cap, cap / np.maximum(dl, 1e-12), 1.0)
+                mv = 0.0
+                for i, k in enumerate(ring3):
+                    v = bm.verts[k]
+                    v.co = Vector((v.co.x + float(ddx[i] * sc[i]), v.co.y, v.co.z + float(ddz[i] * sc[i])))
+                    mv = max(mv, float(dl[i] * sc[i]))
+                bm.normal_update()
+                print(f"rebuild_rim_band {side}: 环XZ低通 {n3} 点 平均位移{dl.mean()*1000:.3f}mm 最大{mv*1000:.3f}mm")
+    except Exception as _e:
+        print(f"rebuild_rim_band {side}: 环XZ低通失败(已跳过) {_e}")
     # ---- ⑦g 折叠面翻转: 面法线与邻面平均相反(=用户看到的红/黑错乱面) ----
     bm.normal_update()
     _fold = 0
