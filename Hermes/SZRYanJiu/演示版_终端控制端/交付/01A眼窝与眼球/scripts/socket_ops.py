@@ -529,7 +529,14 @@ def derive_scale(obj, center, side, dl=None):
     Y_BACK_SPLIT = y_min + 0.44 * depth
     # ④ 棱柱前后伸出量(原硬编码 80/45): 以眼中心为界 + 20% 头深余量
     PRISM_FRONT_MM = (center.y - y_min) * 1000.0 + 0.20 * depth * 1000.0
-    PRISM_BACK_MM = (y_max - center.y) * 1000.0 + 0.20 * depth * 1000.0
+    # 后伸只到 rim 最深处 + 0.25×眼宽 —— 原来按 bbox 后极算, 棱柱贯穿整个头 →
+    # 后脑勺被一起抠穿(用户实测)。眼窝只需要切前脸这一侧。
+    try:
+        _ry = [float(r[1]) for r in dl["rim_3d"] if r is not None]
+        _rim_back = max(_ry)          # y 越大越靠后
+    except Exception:
+        _rim_back = center.y + 0.25 * eye_w
+    PRISM_BACK_MM = (_rim_back - center.y) * 1000.0 + 0.25 * eye_w * 1000.0
     # ⑤ 眼区局部网格分辨率(中位边长, 用顶点在眼区内的边统计)
     ne = len(me.edges)
     ev = _np.empty(ne * 2, dtype=_np.int32)
@@ -929,6 +936,110 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
         if f.normal.y > RIM_BAND_FLIP_Y:
             _left += 1
     print(f"rebuild_rim_band {side}: 收尾定向(法线朝后) 翻正 {_fixall} 面, 复查残留 {_left}")
+    # ---- ⑦ 收尾清理(为后续 QR 准备): n-gon 三角化 / 重复顶点焊接 / 全部 smooth ----
+    def _eye_face(f):
+        c = f.calc_center_median()
+        return (c - cv).xz.length < 3.0 * EYE_AREA_R and c.y < Y_BACK_SPLIT
+    _ng = [f for f in bm.faces if _eye_face(f) and len(f.verts) > 4]
+    if _ng:
+        try:
+            bmesh.ops.triangulate(bm, faces=_ng, quad_method='BEAUTY', ngon_method='BEAUTY')
+            print(f"rebuild_rim_band {side}: n-gon 三角化 {len(_ng)} 面")
+        except Exception as _e:
+            print(f"rebuild_rim_band {side}: n-gon 三角化失败 {_e}")
+    # ---- ⑦b 长边细分: 缝合时内圈密/外圈疏 → 拉出 >3mm 长条(用户实测最长 9.29mm) ----
+    # 只改这段的三角化密度, 不动几何形状(QR 需要均匀细网格)
+    _lc = 0
+    _thresh = RIM_BAND_ARC_MM / 1000.0 * 1.2   # ≈0.62mm: 让窄条两侧密度接近(宽长比≤4)
+    for _round in range(4):
+        _lng = set()
+        for f in bm.faces:
+            c = f.calc_center_median()
+            if (c - cv).xz.length > 0.030 or c.y > Y_BACK_SPLIT:
+                continue
+            if float(np.sqrt((CP[:, 0] - c.x) ** 2 + (CP[:, 1] - c.z) ** 2).min()) > 0.008:
+                continue
+            for e in f.edges:
+                if e.calc_length() > _thresh:
+                    _lng.add(e)
+        if not _lng:
+            break
+        try:
+            bmesh.ops.subdivide_edges(bm, edges=list(_lng), cuts=1, use_grid_fill=False)
+            _lc += len(_lng)
+        except Exception as _e:
+            print(f"rebuild_rim_band {side}: 长边细分失败 {_e}")
+            break
+        bm.normal_update()
+        _ng2 = [f for f in bm.faces if len(f.verts) > 4 and (f.calc_center_median() - cv).xz.length < 0.030
+                and f.calc_center_median().y < Y_BACK_SPLIT
+                and float(np.sqrt((CP[:, 0] - f.calc_center_median().x) ** 2
+                                  + (CP[:, 1] - f.calc_center_median().z) ** 2).min()) <= 0.008]
+        if _ng2:
+            bmesh.ops.triangulate(bm, faces=_ng2, quad_method='BEAUTY', ngon_method='BEAUTY')
+    if _lc:
+        print(f"rebuild_rim_band {side}: 长边细分 {_lc} 条")
+    # ---- ⑦c 最终 n-gon 清扫: 迭代到 0(细分会顺带产生 n-gon; QR 输入不应含 >4 边面) ----
+    for _round in range(6):
+        _ng3 = [f for f in bm.faces if len(f.verts) > 4 and _eye_face(f)]
+        if not _ng3:
+            break
+        try:
+            bmesh.ops.triangulate(bm, faces=_ng3, quad_method='BEAUTY', ngon_method='BEAUTY')
+        except Exception as _e:
+            print(f"rebuild_rim_band {side}: 最终 n-gon 清扫失败 {_e}")
+            break
+    _ngleft = sum(1 for f in bm.faces if len(f.verts) > 4 and _eye_face(f))
+    print(f"rebuild_rim_band {side}: 最终 n-gon 残留 {_ngleft}")
+    # ---- ⑦d 二次定向: ⑦b/⑦c 的细分/三角化会新建面(新面绕序可能仍朝后) → 再扫一遍 ----
+    bm.normal_update()
+    _fix2 = 0
+    for f in bm.faces:
+        c = f.calc_center_median()
+        if (c - cv).xz.length > EYE_AREA_R or c.y > Y_BACK_SPLIT:
+            continue
+        if f.normal.y > RIM_BAND_FLIP_Y:
+            f.normal_flip()
+            _fix2 += 1
+    bm.normal_update()
+    _left2 = 0
+    for f in bm.faces:
+        c = f.calc_center_median()
+        if (c - cv).xz.length > EYE_AREA_R or c.y > Y_BACK_SPLIT:
+            continue
+        if f.normal.y > RIM_BAND_FLIP_Y:
+            _left2 += 1
+    print(f"rebuild_rim_band {side}: 细分后二次定向 翻正 {_fix2} 面, 残留 {_left2}")
+    # ---- ⑦e 退化面清除: 极短边/零面积面(QR 直接会出错的东西) ----
+    _de = [e for e in bm.edges if e.calc_length() < 0.00008
+           and (e.verts[0].co - cv).xz.length < 3.0 * EYE_AREA_R
+           and e.verts[0].co.y < Y_BACK_SPLIT
+           and (e.verts[1].co - cv).xz.length < 3.0 * EYE_AREA_R
+           and e.verts[1].co.y < Y_BACK_SPLIT]
+    if _de:
+        try:
+            bmesh.ops.dissolve_degenerate(bm, dist=0.00008, edges=_de)
+            print(f"rebuild_rim_band {side}: 退化边清除 {len(_de)} 条")
+        except Exception as _e:
+            print(f"rebuild_rim_band {side}: 退化边清除失败 {_e}")
+    _ev = [v for v in bm.verts if (v.co - cv).xz.length < 3.0 * EYE_AREA_R and v.co.y < Y_BACK_SPLIT]
+    if _ev:
+        try:
+            bmesh.ops.remove_doubles(bm, verts=_ev, dist=RIM_WELD_MM / 1000.0 * 0.5)
+        except Exception:
+            pass
+    bm.normal_update()
+    _smooth = 0
+    _nonquad = 0
+    for f in bm.faces:
+        if not _eye_face(f):
+            continue
+        if not f.smooth:
+            f.smooth = True
+            _smooth += 1
+        if len(f.verts) > 4:
+            _nonquad += 1
+    print(f"rebuild_rim_band {side}: 收尾清理 三角化n-gon后残留>4边 {_nonquad}, 补smooth {_smooth} 面")
     bm.to_mesh(mesh)
     bm.free()
     try:
