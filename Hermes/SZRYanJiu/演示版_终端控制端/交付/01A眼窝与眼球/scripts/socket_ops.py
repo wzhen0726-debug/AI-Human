@@ -517,24 +517,33 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
     cv = Vector((float(center[0]), float(center[1]), float(center[2])))
     cy = cv.y
     mesh = obj.data
+    bm_pre = bmesh.new()
+    bm_pre.from_mesh(mesh)          # 删面之前的快照(供取原 rim 边界)
     CP = np.array([[float(p[0]), float(p[1])] for p in poly], dtype=np.float64)   # 手描/光滑轮廓 XZ(mm? 否: 米)
     NP = len(CP)
-    # 轮廓每点沿 Y 打到原表面的深度(洞口处射线会穿透打到后脑 → 必须做合理性检查)
-    y_ray = cy - 0.080
-    CY = []
-    _ok = []
-    for (px, pz) in poly:
-        ok, loc, nor, idx = obj.ray_cast(Vector((float(px), y_ray, float(pz))), Vector((0.0, 1.0, 0.0)))
-        good = ok and abs(loc.y - cy) < 0.030
-        CY.append(loc.y if good else np.nan)
-        _ok.append(good)
-    CY = np.array(CY, dtype=np.float64)
-    _nbad = int(np.isnan(CY).sum())
-    if _nbad:
-        _idx = np.arange(len(CY))
-        _val = ~np.isnan(CY)
-        CY = np.interp(_idx, _idx[_val], CY[_val], period=len(CY))   # 无效点用邻居插值(闭环)
-    print(f"rebuild_rim_band {side}: 轮廓深度采样 无效 {_nbad}/{len(CY)}(穿透打到后脑等) → 已用邻居插值")
+    # 轮廓每点深度: 取最近表面点(closest_point_on_mesh)。不能用沿 Y 的 ray_cast ——
+    # 洞口范围内射线会穿透打到后脑, 判无效再插值就把 rim 深度抹平了(用户: "Y轴拉平, 眼眶变形")
+    # 深度不自己采样: 沿用【原 rim 边界】在相同角度上的 y (它就在表面上, 是真值) ——
+    # 自采样(ray_cast 会穿透 / closest_point 会取到深处内壁)都会改变 rim 的 3D 形态(用户: "变形")
+    _ob = [e for e in bm_pre.edges if len(e.link_faces) == 1
+           and (e.verts[0].co - cv).xz.length < 0.030 and e.verts[0].co.y < cy + 0.010]
+    _ovs = set()
+    for e in _ob:
+        _ovs.add(e.verts[0]); _ovs.add(e.verts[1])
+    if _ovs:
+        th = np.array([np.arctan2(v.co.z - cv.z, v.co.x - cv.x) for v in _ovs])
+        yy = np.array([v.co.y for v in _ovs])
+        o = np.argsort(th)
+        th = th[o]; yy = yy[o]
+        th = np.concatenate([th - 2 * np.pi, th, th + 2 * np.pi])
+        yy = np.concatenate([yy, yy, yy])
+        CY = np.interp(np.arctan2(np.array([p[1] for p in poly]) - cv.z,
+                                  np.array([p[0] for p in poly]) - cv.x), th, yy)
+        print(f"rebuild_rim_band {side}: 深度沿用原 rim 边界(角度插值), 原边界 {len(_ovs)} 点, "
+              f"y范围[{CY.min()*1000:.1f},{CY.max()*1000:.1f}]mm")
+    else:
+        CY = np.full(len(poly), cy)
+        print(f"rebuild_rim_band {side}: 未取到原 rim 边界 → 深度用眼中心 y 兜底")
 
     # ---- ① 删轮廓 W mm 内的皮肤面 ----
     bm = bmesh.new()
@@ -775,15 +784,20 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
             failed_k.append(k)
     # ---- ⑤ 逐面定向: 与共顶点的【非新建面】平均法线比对(避免整圈判据被污染) ----
     bm.faces.ensure_lookup_table()
-    # 全局朝外参考(兜底): 取带外皮肤面的平均法线
+    # 朝外基准 = 眼周【皮肤面】的多数法线(不能用共顶点邻面平均: 邻面本身不一致时会跟着错)
     gref = Vector((0.0, 0.0, 0.0))
-    for v in outer:
-        for nf in v.link_faces:
-            if nf not in new_faces:
-                gref += nf.normal
+    _nf_cnt = 0
+    for f in bm.faces:
+        if f in new_faces:
+            continue
+        c = f.calc_center_median()
+        if (c - cv).xz.length < 0.030 and c.y < cy + 0.010:
+            gref += f.normal
+            _nf_cnt += 1
     if gref.length < 1e-12:
         gref = Vector((0.0, -1.0, 0.0))
     gref.normalize()
+    _nflip = 0
     for f in new_faces:
         ref = Vector((0.0, 0.0, 0.0))
         for v in f.verts:
@@ -792,13 +806,21 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
                     ref += nf.normal
         if ref.length > 1e-12:
             ref = ref.normalized()
+            if f.normal.dot(ref) < 0:
+                ref = -ref         # 局部邻面与基准相反 → 按基准来
         else:
-            ref = gref          # 没有非新邻居 → 用全局朝外参考兜底(否则会留下反面)
+            ref = gref
         if f.normal.dot(ref) < 0:
             f.normal_flip()
+            _nflip += 1
         f.smooth = True
+    print(f"rebuild_rim_band {side}: 新面定向 基准={(_nf_cnt)}皮肤面, 翻转 {_nflip}/{len(new_faces)}")
     bm.to_mesh(mesh)
     bm.free()
+    try:
+        bm_pre.free()
+    except Exception:
+        pass
     mesh.update()
     if obj.mode != 'OBJECT':
         bpy.context.view_layer.objects.active = obj
