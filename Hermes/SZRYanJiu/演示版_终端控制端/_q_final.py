@@ -11,15 +11,9 @@ if bpy.context.mode!='OBJECT':
     bpy.context.view_layer.objects.active=head; bpy.ops.object.mode_set(mode='OBJECT')
 # 面朝向材质
 bm=bmesh.new(); bm.from_mesh(me); bm.faces.ensure_lookup_table(); bm.verts.ensure_lookup_table()
-vn={}
-for v in bm.verts:
-    n=Vector((0,0,0))
-    for f in v.link_faces: n+=f.normal
-    vn[v.index]=n.normalized() if n.length>1e-12 else Vector((0,-1,0))
+# 面朝向: 法线朝后(+Y) = 正视相机下看到的反面(红), 与 Blender 面朝向显示一致
 for f in bm.faces:
-    avg=Vector((0,0,0))
-    for v in f.verts: avg+=vn[v.index]
-    f.material_index = 1 if (avg.length>1e-12 and f.normal.dot(avg.normalized())<0) else 0
+    f.material_index = 1 if f.normal.y > 0.05 else 0
 bm.to_mesh(me); bm.free()
 for m,col in ((0,(0.25,0.45,1,1)),(1,(1,0.05,0.05,1))):
     if len(me.materials)<=m: me.materials.append(bpy.data.materials.new(f"FO{m}"))

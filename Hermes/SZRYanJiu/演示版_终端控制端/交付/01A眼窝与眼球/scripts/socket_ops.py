@@ -784,37 +784,37 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
             failed_k.append(k)
     # ---- ⑤ 逐面定向: 与共顶点的【非新建面】平均法线比对(避免整圈判据被污染) ----
     bm.faces.ensure_lookup_table()
-    # 朝外基准 = 眼周【皮肤面】的多数法线(不能用共顶点邻面平均: 邻面本身不一致时会跟着错)
+    bm.normal_update()   # 关键: 新建面的 f.normal 是惰性的, 不 update 会读到旧/零值 → 定向判据全部误判
+    # ---- ⑤ 定向: 用【眼周皮肤面的稳健多数法线】统一给新面定向 ----
+    # (先平均→只保留与平均同向的再平均 = 排除少数异向面; 绝不能写成 ref=-ref, 那等于不翻转)
+    _fl = [f.normal.copy() for f in bm.faces
+           if f not in new_faces
+           and (f.calc_center_median() - cv).xz.length < 0.030
+           and f.calc_center_median().y < cy + 0.010]
     gref = Vector((0.0, 0.0, 0.0))
-    _nf_cnt = 0
-    for f in bm.faces:
-        if f in new_faces:
-            continue
-        c = f.calc_center_median()
-        if (c - cv).xz.length < 0.030 and c.y < cy + 0.010:
-            gref += f.normal
-            _nf_cnt += 1
+    for n in _fl:
+        gref += n
+    if gref.length > 1e-12:
+        g0 = gref.normalized()
+        gref = Vector((0.0, 0.0, 0.0))
+        for n in _fl:
+            if n.dot(g0) > 0:
+                gref += n
     if gref.length < 1e-12:
         gref = Vector((0.0, -1.0, 0.0))
     gref.normalize()
     _nflip = 0
     for f in new_faces:
-        ref = Vector((0.0, 0.0, 0.0))
-        for v in f.verts:
-            for nf in v.link_faces:
-                if nf is not f and nf not in new_faces:
-                    ref += nf.normal
-        if ref.length > 1e-12:
-            ref = ref.normalized()
-            if f.normal.dot(ref) < 0:
-                ref = -ref         # 局部邻面与基准相反 → 按基准来
-        else:
-            ref = gref
-        if f.normal.dot(ref) < 0:
+        # 双重判据: ①与多数皮肤法线相反 ②法线朝后(+Y)=用户在面朝向显示里看到的红
+        if f.normal.dot(gref) < 0 or f.normal.y > 0.05:
             f.normal_flip()
             _nflip += 1
         f.smooth = True
-    print(f"rebuild_rim_band {side}: 新面定向 基准={(_nf_cnt)}皮肤面, 翻转 {_nflip}/{len(new_faces)}")
+    bm.normal_update()
+    # 复核(独立判据): 翻转后再查一遍朝后的面数
+    _still = sum(1 for f in new_faces if f.normal.y > 0.05)
+    print(f"rebuild_rim_band {side}: 新面定向 基准={len(_fl)}皮肤面 多数法线({gref.y:+.2f}), "
+          f"翻转 {_nflip}/{len(new_faces)}, 复查仍朝后 {_still}")
     bm.to_mesh(mesh)
     bm.free()
     try:
