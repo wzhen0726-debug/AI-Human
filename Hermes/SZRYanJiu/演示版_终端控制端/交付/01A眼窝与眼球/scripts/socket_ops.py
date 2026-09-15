@@ -790,7 +790,7 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
     _fl = [f.normal.copy() for f in bm.faces
            if f not in new_faces
            and (f.calc_center_median() - cv).xz.length < 0.030
-           and f.calc_center_median().y < cy + 0.010]
+           and f.calc_center_median().y < -0.020]
     gref = Vector((0.0, 0.0, 0.0))
     for n in _fl:
         gref += n
@@ -815,6 +815,27 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
     _still = sum(1 for f in new_faces if f.normal.y > 0.05)
     print(f"rebuild_rim_band {side}: 新面定向 基准={len(_fl)}皮肤面 多数法线({gref.y:+.2f}), "
           f"翻转 {_nflip}/{len(new_faces)}, 复查仍朝后 {_still}")
+    # ---- ⑥ 收尾定向(源头修): 眼区前表面里【与皮肤多数朝向相反】的面一律翻正 ——
+    #      包括本次编辑产生的和原网格自带的遗留反面(用户面朝向显示里会显示为红)
+    bm.normal_update()
+    _fixall = 0
+    for f in bm.faces:
+        c = f.calc_center_median()
+        if (c - cv).xz.length > 0.030 or c.y > -0.020:   # 只排除后脑(眼周皮肤在 -0.09~-0.13)
+            continue
+        # 判据与用户看到的一致: 正视相机下 法线朝后(+Y) = 面朝向显示里的红
+        if f.normal.y > RIM_BAND_FLIP_Y:
+            f.normal_flip()
+            _fixall += 1
+    bm.normal_update()
+    _left = 0
+    for f in bm.faces:
+        c = f.calc_center_median()
+        if (c - cv).xz.length > 0.030 or c.y > -0.020:
+            continue
+        if f.normal.y > RIM_BAND_FLIP_Y:
+            _left += 1
+    print(f"rebuild_rim_band {side}: 收尾定向(法线朝后) 翻正 {_fixall} 面, 复查残留 {_left}")
     bm.to_mesh(mesh)
     bm.free()
     try:

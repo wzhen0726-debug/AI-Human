@@ -114,6 +114,7 @@ RIM_PATCH_ENABLE = True
 RIM_BAND_ENABLE = True
 RIM_BAND_W_MM = 1.2
 RIM_BAND_VERT_CRIT = {"L": True, "R": False}  # R 外眼角是粗面区, 开这条会吃出大洞          # 沿轮廓向外删多宽的皮肤面
+RIM_BAND_FLIP_Y = 0.1        # 眼区前表面法线朝后超过此值 → 翻正(与面朝向显示一致)
 RIM_BAND_FINE_MM = 0.8       # 带区域内大于此的边先细分(防缝合面被拉长)
 RIM_BAND_ARC_MM = 0.5        # 带外缘边长上限(超过就细分)
 RIM_BAND_MAX_FACES = 12000    # 单次最多删多少面(安全闸)
