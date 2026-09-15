@@ -1182,8 +1182,9 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
                 sp3 = np.concatenate([[0.0], np.cumsum(_d3)[:-1]])
                 per3 = sp3[-1] + _d3[-1]
                 # 随动: 高斯窗与位移上限由【眼宽】推导(不再写死) —— 换模型自动适配
-                sig = 0.114 * eye_w          # ≈4.0mm @35mm 眼宽
-                cap = 0.023 * eye_w          # ≈0.8mm @35mm 眼宽
+                _eyew = float(CUR.get('eye_w', 0.035))   # ★ bug修: 此前是裸名 eye_w(NameError→整块被静默跳过, 从未执行!)
+                sig = 0.114 * _eyew          # ≈4.0mm @35mm 眼宽
+                cap = 0.0 * _eyew          # ★已停用: 环低通会破坏 strip(实测 0.35~0.8mm 均致 fold/穿插)
                 SX = np.zeros(n3); SY = np.zeros(n3); SZ = np.zeros(n3)
                 for i in range(n3):
                     ds = np.abs(sp3 - sp3[i]); ds = np.minimum(ds, per3 - ds)
@@ -1308,13 +1309,23 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
                     return t
                 import math as _math
                 t0 = _turns()
-                _tg = max(8.0, float(np.percentile(t0, 90)) * 1.4)
-                _cap4 = 0.8 * RIM_SKIN_EDGE_M
+                # 目标: 局部曲率半径 R_target = 0.07×眼宽(≈2.45mm@35mm)
+                # ★逐点阈值(不是全局): 每个点的允许转角 = 按其自身两侧步长算 → 步长密集处也不会残留紧弯
+                _Rt = 0.07 * float(CUR.get('eye_w', 0.035))
+                def _tgl():
+                    g = np.zeros(n4)
+                    for i2 in range(n4):
+                        a2 = bm.verts[ring4[(i2-1) % n4]].co; b2 = bm.verts[ring4[i2]].co; c2 = bm.verts[ring4[(i2+1) % n4]].co
+                        st = 0.5 * ((b2-a2).length + (c2-b2).length)
+                        g[i2] = np.degrees(2*np.arcsin(min(1.0, st/(2*_Rt))))
+                    return g
+                _cap4 = 1.2 * RIM_SKIN_EDGE_M
                 _org4 = {k: bm.verts[k].co.copy() for k in ring4}
                 _nfix = 0
-                for _it in range(40):
+                for _it in range(120):
                     t1 = _turns()
-                    hot = [i for i in range(n4) if t1[i] > _tg]
+                    gl = _tgl()
+                    hot = [i for i in range(n4) if t1[i] > gl[i]]
                     if not hot:
                         break
                     for i in hot:
@@ -1333,7 +1344,7 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
                         v.co = o + (v.co - o).normalized() * _cap4
                 bm.normal_update()
                 _t2 = _turns()
-                print(f"rebuild_rim_band {side}: 眼角圆化 目标{_tg:.1f}° 转角max {t0.max():.1f}°→{_t2.max():.1f}° 调整{_nfix}次 上限{_cap4*1000:.2f}mm")
+                print(f"rebuild_rim_band {side}: 眼角圆化 目标半径{_Rt*1000:.2f}mm 转角max {t0.max():.1f}°→{_t2.max():.1f}°(逐点阈值) 调整{_nfix}次 上限{_cap4*1000:.2f}mm")
     except Exception as _e:
         print(f"rebuild_rim_band {side}: 眼角圆化失败(已跳过) {_e}")
     bm.normal_update()
@@ -2014,9 +2025,31 @@ def make_eye_socket(obj, center, side):
     
     poly = load_eyelid_contour(side) if USE_EYELID_CONTOUR else None
     if poly is not None and RIM_CONTOUR_SMOOTH:
-        poly, _cdev = smooth_contour(poly)
-        print(f"make_eye_socket {side}: 轮廓光滑化({RIM_CONTOUR_RESAMPLE}点, 前{RIM_CONTOUR_HARMONICS}次谐波), "
-              f"与手描轮廓最大偏差 {_cdev:.3f}mm")
+        # ★自动谐波搜索(用户: "眼角曲率还需优化, 且要算法判断该修哪段"): 眼角"尖"的源头=手描线自身的角。
+        #   从配置 K 往下搜, 直到【轮廓自身最小局部曲率半径 >= R_target=0.07×眼宽】(XZ, -Y 视图口径)。
+        #   走"全带重建"的源头, 不动 strip → 不会引入 fold/穿插。
+        _Rt_c = 0.07 * float(CUR.get('eye_w', 0.035))
+        _k_try = int(RIM_CONTOUR_HARMONICS)
+        _k_floor = max(4, int(RIM_CONTOUR_HARMONICS) - 9)
+        _best = None
+        while _k_try >= _k_floor:
+            _p2, _dev2 = smooth_contour(poly, harm=_k_try)
+            _A = np.asarray(_p2, dtype=np.float64)
+            _m2 = len(_A)
+            _rmin2 = 1e9
+            for _i2 in range(_m2):
+                _a = _A[(_i2 - 4) % _m2]; _b = _A[_i2]; _c = _A[(_i2 + 4) % _m2]
+                _ab = np.linalg.norm(_b - _a); _bc = np.linalg.norm(_c - _b); _ca = np.linalg.norm(_a - _c)
+                _ar = abs((_b[0]-_a[0])*(_c[1]-_a[1]) - (_c[0]-_a[0])*(_b[1]-_a[1])) * 0.5
+                if _ar > 1e-12:
+                    _rmin2 = min(_rmin2, (_ab*_bc*_ca)/(4*_ar))
+            _best = (_k_try, _p2, _dev2, _rmin2)
+            if _rmin2 >= _Rt_c:
+                break
+            _k_try -= 1
+        _k_used, poly, _cdev, _rmin = _best
+        print(f"make_eye_socket {side}: 轮廓光滑化({RIM_CONTOUR_RESAMPLE}点, 谐波K={_k_used}(自动搜索), "
+              f"最小局部半径 {_rmin*1000:.2f}mm / 目标 {_Rt_c*1000:.2f}mm), 与手描轮廓最大偏差 {_cdev:.3f}mm")
     if poly is not None:
         poly = apply_local_inset(poly, center, side, RIM_LOCAL_INSET)
     cx, cy, cz = center.x, center.y, center.z
