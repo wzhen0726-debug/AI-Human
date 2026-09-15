@@ -1246,11 +1246,11 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
                     continue
                 if _math.degrees(_math.acos(max(-1.0, min(1.0, _n1.dot(_n2))))) >= _thr:
                     _vs.add(e.verts[0].index); _vs.add(e.verts[1].index)
-            _cap = 0.25 * RIM_SKIN_EDGE_M
+            _cap = 1.0 * RIM_SKIN_EDGE_M   # 可见量级(用户: 0.33mm 看不见 → 提高到 ~1.3mm 上限)
             if _vs:
                 bm.verts.index_update(); bm.verts.ensure_lookup_table()
                 _orig = {vi: bm.verts[vi].co.copy() for vi in _vs}
-                for _it in range(10):
+                for _it in range(24):
                     _new = {}
                     for vi in _vs:
                         v = bm.verts[vi]
@@ -1274,6 +1274,68 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
                 print(f"rebuild_rim_band {side}: 锐折痕软化 阈值{_thr:.0f}° 顶点{len(_vs)} 上限{_cap*1000:.2f}mm")
     except Exception as _e:
         print(f"rebuild_rim_band {side}: 锐折痕软化失败(已跳过) {_e}")
+    bm.normal_update()
+    # ---- ⑦n 眼角圆化(自适应, 两眼同规则): rim 环上"转角 > 目标"的顶点向两侧邻点中点收,
+    #      迭代到收敛 → 外眼角/内眼角的"锐尖"(用户圈出的角点结构)变圆润。
+    #      目标阈值 = 各眼自身转角分布的 p90×1.4(且≥8°); 单步/总位移都有上限(=0.8×皮肤边长)。
+    try:
+        _oe4 = [e for e in bm.edges if len(e.link_faces) == 1
+                and (e.verts[0].co - cv).xz.length < 0.05 and e.verts[0].co.y < Y_BACK_SPLIT]
+        _dg4 = {}
+        for e in _oe4:
+            a_, b_ = e.verts[0], e.verts[1]
+            _dg4.setdefault(a_.index, []).append(b_.index)
+            _dg4.setdefault(b_.index, []).append(a_.index)
+        _st4 = [k for k in _dg4 if len(_dg4[k]) == 2]
+        if len(_st4) > 40:
+            ring4 = [_st4[0]]; _pv, _cu = -1, _st4[0]
+            while True:
+                _cand = [n for n in _dg4[_cu] if n != _pv]
+                if not _cand or _cand[0] == ring4[0]:
+                    break
+                ring4.append(_cand[0]); _pv, _cu = _cu, _cand[0]
+            n4 = len(ring4)
+            if n4 > 40:
+                def _turns():
+                    t = np.zeros(n4)
+                    for i in range(n4):
+                        a1 = bm.verts[ring4[(i - 1) % n4]].co
+                        b1 = bm.verts[ring4[i]].co
+                        c1 = bm.verts[ring4[(i + 1) % n4]].co
+                        v1 = b1 - a1; v2 = c1 - b1
+                        if v1.length > 1e-9 and v2.length > 1e-9:
+                            t[i] = _math.degrees(_math.acos(max(-1.0, min(1.0, v1.normalized().dot(v2.normalized())))))
+                    return t
+                import math as _math
+                t0 = _turns()
+                _tg = max(8.0, float(np.percentile(t0, 90)) * 1.4)
+                _cap4 = 0.8 * RIM_SKIN_EDGE_M
+                _org4 = {k: bm.verts[k].co.copy() for k in ring4}
+                _nfix = 0
+                for _it in range(40):
+                    t1 = _turns()
+                    hot = [i for i in range(n4) if t1[i] > _tg]
+                    if not hot:
+                        break
+                    for i in hot:
+                        v = bm.verts[ring4[i]]
+                        a1 = bm.verts[ring4[(i - 1) % n4]].co
+                        c1 = bm.verts[ring4[(i + 1) % n4]].co
+                        mid = (a1 + c1) * 0.5
+                        step = (mid - v.co) * 0.5
+                        if step.length > _cap4 * 0.25:
+                            step = step.normalized() * _cap4 * 0.25
+                        v.co = v.co + step
+                        _nfix += 1
+                for k in ring4:
+                    v = bm.verts[k]; o = _org4[k]
+                    if (v.co - o).length > _cap4:
+                        v.co = o + (v.co - o).normalized() * _cap4
+                bm.normal_update()
+                _t2 = _turns()
+                print(f"rebuild_rim_band {side}: 眼角圆化 目标{_tg:.1f}° 转角max {t0.max():.1f}°→{_t2.max():.1f}° 调整{_nfix}次 上限{_cap4*1000:.2f}mm")
+    except Exception as _e:
+        print(f"rebuild_rim_band {side}: 眼角圆化失败(已跳过) {_e}")
     bm.normal_update()
     # ---- ⑦g 折叠面翻转: 面法线与邻面平均相反(=用户看到的红/黑错乱面) ----
     bm.normal_update()
