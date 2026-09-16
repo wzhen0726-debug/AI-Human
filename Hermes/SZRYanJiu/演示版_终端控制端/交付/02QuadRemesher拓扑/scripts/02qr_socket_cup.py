@@ -35,12 +35,16 @@ if eyeballs:
         co = np.empty(len(o.data.vertices) * 3)
         o.data.vertices.foreach_get("co", co)
         co = co.reshape(-1, 3) @ mw[:3, :3].T + mw[:3, 3]
-        ctr = co.mean(axis=0)
-        # v2: 用【最大半径】(含角膜凸起)而非平均 → 碗面把整个眼球+角膜都包住
-        rad = float(np.linalg.norm(co - ctr, axis=1).max())
+        # v6(2026-09-16): 不能用顶点均值当球心 —— 角膜侧顶点更密, 均值被带偏,
+        #   半径谱因此虚胖成 6.9~18.7mm(v5 用 max 的坑就源于此)。
+        #   规范球体估计: 球心=包围盒中心; 半径=到该中心距离的 p90(含角膜凸起)。
+        ctr = (co.min(axis=0) + co.max(axis=0)) * 0.5
+        rr = np.linalg.norm(co - ctr, axis=1)
+        rad = float(np.percentile(rr, 90))
         s = "L" if ctr[0] < 0 else "R"
         BALL[s] = (Vector(tuple(ctr)), rad)
-        print(f"眼球[{s}]: 球心({ctr[0]*1000:.1f},{ctr[1]*1000:.1f},{ctr[2]*1000:.1f})mm 半径{rad*1000:.2f}mm")
+        print(f"眼球[{s}]: 球心(bbox中心)({ctr[0]*1000:.1f},{ctr[1]*1000:.1f},{ctr[2]*1000:.1f})mm "
+              f"半径(p90)={rad*1000:.2f}mm 半径谱[{rr.min()*1000:.1f}~{rr.max()*1000:.1f}]")
 CLR = 0.0015   # 碗面与球面的间隙(眼球后极不穿碗底)
 
 # ---- ② 打开 QR 低模, 对每个眼孔建碗 ----
