@@ -408,6 +408,18 @@ def clean_output(target=None):
                 try: os.remove(fp); n += 1
                 except Exception: pass
         print(f"  {G}✓ 清理 {k} (输出/ + 交付生成物){W}")
+    # ③ 交付里的 Blender 自动备份(.blend1)与标记点历史备份
+    sweep_dirs = [os.path.join(DELIVERY, "01A眼窝与眼球", "models"),
+                  os.path.join(DELIVERY, "02QuadRemesher拓扑"),
+                  os.path.join(DELIVERY, "03自动UV"),
+                  os.path.join(DELIVERY, "04纹理烘焙"),
+                  os.path.join(DELIVERY, "05骨骼绑定", "ARP新版测试_20260831")]
+    import glob as _glob
+    for d in sweep_dirs:
+        for pat in ("*.blend1", "01A_markers_eyelid_备份_*.blend"):
+            for fp in _glob.glob(os.path.join(d, pat)):
+                try: os.remove(fp); n += 1
+                except Exception: pass
     print(f"\n{G}★ 清理完成, 共删除 {n} 项{W}")
     show_hint()
 
