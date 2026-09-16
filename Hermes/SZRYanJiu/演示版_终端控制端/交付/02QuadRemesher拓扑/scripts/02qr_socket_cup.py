@@ -258,18 +258,18 @@ for side in ("L", "R"):
     # 修复: 收极点前对末三圈做焊接(0.35mm) → 密集点合并, 扇骨与环带均匀; 仍是"环线逐圈收成一个点".
     try:
         _weld_verts = []
-        for _rv in _rings_built:
+        for _rv in _rings_built[-3:]:
             _weld_verts.extend(_rv)
         _n0 = len(_weld_verts)
-        bmesh.ops.remove_doubles(bm, verts=_weld_verts, dist=0.00065)  # 0.65mm: 全部碗环(rim边界不动). 末环34点→19点, 扇骨比<=3; 外圈密集点同步合并
+        bmesh.ops.remove_doubles(bm, verts=_weld_verts, dist=0.00065)  # 0.65mm, 仅末3圈: 角部外圈保持QR干净原样(全环焊会在角部造出新极点=用户截图)
         last_ring = [v for v in last_ring if v.is_valid]
         _seen = set(); _lr = []
         for v in last_ring:
             if v not in _seen:
                 _seen.add(v); _lr.append(v)
         last_ring = _lr
-        _n1 = sum(len([v for v in _rv if v.is_valid]) for _rv in _rings_built)
-        print(f"[{side}] 环焊接(修尖刺): 全环 {_n0}→{_n1} 顶点, 末环 {len(last_ring)} 点", flush=True)
+        _n1 = sum(len([v for v in _rv if v.is_valid]) for _rv in _rings_built[-3:])
+        print(f"[{side}] 深部焊接(修尖刺): 末3圈 {_n0}→{_n1} 顶点, 末环 {len(last_ring)} 点", flush=True)
     except Exception as _e:
         print(f"[{side}] 深部焊接跳过: {_e}", flush=True)
 
