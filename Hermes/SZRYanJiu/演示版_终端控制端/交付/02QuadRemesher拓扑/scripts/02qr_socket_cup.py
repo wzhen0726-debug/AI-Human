@@ -18,9 +18,9 @@ print = functools.partial(print, flush=True)   # 日志实时可见(定位卡点
 from mathutils import Vector
 
 D = r"E:/WangZhen_Project/AI/ShuZiRen/Hermes/SZRYanJiu/演示版_终端控制端"
-QR_BLEND = os.path.join(D, "02QR拓扑", "输出", "02_qr_150k.blend")
-EYE_BLEND = os.path.join(D, "01a眼窝眼球", "输出", "01_2_eyeball_placed.blend")
-OUT = os.path.join(D, "02QR拓扑", "输出", "02_qr_150k_socket.blend")
+QR_BLEND = os.path.join(D, "交付", "02QuadRemesher拓扑", "_中间", "02_qr_150k.blend")
+EYE_BLEND = os.path.join(D, "交付", "01A眼窝与眼球", "models", "01_2_eyeball_placed.blend")
+OUT = os.path.join(D, "交付", "02QuadRemesher拓扑", "02_qr_150k_socket.blend")
 J = json.load(open(os.path.join(D, "交付", "01A眼窝与眼球", "screenshots", "3ddfa", "eyelid_contour_manual.json"), encoding="utf-8"))
 
 # ---- ① 从 01_2 拿真实眼球的球心/半径 ----

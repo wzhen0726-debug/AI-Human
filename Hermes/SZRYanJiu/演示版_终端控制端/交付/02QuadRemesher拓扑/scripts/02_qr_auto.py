@@ -3,7 +3,7 @@ import bpy, os, sys, subprocess, tempfile, time, math
 DELIVERY = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端\交付"
 # 2026-09-09 用户明确: 测试阶段产物权威位置是 02QR拓扑/输出/(GUI核验处), 不是交付/.
 # 交付/ 是流程定稿后才整理的位置; 测试期所有QR产物直接写到 02QR拓扑/输出/.
-OUT_02 = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端\02QR拓扑\输出"
+OUT_02 = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端\交付\02QuadRemesher拓扑"
 os.makedirs(OUT_02, exist_ok=True)
 # 2026-09-16 修复: WORK_01A 定义丢失导致 NameError (与 ⑦h 的 eye_w 同类: 引用与定义脱节)
 WORK_01A = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端\01a眼窝眼球\输出"
@@ -29,13 +29,14 @@ print(f"Engine: {ENGINE}")
 print(f"Engine exists: {os.path.exists(ENGINE)}")
 
 # 1. 打开高模(01a眼窝+材质分区版; 2026-09-08 用户方案: 眼窝独立材质, QR只勾"使用材质"引导)
-blend_path = os.path.join(WORK_01A, "01_1_eye_socket_qr.blend")
+blend_path = os.path.join(r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端\交付\01A眼窝与眼球\models\_中间", "01_1_eye_socket_qr.blend")
 print(f"\n1. Loading: {blend_path}")
 bpy.ops.wm.open_mainfile(filepath=blend_path)
 
 # 1.5 另存QR前高模分区检查副本到输出目录(2026-09-09 用户要求: 输出目录需含高模眼窝分区检查文件)
 #     这是QR的输入高模(带EyeSocket分区), 供用户核验"送进QR的分区对不对".
-hi_check = os.path.join(OUT_02, "02QR输入_眼窝材质分区_高模.blend")
+os.makedirs(os.path.join(OUT_02, "_中间"), exist_ok=True)
+hi_check = os.path.join(OUT_02, "_中间", "02QR输入_眼窝材质分区_高模.blend")
 bpy.ops.wm.save_as_mainfile(filepath=hi_check)
 print(f"1.5 高模分区检查副本: {hi_check}")
 # 另存后重新打开原始高模, 保证后续在正确上下文操作(save_as会切换当前文件路径)
@@ -360,7 +361,7 @@ else:
 #     这是QR的真实产物, 不是按rim重新赋材质(那等于自证, 看不出QR行为).
 import collections as _cc
 _nmat_raw = len(qr_obj.data.materials)
-check_blend = os.path.join(OUT_02, "02_qr_150k_材质分区检查.blend")
+check_blend = os.path.join(OUT_02, "_中间", "02_qr_150k_材质分区检查.blend")
 if _nmat_raw > 1:
     bpy.ops.wm.save_as_mainfile(filepath=check_blend)
     _mi_chk = [0] * len(qr_obj.data.polygons)
@@ -390,7 +391,7 @@ else:
     print(f"   材质槽={_nmat}(QR未保留分区, 无需合并)")
 
 # 9. 保存主产物(单材质, 供下游03/04)
-output_blend = os.path.join(OUT_02, "02_qr_150k.blend")
+output_blend = os.path.join(OUT_02, "_中间", "02_qr_150k.blend")
 output_fbx = os.path.join(OUT_02, "02_qr_150k.fbx")
 bpy.ops.wm.save_as_mainfile(filepath=output_blend)
 print(f"9. Saved: {output_blend}")

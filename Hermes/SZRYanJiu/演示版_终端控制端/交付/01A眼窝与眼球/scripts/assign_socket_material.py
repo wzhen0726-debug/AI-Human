@@ -21,8 +21,9 @@ DELIVERY = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端�
 # 测试阶段产物位置(用户约定 2026-09-09: 测试期产物写各stage的 输出/, 交付/ 只在定稿后整理)
 WORK = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端\01a眼窝眼球\输出"
 os.makedirs(WORK, exist_ok=True)
-HI = os.path.join(WORK, "01_1_eye_socket.blend")
-OUT = os.path.join(WORK, "01_1_eye_socket_qr.blend")
+HI = os.path.join(DELIVERY, "01A眼窝与眼球", "models", "01_1_eye_socket.blend")
+OUT = os.path.join(DELIVERY, "01A眼窝与眼球", "models", "_中间", "01_1_eye_socket_qr.blend")
+os.makedirs(os.path.dirname(OUT), exist_ok=True)
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.wm.open_mainfile(filepath=HI)
