@@ -190,8 +190,10 @@ for side in ("L", "R"):
         last_ring = new_ring
     # ---- ③ 最内圈用单 n-gon 封底 ----
     try:
-        _f2 = bm.faces.new(last_ring); _f2[_tag] = 1; _new_faces.append(_f2); made += 1
-        print(f"[{side}] 底部 n-gon 盖 {len(last_ring)} 边")
+        # ★封盖必须跟随本侧种子绕序(此前用原始 last_ring 顺序, L 蒙对/R 翻 → 用户看到红盖)
+        _cap = list(last_ring) if not _reverse_order else list(reversed(last_ring))
+        _f2 = bm.faces.new(_cap); _f2[_tag] = 1; _new_faces.append(_f2); made += 1
+        print(f"[{side}] 底部 n-gon 盖 {len(last_ring)} 边 (绕序{'反转' if _reverse_order else '常规'})")
     except Exception as _e:
         print(f"[{side}] n-gon 盖失败: {_e}")
     bm.normal_update()
