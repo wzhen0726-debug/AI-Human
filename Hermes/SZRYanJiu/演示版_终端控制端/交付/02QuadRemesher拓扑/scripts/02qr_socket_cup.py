@@ -50,9 +50,9 @@ bm.verts.ensure_lookup_table(); bm.edges.ensure_lookup_table(); bm.faces.ensure_
 # 碗面 tag 层(供自检/下游识别: 1=QR后新建的碗面)
 _tag = bm.faces.layers.int.new("qrbowl")
 
-# 内收圈比例(从边界往内): 0.86 → 0.68 → 0.42, 最后一圈用单 n-gon 封底
+# 内收圈比例(从边界往内, 8 圈 = 对齐旧版高模碗的 8 圈过渡): 单圈跨度小 → 剖面圆顺, 不成'一条槽'
 # (旧版 make_eye_cup 验证: 单极点三角扇有放射条纹, n-gon 盖干净; 碗底被眼球挡住, 平整度不重要)
-SCALES = [0.86, 0.68, 0.42, 0.15]   # 0.15 小内圈保证平底盖尽量贴近球后极深度(眼球后极+间隙)
+SCALES = [0.92, 0.84, 0.75, 0.65, 0.54, 0.42, 0.29, 0.15]   # 0.15 小内圈保证平底盖尽量贴近球后极深度(眼球后极+间隙)
 
 for side in ("L", "R"):
     c3 = Vector(tuple(float(x) for x in J[side]['center']))
@@ -90,6 +90,7 @@ for side in ("L", "R"):
     CAP_N = M            # 最内圈点数
     last_ring = ring_v
     made = 0
+    _new_faces = []
     for si, s in enumerate(SCALES, start=1):
         new_ring = []
         for (r, th) in polar:
@@ -104,32 +105,35 @@ for side in ("L", "R"):
             a = last_ring[i]; b = last_ring[(i + 1) % len(last_ring)]
             c = new_ring[(i + 1) % len(new_ring)]; dv = new_ring[i]
             try:
-                bm.faces.new((a, b, c, dv)); made += 1
+                _nf = bm.faces.new((a, b, c, dv)); _nf[_tag] = 1; _new_faces.append(_nf); made += 1
             except Exception:
                 try:
-                    bm.faces.new((a, c, b, dv)); made += 1
+                    _nf = bm.faces.new((a, c, b, dv)); _nf[_tag] = 1; _new_faces.append(_nf); made += 1
                 except Exception:
                     pass
         last_ring = new_ring
     # ---- ③ 最内圈用单 n-gon 封底 ----
     try:
-        _f2 = bm.faces.new(last_ring); _f2[_tag] = 1; made += 1
+        _f2 = bm.faces.new(last_ring); _f2[_tag] = 1; _new_faces.append(_f2); made += 1
         print(f"[{side}] 底部 n-gon 盖 {len(last_ring)} 边")
     except Exception as _e:
         print(f"[{side}] n-gon 盖失败: {_e}")
-    print(f"[{side}] 新建面 {made}")
+    # ---- 只对本次新建的碗面定向(凹面: 法线应指向眼球中心); 引用此刻有效 ----
+    _ball_c = Vector((bx, yc, bz))
+    _fx = 0
+    for _f in _new_faces:
+        try:
+            _n = _f.normal
+            _to_ball = _ball_c - _f.calc_center_median()
+            if _n.length > 1e-12 and _to_ball.length > 1e-9 and _n.dot(_to_ball) < 0:
+                _f.normal_flip(); _fx += 1
+        except ReferenceError:
+            pass
     bm.normal_update()
-    # 面定向: 碗面应朝向 -Y(脸前) 一侧 → 用法线检查+翻转
-    for f in bm.faces:
-        cen = f.calc_center_median()
-        if (cen - c3).xz.length > 0.030 or cen.y > yc + R + CLR + 0.005:
-            continue
-        if f.normal.length > 1e-9 and f.normal.y > 0.0:
-            f.normal_flip()
-    bm.normal_update()
+    print(f"[{side}] 新建面 {made} (定向翻转 {_fx})")
 
 # ---- 收尾: 关掉碗与孔环交界处残余的开放边(建面时个别quad异常被跳过) ----
-bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+# ❌禁止全局 recalc_face_normals: 按连通岛整体重定向 → 会把腿等区域翻掉(实测245面翻转, 用户截图报过)
 _oe_left = [e for e in bm.edges if len(e.link_faces) == 1]
 if _oe_left:
     try:
