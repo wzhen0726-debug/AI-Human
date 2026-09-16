@@ -252,17 +252,34 @@ for side in ("L", "R"):
         last_ring = new_ring
     # ---- ③ 最内圈用单 n-gon 封底 ----
 
+    # ---- 2026-09-16 修复极点尖刺(用户报: 下睑/碗底放射状尖面) ----
+    # 根因(实测): 深部环等比缩小(0.90→0.15)会继承 rim 的局部密度不均 → 密集点被缩到 ~0.2mm,
+    # 与 3~5mm 的扇骨/环带边构成 15:1 细长面(用户所见的"放射状尖刺"). QR输出本身干净(仅1个>5的面).
+    # 修复: 收极点前对末三圈做焊接(0.35mm) → 密集点合并, 扇骨与环带均匀; 仍是"环线逐圈收成一个点".
+    try:
+        _weld_verts = []
+        for _rv in _rings_built:
+            _weld_verts.extend(_rv)
+        _n0 = len(_weld_verts)
+        bmesh.ops.remove_doubles(bm, verts=_weld_verts, dist=0.00065)  # 0.65mm: 全部碗环(rim边界不动). 末环34点→19点, 扇骨比<=3; 外圈密集点同步合并
+        last_ring = [v for v in last_ring if v.is_valid]
+        _seen = set(); _lr = []
+        for v in last_ring:
+            if v not in _seen:
+                _seen.add(v); _lr.append(v)
+        last_ring = _lr
+        _n1 = sum(len([v for v in _rv if v.is_valid]) for _rv in _rings_built)
+        print(f"[{side}] 环焊接(修尖刺): 全环 {_n0}→{_n1} 顶点, 末环 {len(last_ring)} 点", flush=True)
+    except Exception as _e:
+        print(f"[{side}] 深部焊接跳过: {_e}", flush=True)
+
     # ---- 极点收口(用户: "最后成为一个点"): 单顶点 + 三角扇 ----
     try:
         _px = float(np.mean([v.co.x for v in last_ring]))
         _pz = float(np.mean([v.co.z for v in last_ring]))
-        _py = None
-        if side in REF_BVH:
-            _hit = REF_BVH[side].ray_cast(Vector((_px, c3.y - 0.060, _pz)), Vector((0.0, 1.0, 0.0)))
-            if _hit and _hit[0] is not None:
-                _py = float(_hit[0][1])
-        if _py is None:
-            _py = yc + (R + CLR)
+        # 2026-09-16 修尖刺: 极点y必须与末环连续. 参考碗中心射线(r≈0)非单调(实测r=2mm处-87.6, r=0处回弹-82.9),
+        # 直接用会造出朝前4.7mm的圆锥尖(用户截图报的'放射状尖刺'). 改为末环平面+0.2mm微凸, 圆滑收口.
+        _py = float(np.mean([v.co.y for v in last_ring])) + 0.0002
         _pole = bm.verts.new(Vector((_px, _py, _pz)))
         bm.verts.ensure_lookup_table()
         _nf = 0
