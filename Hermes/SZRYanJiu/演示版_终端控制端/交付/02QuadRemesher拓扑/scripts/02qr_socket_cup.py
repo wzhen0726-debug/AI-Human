@@ -84,7 +84,7 @@ _tag = bm.faces.layers.int.new("qrbowl")
 
 # 内收圈比例(从边界往内, 8 圈 = 对齐旧版高模碗的 8 圈过渡): 单圈跨度小 → 剖面圆顺, 不成'一条槽'
 # (旧版 make_eye_cup 验证: 单极点三角扇有放射条纹, n-gon 盖干净; 碗底被眼球挡住, 平整度不重要)
-SCALES = [0.92, 0.84, 0.75, 0.65, 0.54, 0.42, 0.29, 0.15]   # 0.15 小内圈保证平底盖尽量贴近球后极深度(眼球后极+间隙)
+# (SCALES 由 _SCALES 取代, 见下)
 
 for side in ("L", "R"):
     c3 = Vector(tuple(float(x) for x in J[side]['center']))
@@ -148,18 +148,17 @@ for side in ("L", "R"):
     # 等宽度偏移: 每圈沿径向内缩固定量 d_k = (k/n)*r_min (r_min=边界最小极径, 随动)
     # 修复用户报'一条特别长的薄环': 等比缩放在长轴方向环带过宽、短轴方向成薄片。
     _r_min = max(1e-4, min(r for (r, th) in polar))
-    _NB = 6
-    _offsets = [_r_min * (k / _NB) for k in range(1, _NB + 1)]
-    _floor = 0.10 * _r_min
+    # v8(用户: "眼窝内的都是环线, 随rim环逐渐变小…最后成为一个点"):
+    #   等比缩小保持 rim 形状轮廓逐圈变小 → 末环 0.15 → 极点收口(不再用 n-gon 平盖 '花生仁')
+    _SCALES = [0.90, 0.80, 0.70, 0.59, 0.48, 0.37, 0.26, 0.15]
+    _NB = len(_SCALES)
     last_ring = ring_v
     made = 0
     _new_faces = []
-    for si, d_k in enumerate(_offsets, start=1):
+    for si, s_k in enumerate(_SCALES, start=1):
         new_ring = []
-        # (圆形化过渡已回退: 固定角度版产生 sliver; 角度均匀化版与环点序冲突产生扭曲。
-        #  深层"狭长"是否需处理, 交给用户看渲染后决定; 当前用等宽偏移保持拓扑干净)
         for (r, th) in polar:
-            r2 = max(r - d_k, _floor)
+            r2 = max(r * s_k, 0.001)
             x2 = bx + r2 * math.cos(th)
             z2 = bz + r2 * math.sin(th)
             # 深度: 优先从高模旧碗面射线采样(用户要求的'之前的形状'); 回退=同心球+间隙
@@ -189,13 +188,30 @@ for side in ("L", "R"):
                     pass
         last_ring = new_ring
     # ---- ③ 最内圈用单 n-gon 封底 ----
+    # ---- 极点收口(用户: "最后成为一个点"): 单顶点 + 三角扇 ----
     try:
-        # ★封盖必须跟随本侧种子绕序(此前用原始 last_ring 顺序, L 蒙对/R 翻 → 用户看到红盖)
-        _cap = list(last_ring) if not _reverse_order else list(reversed(last_ring))
-        _f2 = bm.faces.new(_cap); _f2[_tag] = 1; _new_faces.append(_f2); made += 1
-        print(f"[{side}] 底部 n-gon 盖 {len(last_ring)} 边 (绕序{'反转' if _reverse_order else '常规'})")
+        _px = float(np.mean([v.co.x for v in last_ring]))
+        _pz = float(np.mean([v.co.z for v in last_ring]))
+        _py = None
+        if side in REF_BVH:
+            _hit = REF_BVH[side].ray_cast(Vector((_px, c3.y - 0.060, _pz)), Vector((0.0, 1.0, 0.0)))
+            if _hit and _hit[0] is not None:
+                _py = float(_hit[0][1])
+        if _py is None:
+            _py = yc + (R + CLR)
+        _pole = bm.verts.new(Vector((_px, _py, _pz)))
+        bm.verts.ensure_lookup_table()
+        _nf = 0
+        for i in range(len(last_ring)):
+            a = last_ring[i]; b = last_ring[(i + 1) % len(last_ring)]
+            tri = (a, b, _pole) if not _reverse_order else (b, a, _pole)
+            try:
+                _f3 = bm.faces.new(tri); _f3[_tag] = 1; made += 1; _nf += 1
+            except Exception:
+                pass
+        print(f"[{side}] 极点收口: 极点({_px*1000:.1f},{_py*1000:.1f},{_pz*1000:.1f}) 扇形三角 {_nf} 个")
     except Exception as _e:
-        print(f"[{side}] n-gon 盖失败: {_e}")
+        print(f"[{side}] 极点收口失败: {_e}")
     bm.normal_update()
     print(f"[{side}] 新建面 {made} (种子绕序{'反转' if _reverse_order else '常规'})")
 
