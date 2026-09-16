@@ -13,15 +13,20 @@ print("=== Step 4: Bake 4K (修复贴图) ===")
 
 # 加载低模(UV已展开)
 bpy.ops.wm.open_mainfile(filepath=UV_BLEND)
-low_poly = [o for o in bpy.data.objects if o.type == 'MESH'][0]
+# 2026-09-16: 文件里现在含眼球(02起全程连贯), 不能取[0]; 低模=最大网格
+low_poly = max([o for o in bpy.data.objects if o.type == 'MESH'], key=lambda o: len(o.data.vertices))
 print(f"低模: {low_poly.name}, {len(low_poly.data.polygons)}面")
 
 # 导入高模
 with bpy.data.libraries.load(HIGH_POLY) as (data_from, data_to):
     data_to.objects = data_from.objects
+_loaded = []
 for obj in data_to.objects:
-    bpy.context.collection.objects.link(obj)
-high_poly = [o for o in bpy.data.objects if o.type == 'MESH' and o != low_poly][0]
+    if obj is not None and obj.type == 'MESH':
+        bpy.context.collection.objects.link(obj)
+        _loaded.append(obj)
+# 2026-09-16: 从"新载入的"里取最大=高模(避免多物体时选错)
+high_poly = max(_loaded, key=lambda o: len(o.data.vertices))
 
 # 对齐安全检查 (08-05新增): 低模经FBX往返可能带变换, 与高模错位会导致烘焙整体偏移
 # 判定: 世界bbox中心偏差>5mm 或 尺寸偏差>1% → 立即报错, 不静默产出废贴图
@@ -152,8 +157,11 @@ bpy.data.objects.remove(high_poly, do_unlink=True)
 
 # 导出FBX
 fbx_path = os.path.join(OUT_04, "05_for_mixamo.fbx")
+# 2026-09-16: 导出含眼球(全场景剩余网格: 低模+眼球; 高模已删)
 bpy.ops.object.select_all(action='DESELECT')
-low_poly.select_set(True)
+for o in bpy.data.objects:
+    if o.type == 'MESH':
+        o.select_set(True)
 bpy.context.view_layer.objects.active = low_poly
 bpy.ops.export_scene.fbx(
     filepath=fbx_path, use_selection=True, use_mesh_modifiers=False,

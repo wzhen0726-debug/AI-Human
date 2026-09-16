@@ -295,5 +295,21 @@ bm.to_mesh(me); bm.free()
 me.update()
 for p in me.polygons:
     p.use_smooth = True
+# ---- v19(用户: 眼球要在02输出中出现, 后续UV/烘焙/绑定/导出全程连贯) ----
+# 把01_2里的眼球对象(Eye002_L/R)并入本文件(保持世界位置; 只并入眼球, 不带高模)
+try:
+    _existing = [o for o in bpy.data.objects if o.name.startswith('Eye002')]
+    if not _existing:
+        with bpy.data.libraries.load(EYE_BLEND) as (_src, _dst):
+            _dst.objects = [n for n in _src.objects if n.startswith('Eye002')]
+        _eyes = [o for o in _dst.objects if o is not None]
+        for _o in _eyes:
+            bpy.context.scene.collection.objects.link(_o)
+        print(f"眼球并入: {[o.name for o in _eyes]}")
+    else:
+        print(f"眼球已存在, 跳过: {[o.name for o in _existing]}")
+except Exception as _e:
+    print(f"眼球并入失败: {_e}")
+
 bpy.ops.wm.save_as_mainfile(filepath=OUT)
 print("SAVED:", OUT)
