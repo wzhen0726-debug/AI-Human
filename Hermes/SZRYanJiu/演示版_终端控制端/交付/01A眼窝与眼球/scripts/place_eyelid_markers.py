@@ -47,21 +47,25 @@ COL_CURVE   = (1.0, 1.0, 1.0, 1.0)
 
 
 def load_template_contour():
-    """模板源: 优先用户手调轮廓(保成果+分辨率高), 回退3DDFA原始."""
-    manual = EYELID_CONTOUR_JSON          # eyelid_contour_manual.json
-    ddfa = EYELID_CONTOUR_3DDFA_JSON      # eyelid_contour.json
-    if os.path.exists(manual):
+    """模板源: 默认=3DDFA自动检测轮廓(真实半自动起点, 打开需人工微调).
+    2026-09-16 用户要求: 不得默认用手调轮廓当模板(否则一打开就'完美贴合'=假半自动, 看着就是死参数).
+    需要复用手调成果时, 显式设环境变量 EYELID_TEMPLATE_SRC=manual 才用手调轮廓."""
+    import os as _os
+    src_pref = (_os.environ.get("EYELID_TEMPLATE_SRC") or "auto").strip().lower()
+    manual = EYELID_CONTOUR_JSON          # eyelid_contour_manual.json (手调)
+    ddfa = EYELID_CONTOUR_3DDFA_JSON      # eyelid_contour.json (3DDFA自动)
+    if src_pref == "manual" and os.path.exists(manual):
         try:
             d = json.load(open(manual, encoding="utf-8"))
             rim = [r for r in d['R']["rim_3d"] if r is not None]
             if len(rim) >= N_PTS:
-                print(f"模板源: 用户手调轮廓 {os.path.basename(manual)} ({len(rim)}点) — 重跑不丢人工成果")
+                print(f"模板源: [显式指定] 用户手调轮廓 {os.path.basename(manual)} ({len(rim)}点)")
                 return np.array(rim, dtype=np.float64)
         except Exception as e:
             print(f"手调轮廓读取失败({e}), 回退3DDFA")
     d = json.load(open(ddfa, encoding="utf-8"))
     rim = [r for r in d['R']["rim_3d"] if r is not None]
-    print(f"模板源: 3DDFA原始轮廓 {os.path.basename(ddfa)} ({len(rim)}点)")
+    print(f"模板源: 3DDFA自动检测轮廓 {os.path.basename(ddfa)} ({len(rim)}点) — 真实半自动起点, 需人工微调")
     return np.array(rim, dtype=np.float64)
 
 
