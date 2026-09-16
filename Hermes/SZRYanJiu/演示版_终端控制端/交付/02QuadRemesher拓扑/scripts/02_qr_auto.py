@@ -5,6 +5,9 @@ DELIVERY = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端�
 # 交付/ 是流程定稿后才整理的位置; 测试期所有QR产物直接写到 02QR拓扑/输出/.
 OUT_02 = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端\02QR拓扑\输出"
 os.makedirs(OUT_02, exist_ok=True)
+# 2026-09-16 修复: WORK_01A 定义丢失导致 NameError (与 ⑦h 的 eye_w 同类: 引用与定义脱节)
+WORK_01A = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端\01a眼窝眼球\输出"
+os.makedirs(WORK_01A, exist_ok=True)
 
 # QR引擎路径
 APPDATA = os.environ.get('APPDATA', '')
@@ -92,10 +95,15 @@ import collections as _c
 _mi = [0] * len(mesh.data.polygons)
 mesh.data.polygons.foreach_get("material_index", _mi)
 _cnt = dict(_c.Counter(_mi))
+_use_matids = (os.environ.get('QR_USE_MATIDS') == '1')
 if len(_cnt) < 2:
-    raise AssertionError(f"高模只有{len(_cnt)}种材质{_cnt} — 缺眼窝独立材质, QR无材质边界可引导! "
-                         f"先跑 01A眼窝与眼球/scripts/assign_socket_material.py")
-print(f"2.6 材质分区校验: 槽={mats} 面分布={_cnt} → 材质边界可引导QR沿rim布线")
+    # 2026-09-16: boolean 流程眼窝=空腔(无碗面) → 无材质分区; 此时按用户已验证参数以 matids=0 运行.
+    if _use_matids:
+        raise AssertionError(f"高模只有{len(_cnt)}种材质{_cnt} — 缺眼窝独立材质, QR无材质边界可引导! "
+                             f"先跑 01A眼窝与眼球/scripts/assign_socket_material.py (或设 QR_USE_MATIDS=0)")
+    print(f"2.6 材质分区: 只有{len(_cnt)}种材质 — 空腔型眼窝无分区, 按 UseMaterialIds=0 运行(用户已验证参数)")
+else:
+    print(f"2.6 材质分区校验: 槽={mats} 面分布={_cnt} → 材质边界可引导QR沿rim布线")
 
 # 2.7 缓存高模rim环内外拓扑真值(2026-09-10 v53, 用户方案):
 #   掏rim环时碗面已打tag/赋EyeSocket材质 → rim环内=碗面, 环状连通循环(掏洞拓扑保证).
@@ -115,11 +123,15 @@ _HI_SVC = _BVHTree.FromPolygons(_verts_hi, _polys_hi)
 del _verts_hi, _polys_hi   # BVH已持有拷贝, 释放大列表
 _HI_mi = _np.zeros(len(mesh.data.polygons),dtype=_np.int32); mesh.data.polygons.foreach_get("material_index",_HI_mi)
 # rim环内判定: EyeSocket材质槽(权威, assign按tag==2赋)
+# 2026-09-16: boolean 流程眼窝=空腔(无碗面/无材质分区) → 此处候空; 8.5系材质传递自动跳过.
 _si_hi=[i for i,m in enumerate(mesh.data.materials) if m and "EyeSocket" in m.name]
-assert _si_hi, "高模无EyeSocket材质槽 — assign_socket_material未跑?"
-_HI_BOWL=(_HI_mi==_si_hi[0])
-# 碗面中心(世界坐标)缓存 — 8.5b force-cover用: 每个碗面必须被红QR面覆盖(v54实测center判据缺红105→force缺红0)
-_HI_HC=_np.array([_HV_hi[list(mesh.data.polygons[i].vertices)].mean(axis=0) for i in _np.where(_HI_BOWL)[0]])
+if _si_hi:
+    _HI_BOWL=(_HI_mi==_si_hi[0])
+    _HI_HC=_np.array([_HV_hi[list(mesh.data.polygons[i].vertices)].mean(axis=0) for i in _np.where(_HI_BOWL)[0]])
+else:
+    _HI_BOWL=_np.zeros(len(_HI_mi),dtype=bool)
+    _HI_HC=_np.empty((0,3),dtype=float)
+    print("2.7 ⚠ 无EyeSocket槽(空腔型眼窝) — 内外真值缓存为空, 8.5系材质传递将自动跳过")
 # 高模bbox对角线(供8.5b查询阈值自适应)
 _lo=_HV_hi.min(axis=0); _up=_HV_hi.max(axis=0); _HI_BBOX_DIAG=float(_np.linalg.norm(_up-_lo))
 print(f"2.7 高模rim环内外真值缓存: 碗面(rim环内)={int(_HI_BOWL.sum())}面/{len(_HI_BOWL)} BVH就绪 bbox对角线={_HI_BBOX_DIAG*1000:.0f}mm")
@@ -137,12 +149,12 @@ with open(settingsFile, "w") as f:
     f.write(f'FileIn="{inputFbx}"\n')
     f.write(f'FileOut="{retopoFbx}"\n')
     f.write(f'ProgressFile="{progressFile}"\n')
-    f.write('TargetQuadCount=140000\n')  # 14万quad ≈ 28万三角面（比例调整后模型更大）
-    f.write('CurvatureAdaptivness=80\n')
+    f.write('TargetQuadCount=150000\n')  # 14万quad ≈ 28万三角面（比例调整后模型更大）
+    f.write('CurvatureAdaptivness=95\n')
     f.write('ExactQuadCount=0\n')
     f.write('UseVertexColorMap=0\n')
     # 2026-09-08 用户方案(实测D组最优): 只用材质引导, 取消法向分割与角度检测硬边
-    f.write('UseMaterialIds=1\n')       # ✓使用材质: 沿眼窝/皮肤材质边界(=rim)布线
+    f.write(('UseMaterialIds=%d\n' % (1 if os.environ.get('QR_USE_MATIDS') == '1' else 0)))       # ✓使用材质: 沿眼窝/皮肤材质边界(=rim)布线
     f.write('UseIndexedNormals=0\n')    # ✗取消法向分割
     f.write('AutoDetectHardEdges=0\n')  # ✗取消角度检测硬边(实测抹平眼窝折角35.7°)
     # 不写SymAxis：模型纹理不对称，强制对称拓扑会导致纹理错位

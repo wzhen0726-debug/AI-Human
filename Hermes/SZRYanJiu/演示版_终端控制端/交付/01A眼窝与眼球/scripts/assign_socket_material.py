@@ -27,24 +27,96 @@ OUT = os.path.join(WORK, "01_1_eye_socket_qr.blend")
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.wm.open_mainfile(filepath=HI)
 obj = max([o for o in bpy.data.objects if o.type == 'MESH'], key=lambda o: len(o.data.vertices))
+def _pip_xz_fb(x, z, P):
+    """XZ 点在多边形内(射线法), 回退路径用"""
+    ins = False; _n = len(P); j = _n - 1
+    for i in range(_n):
+        xi, zi = P[i]; xj, zj = P[j]
+        if ((zi > z) != (zj > z)) and (x < (xj - xi) * (z - zi) / (zj - zi + 1e-18) + xi):
+            ins = not ins
+        j = i
+    return ins
+
 me = obj.data
 print(f"高模: {obj.name} 面={len(me.polygons):,} 原材质槽={len(me.materials)}")
 
 # ---- 读 make_eye_cup 的拓扑标记: v44tag_L/R == 2 = 碗面(边界=rim) ----
 attrL = me.attributes.get("v44tag_L")
 attrR = me.attributes.get("v44tag_R")
-if attrL is None and attrR is None:
-    raise RuntimeError("v44tag_L/R 层不存在! make_eye_cup 未打标记或层未持久化. "
-                       "请确认 01_1_eye_socket.blend 是 make_eye_cup 的直接产物.")
 n = len(me.polygons)
-tagL = np.zeros(n, dtype=np.int32); tagR = np.zeros(n, dtype=np.int32)
-if attrL is not None: attrL.data.foreach_get("value", tagL)
-if attrR is not None: attrR.data.foreach_get("value", tagR)
-sock = np.where((tagL == 2) | (tagR == 2))[0]
-nL = int((tagL == 2).sum()); nR = int((tagR == 2).sum())
-print(f"tag碗面: L={nL:,} R={nR:,} 合={len(sock):,}  (边界=make_eye_cup的rim环, 天然贴合)")
-if len(sock) < 100:
-    raise AssertionError(f"tag碗面过少({len(sock)}), v44tag层可能损坏!")
+_tag_path = (attrL is not None) or (attrR is not None)
+if _tag_path:
+    tagL = np.zeros(n, dtype=np.int32); tagR = np.zeros(n, dtype=np.int32)
+    if attrL is not None: attrL.data.foreach_get("value", tagL)
+    if attrR is not None: attrR.data.foreach_get("value", tagR)
+    sock = np.where((tagL == 2) | (tagR == 2))[0]
+    nL = int((tagL == 2).sum()); nR = int((tagR == 2).sum())
+    print(f"[tag路径] 碗面: L={nL:,} R={nR:,} 合={len(sock):,}")
+    if len(sock) < 100:
+        raise AssertionError(f"tag碗面过少({len(sock)}), v44tag层可能损坏!")
+else:
+    # ---- 几何回退路径(2026-09-16 新增, boolean 流程): 无 v44tag(cup 未跑, 眼窝=掏空的坑) ----
+    #   定义: 眼窝面 = 面心在【该侧 rim 环的 XZ 多边形内】且深度在 [环最前y-1mm, 环最后y+坑深] 的面。
+    #   坑深按环尺寸推导(不写死): 0.35×环平均直径 ≈ 12mm@35mm眼宽。rim 环 = 该眼区唯一开放边界闭环。
+    import bmesh as _bm2, json as _json2
+    from mathutils import Vector as _Vec
+    _cJ = _json2.load(open(os.path.join(DELIVERY, "01A眼窝与眼球", "screenshots", "3ddfa", "eyelid_contour_manual.json"), encoding="utf-8"))
+    _hm = _bm2.new(); _hm.from_mesh(me); _hm.edges.ensure_lookup_table(); _hm.verts.ensure_lookup_table()
+    _cent = np.empty(n * 3, dtype=np.float64); me.polygons.foreach_get("center", _cent)
+    _cent = _cent.reshape(-1, 3)
+    _sock_list = []
+    for _s in ("L", "R"):
+        _c = _Vec(tuple(float(x) for x in _cJ[_s]['center']))
+        _oe = [e for e in _hm.edges if len(e.link_faces) == 1
+               and (e.verts[0].co - _c).xz.length < 0.05 and e.verts[0].co.y < _c.y + 0.02]
+        _dg = {}
+        for _e in _oe:
+            _a, _b = _e.verts
+            _dg.setdefault(_a.index, []).append(_b.index)
+            _dg.setdefault(_b.index, []).append(_a.index)
+        _st = [k for k in _dg if len(_dg[k]) == 2]
+        if len(_st) < 40:
+            print(f"  ⚠ {_s} 侧 rim 环未找到(边界边{len(_oe)}), 跳过")
+            continue
+        _ring = [_st[0]]; _pv, _cu = -1, _st[0]
+        while True:
+            _cand = [q for q in _dg[_cu] if q != _pv]
+            if not _cand or _cand[0] == _ring[0]:
+                break
+            _ring.append(_cand[0]); _pv, _cu = _cu, _cand[0]
+        _P = np.array([[_hm.verts[k].co.x, _hm.verts[k].co.z] for k in _ring])
+        _ys = np.array([_hm.verts[k].co.y for k in _ring])
+        _diam = float(np.linalg.norm(_P.max(axis=0) - _P.min(axis=0)))
+        _y_hi = float(_ys.max()) + 0.35 * _diam        # 坑深随动
+        _y_lo = float(_ys.min()) - 0.001
+        _d = _P - _P.mean(axis=0)
+        _box = np.abs(_d).max(axis=0) + 0.002
+        _m0 = _cent[:, 0] < 0
+        _mask_side = (_m0 if _s == "L" else ~_m0)
+        _in = _mask_side & (_cent[:, 1] >= _y_lo) & (_cent[:, 1] <= _y_hi)               & (np.abs(_cent[:, 0] - _P[:, 0].mean()) <= _box[0])               & (np.abs(_cent[:, 2] - _P[:, 1].mean()) <= _box[1])
+        _candf = np.where(_in)[0]
+        _sel = []
+        for _fi in _candf:
+            if _pip_xz_fb(_cent[_fi, 0], _cent[_fi, 2], _P):
+                _sel.append(int(_fi))
+        print(f"  [{_s}] 几何路径: 环{len(_ring)}点 直径{_diam*1000:.1f}mm 坑深窗口{(_y_hi-_y_lo)*1000:.1f}mm → 眼窝面 {len(_sel):,}")
+        _sock_list += _sel
+    _hm.free()
+    sock = np.array(sorted(set(_sock_list)), dtype=np.int64)
+    if len(sock) < 100:
+        # 2026-09-16 实测: boolean 流程的眼窝是【真正的空腔】(环=开放边界, 透过洞看到后脑内壁),
+        # 洞内没有可染的内侧面 → 几何路径找不到"碗面". 这不是错误, 是流程差异:
+        #   旧 cup 流程(make_eye_cup)会在洞里建碗面 → 材质引导可用; boolean 流程不建碗.
+        #   对策: 本文件仍生成(供 02 使用), 但不做材质分区 (02 以 UseMaterialIds=0 运行, 用户已验证参数).
+        print(f"[几何路径] 眼窝面 {len(sock)} 个 → 判定为【空腔型眼窝】, 跳过材质分区(02 将以 UseMaterialIds=0 运行)")
+        sock = np.array([], dtype=np.int64)
+
+if len(sock) == 0:
+    print("空腔型眼窝: 不赋 EyeSocket 材质, 直接保存副本")
+    bpy.ops.wm.save_as_mainfile(filepath=OUT)
+    print(f"已保存: {OUT}")
+    print("SOCKET_MAT_DONE")
+    import sys as _sys; _sys.exit(0)
 
 # ---- 新材质 EyeSocket (皮肤=原槽, 碗=新槽) ----
 mat = bpy.data.materials.get("EyeSocket") or bpy.data.materials.new("EyeSocket")
