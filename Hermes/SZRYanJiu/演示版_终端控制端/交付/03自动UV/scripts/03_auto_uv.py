@@ -11,8 +11,9 @@ QR没拿到眼睑缘引导→低模无rim边环→倒角只能落在散碎边上
 import bpy, os, math
 
 DELIVERY = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端\交付"
-QR_BLEND = os.path.join(DELIVERY, "02QuadRemesher拓扑", "02_qr_150k.blend")
-OUT_03 = os.path.join(DELIVERY, "03自动UV")
+PROJECT_ROOT = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端"
+QR_BLEND = os.path.join(PROJECT_ROOT, "02QR拓扑", "输出", "02_qr_150k_socket.blend")  # 2026-09-16 改: 读活的02产物(带碗)
+OUT_03 = os.path.join(PROJECT_ROOT, "03自动UV", "输出")  # 2026-09-16 改: OUT不得指交付
 os.makedirs(OUT_03, exist_ok=True)
 
 print("=== Step 3: Auto UV (A方案, 无倒角) ===")

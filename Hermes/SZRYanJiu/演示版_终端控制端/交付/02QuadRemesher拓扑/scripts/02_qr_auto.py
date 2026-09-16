@@ -414,7 +414,8 @@ print(f"\n=== Verification ===")
 print(f"Faces: {faces:,}")
 print(f"Quads: {quads:,} ({quads/faces*100:.1f}%)")
 print(f"Tris: {tris}")
-print(f"Non-manifold: {nm}")
+# 修正(2026-09-16全流程测试): 原措辞把"边界边(眼洞开口,正常)"与"非流形"混为一谈, 易误判为回归
+print(f"  Boundary edges(边界边): {nm}  —— 眼洞开口属正常; 非流形应看 >2 面边数")
 print(f"As triangles: {quads*2+tris:,}")
 if quads*2+tris > 300000:
     print(f"⚠ 三角面超限: {quads*2+tris:,} > 300,000")

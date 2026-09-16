@@ -2,10 +2,11 @@ import bpy, os
 import numpy as np
 
 DELIVERY = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端\交付"
-UV_BLEND = os.path.join(DELIVERY, "03自动UV", "03_auto_uv.blend")
-HIGH_POLY = os.path.join(DELIVERY, "01A眼窝与眼球", "models", "01_1_eye_socket.blend")
+PROJECT_ROOT = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端"
+UV_BLEND = os.path.join(PROJECT_ROOT, "03自动UV", "输出", "03_auto_uv.blend")  # 2026-09-16 改: 读活的03产物
+HIGH_POLY = os.path.join(PROJECT_ROOT, "01a眼窝眼球", "输出", "01_1_eye_socket.blend")  # 2026-09-16 改: 用活的高模
 FIXED_TEX = os.path.join(DELIVERY, "01高模修复与黏连检测", "models", "01_original_tex_fixed.png")
-OUT_04 = os.path.join(DELIVERY, "04纹理烘焙")
+OUT_04 = os.path.join(PROJECT_ROOT, "04纹理烘焙", "输出")  # 2026-09-16 改: OUT不得指交付
 os.makedirs(OUT_04, exist_ok=True)
 
 print("=== Step 4: Bake 4K (修复贴图) ===")
