@@ -47,6 +47,32 @@ if eyeballs:
               f"半径(p90)={rad*1000:.2f}mm 半径谱[{rr.min()*1000:.1f}~{rr.max()*1000:.1f}]")
 CLR = 0.0015   # 碗面与球面的间隙(眼球后极不穿碗底)
 
+# ---- ①b 参考碗: 高模旧版眼窝(_eye_cup_ref.blend) 的深度剖面 ----
+# 用户要求"类似之前高模上做的眼窝形状" → 逐点采样旧碗面的 y 作为低模碗的深度
+REF_BLEND = os.path.join(D, "_eye_cup_ref.blend")
+REF_BVH = {}
+REF_TAG = {}
+if os.path.exists(REF_BLEND):
+    from mathutils.bvhtree import BVHTree
+    bpy.ops.wm.open_mainfile(filepath=REF_BLEND)
+    robj = max([o for o in bpy.data.objects if o.type == 'MESH'], key=lambda o: len(o.data.vertices))
+    rme = robj.data
+    rvl = [tuple(v.co) for v in rme.vertices]
+    for s in ("L", "R"):
+        attr = rme.attributes.get("v44tag_" + s)
+        if attr is None:
+            continue
+        tg = np.zeros(len(rme.polygons), dtype=np.int32)
+        attr.data.foreach_get("value", tg)
+        idxs = np.where(tg == 2)[0]           # 2 = 旧版碗面
+        if len(idxs) < 50:
+            continue
+        pl = [list(rme.polygons[int(i)].vertices) for i in idxs]
+        REF_BVH[s] = BVHTree.FromPolygons(rvl, pl)
+        print(f"参考碗[{s}]: {len(pl)} 面 BVH 就绪")
+else:
+    print(f"⚠ 参考件不存在({os.path.basename(REF_BLEND)}), 将用眼球同心球剖面")
+
 # ---- ② 打开 QR 低模, 对每个眼孔建碗 ----
 bpy.ops.wm.open_mainfile(filepath=QR_BLEND)
 obj = [o for o in bpy.data.objects if o.type == 'MESH'][0]
@@ -134,9 +160,16 @@ for side in ("L", "R"):
         #  深层"狭长"是否需处理, 交给用户看渲染后决定; 当前用等宽偏移保持拓扑干净)
         for (r, th) in polar:
             r2 = max(r - d_k, _floor)
-            y2 = yc + math.sqrt(max(0.0, (R + CLR) ** 2 - r2 * r2))
             x2 = bx + r2 * math.cos(th)
             z2 = bz + r2 * math.sin(th)
+            # 深度: 优先从高模旧碗面射线采样(用户要求的'之前的形状'); 回退=同心球+间隙
+            y2 = None
+            if side in REF_BVH:
+                _hit = REF_BVH[side].ray_cast(Vector((x2, c3.y - 0.060, z2)), Vector((0.0, 1.0, 0.0)))
+                if _hit and _hit[0] is not None:
+                    y2 = float(_hit[0][1])
+            if y2 is None:
+                y2 = yc + math.sqrt(max(0.0, (R + CLR) ** 2 - r2 * r2))
             v2 = bm.verts.new(Vector((x2, y2, z2)))
             new_ring.append(v2)
         bm.verts.ensure_lookup_table()
