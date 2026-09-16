@@ -218,8 +218,8 @@ def step_01():
 
 def step_01a():
     divider()
-    print(f"{Y}{BOLD}▶ 环节 01a · 眼窝重建与眼球摆入 (半自动打点){W}")
-    print(f"{D}  细分: 放点→GUI手调→镜像→读取→眼窝→眼球→赋材质{W}\n")
+    print(f"{Y}{BOLD}▶ 环节 01a · 眼窝重建 (半自动打点; 眼球在02摆入){W}")
+    print(f"{D}  细分: 放点→GUI手调→镜像→读取→眼窝→赋材质{W}\n")
     t0 = time.time()
     if not check("01高模修复与黏连检测/models/01_highpoly_repair.blend"):
         print(f"{R}✗ 缺少输入, 先运行 01{W}"); return False
@@ -239,17 +239,15 @@ def step_01a():
     # 5. 眼窝
     if not run_blender(os.path.join(S01A, "run_eye_socket.py"), "01a_4", "④ 眼窝开孔+封碗+内圆角(v48)"):
         summary("环节 01a", False, t0, []); return False
-    # 6. 眼球(Eye.fbx)
-    if not run_blender(os.path.join(S01A, "run_eyeball_v2.py"), "01a_5", "⑤ 眼球摆入(Eye.fbx)+Hazel上色"):
+    # (2026-09-16 用户: 01a 不加眼球 — 眼球摆入挪到02 QR之后)
+    # 6. 眼窝独立材质(2026-09-08): 供02 QR沿材质边界布线保住眼窝结构; 输出_qr.blend, 不动烘焙源文件
+    if not run_blender(os.path.join(S01A, "assign_socket_material.py"), "01a_6", "⑤ 眼窝碗面赋独立材质(供QR沿rim布线)"):
         summary("环节 01a", False, t0, []); return False
-    # 7. 眼窝独立材质(2026-09-08): 供02 QR沿材质边界布线保住眼窝结构; 输出_qr.blend, 不动烘焙源文件
-    if not run_blender(os.path.join(S01A, "assign_socket_material.py"), "01a_6", "⑥ 眼窝碗面赋独立材质(供QR沿rim布线)"):
-        summary("环节 01a", False, t0, []); return False
-    lines = [f"{D}眼窝{W} inward_fillet 内圆角定案", f"{D}眼球{W} Eye.fbx 663顶点 · Hazel色 · 角膜自动测量",
-             f"{D}材质{W} EyeSocket碗面分区 → QR沿rim布线"]
+    lines = [f"{D}眼窝{W} inward_fillet 内圆角定案",
+             f"{D}材质{W} EyeSocket碗面分区 → QR沿rim布线",
+             f"{D}眼球{W} 已按新流程挪到 02 (QR之后摆入)"]
     outd = os.path.join(BASE, "01a眼窝眼球", "输出")
-    ok = all([deliver(os.path.join(M01A, "01_1_eye_socket.blend"), outd),
-              deliver(os.path.join(M01A, "01_2_eyeball_placed.blend"), outd)])
+    ok = all([deliver(os.path.join(M01A, "01_1_eye_socket.blend"), outd)])
     summary("环节 01a 眼窝与眼球", ok, t0, lines)
     return ok
 
@@ -258,12 +256,15 @@ def step_02():
     print(f"{Y}{BOLD}▶ 环节 02 · QuadRemesher 拓扑重建{W}")
     print(f"{D}  引导方式: 眼窝独立材质(UseMaterialIds) · 已取消角度检测硬边/法向分割{W}\n")
     t0 = time.time()
-    if not check("01A眼窝与眼球/models/01_1_eye_socket_qr.blend"):
+    if not check("01A眼窝与眼球/models/_中间/01_1_eye_socket_qr.blend"):
         print(f"{R}✗ 缺少输入(带材质分区版), 先运行 01a{W}"); return False
     if not run_blender(os.path.join(DELIVERY, "02QuadRemesher拓扑", "scripts", "02_qr_auto.py"),
                        "02_QR", "QuadRemesher 自动拓扑(目标15万quad)"):
         summary("环节 02", False, t0, []); return False
-    # 2026-09-16 新增: 眼窝碗重建(按眼球反推+打平+极点收口) — 正典产物=带碗版
+    # 2026-09-16 用户: 眼球摆入挪到 QR 之后(碗依赖眼球真值, 仍在此之前)
+    if not run_blender(os.path.join(S01A, "run_eyeball_v2.py"), "02_眼球", "眼球摆入(角膜自动测量+Hazel)"):
+        summary("环节 02", False, t0, []); return False
+    # 眼窝碗重建(按眼球反推+打平+极点收口) — 正典产物=带碗版
     if not run_blender(os.path.join(DELIVERY, "02QuadRemesher拓扑", "scripts", "02qr_socket_cup.py"),
                        "02_碗", "眼窝碗重建(按眼球几何, 非穿透)", done_mark="SAVED:"):
         summary("环节 02", False, t0, []); return False
@@ -428,7 +429,7 @@ def status():
     items = [
         ("01 高模修复", "01高模修复与黏连检测/models/01_highpoly_repair.blend"),
         ("01a 眼窝", "01A眼窝与眼球/models/01_1_eye_socket.blend"),
-        ("01a 眼球", "01A眼窝与眼球/models/01_2_eyeball_placed.blend"),
+        ("02 眼球(QR后摆入)", "01A眼窝与眼球/models/01_2_eyeball_placed.blend"),
         ("02 QR拓扑", "02QuadRemesher拓扑/02_qr_150k_socket.blend"),
         ("03 UV", "03自动UV/03_auto_uv.blend"),
         ("04 烘焙", "04纹理烘焙/04_bake.blend"),
