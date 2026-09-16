@@ -13,6 +13,8 @@
 输出: 02QR拓扑/输出/02_qr_150k_socket.blend
 """
 import bpy, os, json, math, numpy as np, bmesh
+import functools
+print = functools.partial(print, flush=True)   # 日志实时可见(定位卡点)
 from mathutils import Vector
 
 D = r"E:/WangZhen_Project/AI/ShuZiRen/Hermes/SZRYanJiu/演示版_终端控制端"
@@ -82,19 +84,52 @@ for side in ("L", "R"):
     M = len(ring0)
     print(f"[{side}] 孔环 {M} 点 → 建碗(球心y{yc*1000:.1f} 半径{R*1000:.2f} 间隙{CLR*1000:.1f}mm)")
     ring_v = [bm.verts[i] for i in ring0]
+    # ---- 绕序种子: 环上第一条与头模面共享的边; 头模面沿 a→b 则新面须沿 b→a(流形一致) ----
+    bm.verts.index_update(); bm.edges.index_update(); bm.faces.index_update()
+    _reverse_order = False
+    _seed_found = False
+    _newf_idx = set()
+    for i in range(len(ring_v)):
+        if _seed_found:
+            break
+        a = ring_v[i]; b = ring_v[(i + 1) % len(ring_v)]
+        e = bm.edges.get((a, b))
+        if e is None or len(e.link_faces) < 1:   # 孔环边此刻=边界边(仅头模1面), 不能要求>=2
+            continue
+        g = e.link_faces[0]
+        # g 是否沿 a→b: 看 g 的 loop 起点
+        _g_dir = None
+        for l in g.loops:
+            if l.edge.index == e.index:
+                _g_dir = (l.vert.index == a.index)
+                break
+        if _g_dir is None:
+            continue
+        # 头模面沿 a→b(=True) → 新面须沿 b→a → 反转顺序
+        _reverse_order = bool(_g_dir)
+        _seed_found = True
+    print(f"[{side}] 绕序种子: {'反转' if _reverse_order else '常规'} (与头模面共享边一致)")
     # 各点极坐标(相对眼中心 XZ)
     polar = []
     for v in ring_v:
         dx, dz = v.co.x - bx, v.co.z - bz
         polar.append((math.hypot(dx, dz), math.atan2(dz, dx)))
     CAP_N = M            # 最内圈点数
+    # 等宽度偏移: 每圈沿径向内缩固定量 d_k = (k/n)*r_min (r_min=边界最小极径, 随动)
+    # 修复用户报'一条特别长的薄环': 等比缩放在长轴方向环带过宽、短轴方向成薄片。
+    _r_min = max(1e-4, min(r for (r, th) in polar))
+    _NB = 6
+    _offsets = [_r_min * (k / _NB) for k in range(1, _NB + 1)]
+    _floor = 0.10 * _r_min
     last_ring = ring_v
     made = 0
     _new_faces = []
-    for si, s in enumerate(SCALES, start=1):
+    for si, d_k in enumerate(_offsets, start=1):
         new_ring = []
+        # (圆形化过渡已回退: 固定角度版产生 sliver; 角度均匀化版与环点序冲突产生扭曲。
+        #  深层"狭长"是否需处理, 交给用户看渲染后决定; 当前用等宽偏移保持拓扑干净)
         for (r, th) in polar:
-            r2 = r * s
+            r2 = max(r - d_k, _floor)
             y2 = yc + math.sqrt(max(0.0, (R + CLR) ** 2 - r2 * r2))
             x2 = bx + r2 * math.cos(th)
             z2 = bz + r2 * math.sin(th)
@@ -104,11 +139,15 @@ for side in ("L", "R"):
         for i in range(len(last_ring)):
             a = last_ring[i]; b = last_ring[(i + 1) % len(last_ring)]
             c = new_ring[(i + 1) % len(new_ring)]; dv = new_ring[i]
+            if _reverse_order:
+                quad = (b, a, dv, c)          # 种子约定: 与头模面共享边走相反方向
+            else:
+                quad = (a, b, c, dv)
             try:
-                _nf = bm.faces.new((a, b, c, dv)); _nf[_tag] = 1; _new_faces.append(_nf); made += 1
+                _nf = bm.faces.new(quad); _nf[_tag] = 1; _new_faces.append(_nf); made += 1
             except Exception:
                 try:
-                    _nf = bm.faces.new((a, c, b, dv)); _nf[_tag] = 1; _new_faces.append(_nf); made += 1
+                    _nf = bm.faces.new(tuple(reversed(quad))); _nf[_tag] = 1; _new_faces.append(_nf); made += 1
                 except Exception:
                     pass
         last_ring = new_ring
@@ -118,19 +157,8 @@ for side in ("L", "R"):
         print(f"[{side}] 底部 n-gon 盖 {len(last_ring)} 边")
     except Exception as _e:
         print(f"[{side}] n-gon 盖失败: {_e}")
-    # ---- 只对本次新建的碗面定向(凹面: 法线应指向眼球中心); 引用此刻有效 ----
-    _ball_c = Vector((bx, yc, bz))
-    _fx = 0
-    for _f in _new_faces:
-        try:
-            _n = _f.normal
-            _to_ball = _ball_c - _f.calc_center_median()
-            if _n.length > 1e-12 and _to_ball.length > 1e-9 and _n.dot(_to_ball) < 0:
-                _f.normal_flip(); _fx += 1
-        except ReferenceError:
-            pass
     bm.normal_update()
-    print(f"[{side}] 新建面 {made} (定向翻转 {_fx})")
+    print(f"[{side}] 新建面 {made} (种子绕序{'反转' if _reverse_order else '常规'})")
 
 # ---- 收尾: 关掉碗与孔环交界处残余的开放边(建面时个别quad异常被跳过) ----
 # ❌禁止全局 recalc_face_normals: 按连通岛整体重定向 → 会把腿等区域翻掉(实测245面翻转, 用户截图报过)
