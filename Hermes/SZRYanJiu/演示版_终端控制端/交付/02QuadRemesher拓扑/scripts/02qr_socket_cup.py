@@ -150,10 +150,7 @@ for side in ("L", "R"):
     _r_min = max(1e-4, min(r for (r, th) in polar))
     # v8(用户: "眼窝内的都是环线, 随rim环逐渐变小…最后成为一个点"):
     #   等比缩小保持 rim 形状轮廓逐圈变小 → 末环 0.15 → 极点收口(不再用 n-gon 平盖 '花生仁')
-    # v14(用户图二: 目标深处=环线缩成'小环'收口, 不是大三角扇/单点放射):
-    #   加深 2 圈(0.09/0.05), 末环半径≈1.7mm → 收口处只剩一个小点状的环+极短扇,
-    #   径向线被更多环线分段 → 更平行均匀; 仍只用'每圈一个标量'(结构安全, 不可能穿插)
-    _SCALES = [0.90, 0.80, 0.70, 0.59, 0.48, 0.37, 0.26, 0.15, 0.09, 0.05]
+    _SCALES = [0.90, 0.80, 0.70, 0.59, 0.48, 0.37, 0.26, 0.15]
     _NB = len(_SCALES)
 
     # ---- v13(用户: 让蓝线尽量均分 1 和 2; 不许出现错位穿插) ----
@@ -210,17 +207,11 @@ for side in ("L", "R"):
     last_ring = ring_v
     made = 0
     _new_faces = []
-    _r_mean_all = sum(p[0] for p in polar) / max(1, len(polar))
+    _rings_built = []      # v16: 记录新建各圈顶点, 便于按用户指定圈做局部Y位移
     for si, s_k in enumerate(_SCALES, start=1):
         new_ring = []
-        # v15: 深部(最后2圈)把半径向"均值半径"平滑过渡(即向圆) —— 只动半径, 角度顺序不变
-        # 目的: 避免末环在短轴方向点距被缩成 0.02mm 级的极细条(实测 aspect 116:1)
-        _w_circ = 0.0
-        if si >= _NB - 1:
-            _w_circ = (si - (_NB - 2)) / 2.0     # 倒数第2圈 0.5, 末圈 1.0
         for (r, th) in polar:
-            _r_eff = r * (1.0 - _w_circ) + _r_mean_all * _w_circ
-            r2 = max(_r_eff * s_k, 0.001)
+            r2 = max(r * s_k, 0.001)
             x2 = bx + r2 * math.cos(th)
             z2 = bz + r2 * math.sin(th)
             # 深度: 优先从高模旧碗面射线采样(用户要求的'之前的形状'); 回退=同心球+间隙
@@ -233,6 +224,7 @@ for side in ("L", "R"):
                 y2 = yc + math.sqrt(max(0.0, (R + CLR) ** 2 - r2 * r2))
             v2 = bm.verts.new(Vector((x2, y2, z2)))
             new_ring.append(v2)
+        _rings_built.append(new_ring)
         bm.verts.ensure_lookup_table()
         for i in range(len(last_ring)):
             a = last_ring[i]; b = last_ring[(i + 1) % len(last_ring)]
@@ -250,6 +242,26 @@ for side in ("L", "R"):
                     pass
         last_ring = new_ring
     # ---- ③ 最内圈用单 n-gon 封底 ----
+
+    # ---- v16(用户: 从rim数第3圈沿+Y挪1.688→1.267mm, 第4圈×0.75 跟着轻调) ----
+    # 用户手工实测: 最近的点 +1.688mm(朝正Y), 其他少一点 ~1.267mm; 4不如3夸张
+    try:
+        _SHIFT = {1: (0.001688, 0.001267), 2: (0.001688 * 0.75, 0.001267 * 0.75)}
+        for _ri, (_mx, _mn) in _SHIFT.items():
+            if _ri >= len(_rings_built):
+                continue
+            _vs = _rings_built[_ri]
+            _ys = [v.co.y for v in _vs]
+            _yf, _yb = min(_ys), max(_ys)
+            _span = max(_yb - _yf, 1e-9)
+            for _v in _vs:
+                _t = (_yb - _v.co.y) / _span        # 1=最靠近观察者(-y), 0=最远
+                _v.co.y += _mn + (_mx - _mn) * _t
+            _d = [abs((_mn + (_mx - _mn) * ((_yb - v.co.y) / _span))) for v in _vs]
+            print(f"[{side}] v16 第{_ri+2}圈 +Y位移 {_mx*1000:.3f}→{_mn*1000:.3f}mm (前大后小)", flush=True)
+    except Exception as _e:
+        print(f"[{side}] v16 位移异常: {_e}", flush=True)
+
     # ---- 极点收口(用户: "最后成为一个点"): 单顶点 + 三角扇 ----
     try:
         _px = float(np.mean([v.co.x for v in last_ring]))
