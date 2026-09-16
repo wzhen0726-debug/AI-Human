@@ -1,4 +1,6 @@
 """01_2 眼球摆入 v2 — 眼睛模型002 (MetaHuman风格 虹膜+巩膜+阴影)
+2026-09-16 流程变更: 本脚本从01a环节挪到【02环节】调用(QR拓扑之后、眼窝碗之前);
+  输出路径不变(01A眼窝与眼球/models/01_2_eyeball_placed.blend), 供02碗工序与05绑定读取。
 
 与run_eyeball.py(001 GLB)的区别:
 1. 模型源: Eye.blend append (贴图打包在blend内, 支持19色变体)

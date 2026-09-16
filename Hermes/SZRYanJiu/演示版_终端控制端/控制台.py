@@ -7,6 +7,7 @@
   ④ 新增 clean 命令清理输出文件夹(单环节/all)
   ⑤ 取消清屏: 内容连续显示可翻页回看, 只加分隔线
   ⑥ (骨骼断开经诊断=Mixamo标准布局, 非bug, 见日志)
+  ⑦ (2026-09-16) 眼球摆入从01a挪到02(QR之后,碗之前); clean改递归+清交付生成物; 交付=正典, 中间件收_中间/
 命令: 01 / 01a / 02 / 03 / 04 / 05 / all / clean / status / help / quit
 """
 import os, sys, time, shutil, subprocess, io, re, threading, queue
@@ -36,7 +37,7 @@ NOISE = ("register_class", "Registered", "register()", "WARN", "Warning", "bpy_t
          "blender.exe", "ModuleNotFound", "    ~~~", "import bpy", "self.", "mod.register")
 
 # ============ 命令提示常驻 ============
-CMD_HINT = (f"{D}命令:{W} {G}01{W}修复 {G}01a{W}眼窝眼球 {G}02{W}拓扑 {G}03{W}UV {G}04{W}烘焙 {G}05{W}绑定 "
+CMD_HINT = (f"{D}命令:{W} {G}01{W}修复 {G}01a{W}眼窝 {G}02{W}拓扑+眼球+碗 {G}03{W}UV {G}04{W}烘焙 {G}05{W}绑定 "
             f"{G}all{W}全流程 {G}clean{W}清理 {G}status{W}状态 {G}quit{W}退出")
 
 def show_hint():
@@ -253,8 +254,8 @@ def step_01a():
 
 def step_02():
     divider()
-    print(f"{Y}{BOLD}▶ 环节 02 · QuadRemesher 拓扑重建{W}")
-    print(f"{D}  引导方式: 眼窝独立材质(UseMaterialIds) · 已取消角度检测硬边/法向分割{W}\n")
+    print(f"{Y}{BOLD}▶ 环节 02 · 拓扑重建 + 眼球摆入 + 眼窝碗{W}")
+    print(f"{D}  细分: QR自动拓扑 → 眼球摆入(角膜自动测量) → 眼窝碗(按眼球反推) · 引导=眼窝独立材质{W}\n")
     t0 = time.time()
     if not check("01A眼窝与眼球/models/_中间/01_1_eye_socket_qr.blend"):
         print(f"{R}✗ 缺少输入(带材质分区版), 先运行 01a{W}"); return False
