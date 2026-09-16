@@ -224,6 +224,15 @@ for side in ("L", "R"):
                 y2 = yc + math.sqrt(max(0.0, (R + CLR) ** 2 - r2 * r2))
             v2 = bm.verts.new(Vector((x2, y2, z2)))
             new_ring.append(v2)
+        # ---- v17(用户方法: 挤出→缩放→'沿Y打平'→合并中心) ----
+        # 参考实测: 同圈 y 波动被系统压小, 越深越平(深部 ≈0.65×, 外圈 ≈0.96×) → 分深度渐进的打平系数
+        _lam = 1.0 - 0.35 * (si / max(_NB, 1))       # 0.956(外) → 0.65(深)
+        _ys = [v.co.y for v in new_ring]
+        _ym = sum(_ys) / len(_ys)
+        for v in new_ring:
+            v.co.y = _ym + _lam * (v.co.y - _ym)
+        if si == 1:
+            print(f"[{side}] v17 打平: 圈1 λ={_lam:.3f} … 末圈 λ={1.0-0.35*(_NB/max(_NB,1)):.3f}", flush=True)
         _rings_built.append(new_ring)
         bm.verts.ensure_lookup_table()
         for i in range(len(last_ring)):
@@ -242,25 +251,6 @@ for side in ("L", "R"):
                     pass
         last_ring = new_ring
     # ---- ③ 最内圈用单 n-gon 封底 ----
-
-    # ---- v16(用户: 从rim数第3圈沿+Y挪1.688→1.267mm, 第4圈×0.75 跟着轻调) ----
-    # 用户手工实测: 最近的点 +1.688mm(朝正Y), 其他少一点 ~1.267mm; 4不如3夸张
-    try:
-        _SHIFT = {1: (0.001688, 0.001267), 2: (0.001688 * 0.75, 0.001267 * 0.75)}
-        for _ri, (_mx, _mn) in _SHIFT.items():
-            if _ri >= len(_rings_built):
-                continue
-            _vs = _rings_built[_ri]
-            _ys = [v.co.y for v in _vs]
-            _yf, _yb = min(_ys), max(_ys)
-            _span = max(_yb - _yf, 1e-9)
-            for _v in _vs:
-                _t = (_yb - _v.co.y) / _span        # 1=最靠近观察者(-y), 0=最远
-                _v.co.y += _mn + (_mx - _mn) * _t
-            _d = [abs((_mn + (_mx - _mn) * ((_yb - v.co.y) / _span))) for v in _vs]
-            print(f"[{side}] v16 第{_ri+2}圈 +Y位移 {_mx*1000:.3f}→{_mn*1000:.3f}mm (前大后小)", flush=True)
-    except Exception as _e:
-        print(f"[{side}] v16 位移异常: {_e}", flush=True)
 
     # ---- 极点收口(用户: "最后成为一个点"): 单顶点 + 三角扇 ----
     try:
