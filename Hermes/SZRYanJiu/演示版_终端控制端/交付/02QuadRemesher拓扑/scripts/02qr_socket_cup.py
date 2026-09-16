@@ -155,21 +155,69 @@ for side in ("L", "R"):
     last_ring = ring_v
     made = 0
     _new_faces = []
-    for si, s_k in enumerate(_SCALES, start=1):
+    # ---- v10: 每条射线预计算【表面路径的累计弧长】→ 各圈按其等分点放置 ----
+    def _surf_point(r_i, th_i, s_f):
+        """在射线 i 上取比例 s_f (1=边界,0=中心) 的位置(含深度)"""
+        r2 = max(r_i * s_f, 0.0005)
+        x2 = bx + r2 * math.cos(th_i)
+        z2 = bz + r2 * math.sin(th_i)
+        y2 = None
+        if side in REF_BVH:
+            _hit = REF_BVH[side].ray_cast(Vector((x2, c3.y - 0.060, z2)), Vector((0.0, 1.0, 0.0)))
+            if _hit and _hit[0] is not None:
+                y2 = float(_hit[0][1])
+        if y2 is None:
+            y2 = yc + math.sqrt(max(0.0, (R + CLR) ** 2 - r2 * r2))
+        return Vector((x2, y2, z2))
+
+    _NS = 64                     # 采样步数
+    _sgrid = [1.0 - k / _NS for k in range(_NS + 1)]     # 1.0 → 0.0
+    _paths = []                  # 每条射线的采样点
+    _cum = []                    # 每条射线的累计弧长
+    for _i, (r_i, th_i) in enumerate(polar):
+        pts = [_surf_point(r_i, th_i, sf) for sf in _sgrid]
+        cum = [0.0]
+        for _k in range(1, len(pts)):
+            cum.append(cum[-1] + (pts[_k] - pts[_k - 1]).length)
+        _paths.append(pts)
+        _cum.append(cum)
+
+    def _pt_at_frac(i, frac):
+        """射线 i 上累计弧长占比 frac 处的点(线性插值)"""
+        cum = _cum[i]
+        tgt = frac * cum[-1]
+        lo = 0
+        for _k in range(len(cum)):
+            if cum[_k] >= tgt:
+                lo = _k - 1 if _k > 0 else 0
+                break
+        else:
+            lo = len(cum) - 2
+        c0, c1 = cum[lo], cum[lo + 1]
+        w = 0.0 if c1 <= c0 else (tgt - c0) / (c1 - c0)
+        return _paths[i][lo].lerp(_paths[i][lo + 1], w)
+
+    _SCALES_V11 = [0.90, 0.80, 0.70, 0.59, 0.48, 0.37, 0.26, 0.15]
+    for si in range(1, _NB + 1):
         new_ring = []
-        for (r, th) in polar:
-            r2 = max(r * s_k, 0.001)
-            x2 = bx + r2 * math.cos(th)
-            z2 = bz + r2 * math.sin(th)
-            # 深度: 优先从高模旧碗面射线采样(用户要求的'之前的形状'); 回退=同心球+间隙
-            y2 = None
+        frac = si / (_NB + 1)        # 弧长等分比例(留出到极点的最后一段)
+        s_prop = _SCALES_V11[min(si, len(_SCALES_V11)) - 1]   # 等比缩小对照
+        w_deep = (si / _NB) ** 2     # 0..1: 越深越回到'等比缩小'(防深层星状折叠)
+        for _i in range(len(polar)):
+            pa = _pt_at_frac(_i, frac)                      # 弧长等分点
+            r_i, th_i = polar[_i]
+            rp = max(r_i * s_prop, 0.0005)
+            xp = bx + rp * math.cos(th_i)
+            zp = bz + rp * math.sin(th_i)
+            yp = None
             if side in REF_BVH:
-                _hit = REF_BVH[side].ray_cast(Vector((x2, c3.y - 0.060, z2)), Vector((0.0, 1.0, 0.0)))
+                _hit = REF_BVH[side].ray_cast(Vector((xp, c3.y - 0.060, zp)), Vector((0.0, 1.0, 0.0)))
                 if _hit and _hit[0] is not None:
-                    y2 = float(_hit[0][1])
-            if y2 is None:
-                y2 = yc + math.sqrt(max(0.0, (R + CLR) ** 2 - r2 * r2))
-            v2 = bm.verts.new(Vector((x2, y2, z2)))
+                    yp = float(_hit[0][1])
+            if yp is None:
+                yp = yc + math.sqrt(max(0.0, (R + CLR) ** 2 - rp * rp))
+            pp = Vector((xp, yp, zp))
+            v2 = bm.verts.new(pa.lerp(pp, w_deep))
             new_ring.append(v2)
         bm.verts.ensure_lookup_table()
         for i in range(len(last_ring)):
