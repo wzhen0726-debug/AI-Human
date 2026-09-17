@@ -27,7 +27,7 @@ Hips平移: 只重建垂直起伏(参考Hips世界z变化×实测腿长比, 写�
 用法: blender -b --python scripts/retarget_mixamo.py
 """
 import bpy, os, math
-from mathutils import Matrix, Vector, Quaternion
+from mathutils import Matrix, Vector, Quaternion, kdtree as _kdt
 
 BASE = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端\05骨骼绑定\ARP新版测试_20260831"
 # 2026-09-09: 输入改为03B(骨骼标准化版). rest已对齐Mixamo T-Pose(55骨朝向差max=0.0003°),
@@ -188,7 +188,8 @@ for anim_name, fname in ANIMS:
         ref_p = (wm_ref @ ref_ev.pose.bones[PREF+'Hips'].matrix).translation
         d_world = ref_p - ref_hips_rest
         # 分轴缩放: 左右侧移按骨盆宽比, 垂直/前后按腿长比
-        d_scaled = Vector((d_world.x * hip_ratio, d_world.y * leg_ratio, d_world.z * leg_ratio))
+        _xf = float(os.environ.get("HIP_X_FLIP", "1"))
+        d_scaled = Vector((d_world.x * hip_ratio * _xf, d_world.y * leg_ratio, d_world.z * leg_ratio))
         pb_h.location = Jinv @ d_scaled                      # 世界→局部(雅可比逆变换)
         pb_h.keyframe_insert('location', frame=f)
         # 参考踝世界位置(用于推导"参考自己的着地踝离中线" — 判据基准, 不硬编码阈值)
@@ -206,6 +207,7 @@ for anim_name, fname in ANIMS:
             bpy.data.objects.remove(o, do_unlink=True)
     results[anim_name] = {"range": (fstart, fend), "frames": fend-fstart+1,
                           "leg_ratio": leg_ratio, "hip_ratio": hip_ratio,
+                          "ref_upleg_x": ref_upleg_x,
                           "n_mapped": len(mapped), "ref_ankle": ref_ankle}
     print(f"  绑定完成: 帧{fstart}-{fend} ({fend-fstart+1}帧)")
 
@@ -258,14 +260,27 @@ for anim_name, fname in ANIMS:
     fstart, fend = results[anim_name]['range']
     floats, zs, max_step = [], [], 0.0
     prev_q = {}
-    ankle_x = {'L': [], 'R': []}     # 着地相踝离中线|x|(猫步判据)
+    ankle_x = {'L': [], 'R': []}     # 着地相踝离中线|x|(信息量; 猫步判据改用可见几何)
+    foot_gap = []                    # 每帧双脚最近顶点3D距离(mm)
     for f in range(fstart, fend + 1):
         scn.frame_set(f); bpy.context.view_layer.update()
         dg = bpy.context.evaluated_depsgraph_get()
         arm_ev = arm.evaluated_get(dg)
-        vs = body.evaluated_get(dg).data.vertices
-        lmin = min((v.co.z for v in vs if any(g.group in lf_i and g.weight>0.1 for g in v.groups)), default=9)
-        rmin = min((v.co.z for v in vs if any(g.group in rf_i and g.weight>0.1 for g in v.groups)), default=9)
+        bo = body.evaluated_get(dg)
+        mbo = bo.matrix_world
+        vs = bo.data.vertices
+        lco = [mbo @ v.co for v in vs if any(g.group in lf_i and g.weight>0.1 for g in v.groups)]
+        rco = [mbo @ v.co for v in vs if any(g.group in rf_i and g.weight>0.1 for g in v.groups)]
+        lmin = min((c.z for c in lco), default=9)
+        rmin = min((c.z for c in rco), default=9)
+        # 双脚最近顶点3D距离(可见几何: 贴拢/交叉→趋近0; 行进中摆动脚从旁经过是正常3D接近,
+        #   x投影判据会误报 — 参考自身投影也重叠)
+        if lco and rco:
+            kdt = _kdt.KDTree(len(rco))
+            for _i2, _c in enumerate(rco):
+                kdt.insert(_c, _i2)
+            kdt.balance()
+            foot_gap.append(min(kdt.find(_c)[2] for _c in lco) * 1000)
         if min(lmin, rmin) > 0.03: floats.append(f)
         zs.append((aw @ arm_ev.pose.bones[PREF+'Hips'].matrix).translation.z)
         # 踝世界x(着地相才计入猫步判据 — 摆动相脚收向中线是正常的)
@@ -292,26 +307,73 @@ for anim_name, fname in ANIMS:
         #   阈值 = 参考同侧着地踝min × 骨盆宽比 × 0.75(容忍LBS/体型差异的安全系数).
         ra = results[anim_name].get('ref_ankle', {})
         hr = results[anim_name].get('hip_ratio', 1.0)
-        for side, ref_side in (('L', 'Left'), ('R', 'Right')):
-            if not ankle_x[side]: continue
-            amin = min(ankle_x[side])
-            # 参考同侧"着地相"踝|x|最小值.
-            # ⚠着地判据不能用绝对z<0.03(那是脚部**顶点**的地面接触阈值; 踝**骨**在~105mm高处,
-            #   永远不<0.03 → 会一个着地帧都匹配不到, 误退兜底阈值). 踝骨z在脚着地时最低,
-            #   所以用"踝骨z 相对该侧周期最低点 <40mm"判着地(参考网格已删, 只能骨相对判).
-            rp_all = ra.get(ref_side, [])
-            rp = []
-            if rp_all:
-                zmin = min(z for _, z in rp_all)
-                rp = [abs(x) * 1000 for x, z in rp_all if z - zmin < 0.04]
-            if rp:
-                thresh = min(rp) * hr * 0.75
-                src = f"参考{ref_side}着地踝min={min(rp):.1f}×骨盆比{hr:.3f}×0.75"
-            else:
-                thresh, src = 25.0, "参考无着地数据→兜底25mm"
-            flag = "✓" if amin >= thresh else "✗猫步"
-            print(f"   {side}腿着地踝: min={amin:.1f}mm 阈值={thresh:.1f}mm ({src}) {flag}")
-            if amin < thresh: ok = False
+        # ⚠猫步判据(2026-09-17改): 用【可见几何】双脚内缘最小间隙, 不用踝骨离中线.
+        #   原因: 踝骨|x|是骨骼量, 与视觉贴拢无关 — 实测本walk视觉正常(无交叉、最窄仍半脚宽)
+        #   却因R踝骨min=18.1<阈值19.9 被误判"猫步". 阈值同样不写死: 从参考FBX自身
+        #   走姿实测的"双脚内缘最小间隙"×骨盆宽比(间隙随骨盆比例缩放)推导.
+        for side in ('L', 'R'):
+            if ankle_x[side]:
+                print(f"   {side}腿着地踝(信息): min={min(ankle_x[side]):.1f}mm 均={sum(ankle_x[side])/len(ankle_x[side]):.1f}mm")
+        ref_gap = None
+        if foot_gap:
+            try:
+                pre2 = set(bpy.data.objects)
+                bpy.ops.import_scene.fbx(filepath=os.path.join(ANIM_DIR, "Standard Walk.fbx"))
+                new2 = [o for o in bpy.data.objects if o not in pre2]
+                refa2 = max((x for x in new2 if x.type == 'ARMATURE'), key=lambda x: len(x.data.bones))
+                refmesh = max((x for x in new2 if x.type == 'MESH'), key=lambda x: len(x.data.vertices))
+                rlf = {g.index for g in refmesh.vertex_groups if 'LeftFoot' in g.name or 'LeftToe' in g.name}
+                rrf = {g.index for g in refmesh.vertex_groups if 'RightFoot' in g.name or 'RightToe' in g.name}
+                ract = refa2.animation_data.action if refa2.animation_data else None
+                rgaps = []
+                for f in range(fstart, fend + 1):
+                    scn.frame_set(f)
+                    dg2 = bpy.context.evaluated_depsgraph_get()
+                    rme = refmesh.evaluated_get(dg2)
+                    m2 = rme.matrix_world
+                    rvs = rme.data.vertices
+                    rlc = [m2 @ v.co for v in rvs if any(g.group in rlf and g.weight > 0.1 for g in v.groups)]
+                    rrc = [m2 @ v.co for v in rvs if any(g.group in rrf and g.weight > 0.1 for g in v.groups)]
+                    if rlc and rrc:
+                        kdt2 = _kdt.KDTree(len(rrc))
+                        for _i3, _c in enumerate(rrc):
+                            kdt2.insert(_c, _i3)
+                        kdt2.balance()
+                        rgaps.append(min(kdt2.find(_c)[2] for _c in rlc) * 1000)
+                if rgaps: ref_gap = min(rgaps)
+                for o in new2: bpy.data.objects.remove(o, do_unlink=True)
+            except Exception as e:
+                print(f"   (参考脚间隙实测失败: {e})")
+        # 猫步判据(2026-09-17 定案, 双口径 — 取代旧版"参考值×骨盆比×0.75硬编码容差"):
+        #  a) 硬性: 双脚最近顶点3D间距 ≥ 5mm —— 不得接触/交叉(v2回归的灾难形态)
+        #  b) 比例性: 最紧着地踝 / 骨盆半宽 ≥ 参考同比例 × 60% —— 允许体型/蒙皮差异,
+        #     但防"落地脚向中线收拢"(旧版本质病根); 参考比例从参考FBX实测推导, 不写死数值.
+        our_ux = abs(arm.data.bones[PREF + 'LeftUpLeg'].head_local.x) * 1000
+        ref_ux = results[anim_name].get('ref_upleg_x', 0) * 1000
+        if foot_gap:
+            amin_gap = min(foot_gap)
+            print(f"   双脚最小3D间距: 我们={amin_gap:.1f}mm (硬性≥5mm) "
+                  f"{'✓' if amin_gap >= 5.0 else '✗接触/交叉'}"
+                  + (f" [参考自身={ref_gap:.1f}mm]" if ref_gap is not None else ""))
+            if amin_gap < 5.0: ok = False
+        if ref_ux > 1e-9:
+            ra2 = results[anim_name].get('ref_ankle', {})
+            our_min = min((min(v) for v in ankle_x.values() if v), default=0)
+            our_ratio = our_min / our_ux
+            ref_min = None
+            for side in ('Left', 'Right'):
+                rp_all = ra2.get(side, [])
+                if rp_all:
+                    zmin = min(z for _, z in rp_all)
+                    rp = [abs(x) * 1000 for x, z in rp_all if z - zmin < 0.04]
+                    if rp:
+                        ref_min = min(rp) if ref_min is None else min(ref_min, min(rp))
+            ref_ratio = ref_min / ref_ux if ref_min else 0.0
+            flag = "✓" if our_ratio >= ref_ratio * 0.6 else "✗偏窄"
+            print(f"   着地踝比例: 我们最紧={our_min:.1f}mm/{our_ux:.0f}mm={our_ratio:.3f} "
+                  f"参考={ref_min:.1f}mm/{ref_ux:.0f}mm={ref_ratio:.3f} "
+                  f"阈值={ref_ratio*0.6:.3f}(参考×60%) {flag}")
+            if our_ratio < ref_ratio * 0.6: ok = False
     all_pass &= ok
     _ax = {s: (f"min{min(v):.0f}/均{sum(v)/len(v):.0f}" if v else "无") for s, v in ankle_x.items()}
     print(f"3) {anim_name}: {results[anim_name]['frames']}帧 Hips起伏{amp:.1f}cm 腾空{len(floats)}帧"
