@@ -153,23 +153,39 @@ for side in ("L", "R"):
     _SCALES = [0.90, 0.80, 0.70, 0.59, 0.48, 0.37, 0.26, 0.15]
     _NB = len(_SCALES)
 
+    # ---- 2026-09-17 用户定案: 复刻用户做法, 深度自算(不看眼球/不采样参考件) ----
+    # 用户方法: rim环→沿Y挤出→缩放成眼窝最深处的环→沿Y打平→再挤一点→合并到中心.
+    # 深度 D = 0.31×eye_w (用户手调参考碗实测: 总深 11.5mm @ 眼宽 37.13mm; 随尺寸随动)
+    # 逐环深度剖面(参考碗实测样条, t=该环相对 rim 的径向比值):
+    #   t:   1.00  0.90  0.80  0.70  0.59  0.48  0.37  0.26  0.15  0.00
+    #   d/D: 0.00  0.005 0.015 0.03  0.10  0.19  0.33  0.51  0.80  1.00
+    _D = 0.67 * float(J[side].get('width_mm', 37.0)) / 1000.0  # 0.67 = 表面比对两轮实测反推(与用户参考碗对齐 |Δy|<2mm)
+    # 剖面 t:   1.00  0.90  0.80  0.70  0.59  0.48  0.37  0.26  0.15  0.00
+    # d/D:      0.00  0.06  0.10  0.16  0.27  0.40  0.50  0.74  0.98  1.10
+    _prof_t = np.array([0.00, 0.15, 0.26, 0.37, 0.48, 0.59, 0.70, 0.80, 0.90, 1.00])
+    _prof_d = np.array([1.10, 0.98, 0.80, 0.57, 0.49, 0.34, 0.16, 0.10, 0.06, 0.00])
+    _rim_y = [v.co.y for v in ring_v]
+    # 2026-09-17 关键(实测用户参考碗得出): rim 在内外眼角比睑缘深 10~20mm, 该深陷【不能】原样带进碗;
+    # 用户参考碗的深部 = 睑缘基线 + 深度, 角部只余少量衰减影响 → 基线用中位数, 角部偏差按 λ 衰减.
+    _y_base = float(np.median(_rim_y))
+    _LAM_BASE = 0.52
+    def _depth_of(s_k):
+        return _D * float(np.interp(s_k, _prof_t, _prof_d))
+    def _lam_of(s_k):
+        return _LAM_BASE * (0.70 + 0.30 * s_k)   # 越深衰减越强(浅圈保留较多睑形)
+
     # ---- v13(用户: 让蓝线尽量均分 1 和 2; 不许出现错位穿插) ----
     # 只调【第1圈内环】的径向标量 s1, 使 band1(rim→环1) 与 band2(环1→环2) 的表面宽度相等。
     # w1(s1): s1 变大 → 环1 外移 → w1 变小;  w2(s1): s1 变大 → 跨距变大 → w2 变大。
     # 故 w1-w2 对 s1 单调递减 → 二分; 且限定 s1 ∈ (s2, 0.995) 保证与环2不交叠。
     def _ring_at(s_k):
         out = []
-        for (r, th) in polar:
+        for _i, (r, th) in enumerate(polar):
             r2 = max(r * s_k, 0.001)
             x2 = bx + r2 * math.cos(th)
             z2 = bz + r2 * math.sin(th)
-            y2 = None
-            if side in REF_BVH:
-                _hit = REF_BVH[side].ray_cast(Vector((x2, c3.y - 0.060, z2)), Vector((0.0, 1.0, 0.0)))
-                if _hit and _hit[0] is not None:
-                    y2 = float(_hit[0][1])
-            if y2 is None:
-                y2 = yc + math.sqrt(max(0.0, (R + CLR) ** 2 - r2 * r2))
+            # 复刻用户做法: 基线(rim中位防角部外泄) + 深度剖面 + 角部偏差衰减(λ)
+            y2 = _y_base + _depth_of(s_k) + _lam_of(s_k) * (_rim_y[_i] - _y_base)
             out.append(Vector((x2, y2, z2)))
         return out
 
@@ -210,20 +226,17 @@ for side in ("L", "R"):
     _rings_built = []      # v16: 记录新建各圈顶点, 便于按用户指定圈做局部Y位移
     for si, s_k in enumerate(_SCALES, start=1):
         new_ring = []
-        for (r, th) in polar:
+        for _i, (r, th) in enumerate(polar):
             r2 = max(r * s_k, 0.001)
             x2 = bx + r2 * math.cos(th)
             z2 = bz + r2 * math.sin(th)
-            # 深度: 优先从高模旧碗面射线采样(用户要求的'之前的形状'); 回退=同心球+间隙
-            y2 = None
-            if side in REF_BVH:
-                _hit = REF_BVH[side].ray_cast(Vector((x2, c3.y - 0.060, z2)), Vector((0.0, 1.0, 0.0)))
-                if _hit and _hit[0] is not None:
-                    y2 = float(_hit[0][1])
-            if y2 is None:
-                y2 = yc + math.sqrt(max(0.0, (R + CLR) ** 2 - r2 * r2))
+            # 复刻用户做法: 基线 + 深度剖面 + 角部衰减(不看眼球/不采样参考件)
+            y2 = _y_base + _depth_of(s_k) + _lam_of(s_k) * (_rim_y[_i] - _y_base)
             v2 = bm.verts.new(Vector((x2, y2, z2)))
             new_ring.append(v2)
+        _ys = [v.co.y * 1000 for v in new_ring]
+        if si == 1 or si == _NB:
+            print(f"[{side}] 环{si}/{_NB} s={s_k:.2f} y均={sum(_ys)/len(_ys):7.2f} y范围[{min(_ys):7.2f},{max(_ys):7.2f}]", flush=True)
         # ---- v17(用户方法: 挤出→缩放→'沿Y打平'→合并中心) ----
         # 参考实测: 同圈 y 波动被系统压小, 越深越平(深部 ≈0.65×, 外圈 ≈0.96×) → 分深度渐进的打平系数
         _lam = 1.0 - 0.35 * (si / max(_NB, 1))       # 0.956(外) → 0.65(深)
@@ -252,34 +265,14 @@ for side in ("L", "R"):
         last_ring = new_ring
     # ---- ③ 最内圈用单 n-gon 封底 ----
 
-    # ---- 2026-09-16 修复极点尖刺(用户报: 下睑/碗底放射状尖面) ----
-    # 根因(实测): 深部环等比缩小(0.90→0.15)会继承 rim 的局部密度不均 → 密集点被缩到 ~0.2mm,
-    # 与 3~5mm 的扇骨/环带边构成 15:1 细长面(用户所见的"放射状尖刺"). QR输出本身干净(仅1个>5的面).
-    # 修复: 收极点前对末三圈做焊接(0.35mm) → 密集点合并, 扇骨与环带均匀; 仍是"环线逐圈收成一个点".
-    try:
-        _weld_verts = []
-        for _rv in _rings_built[-3:]:
-            _weld_verts.extend(_rv)
-        _n0 = len(_weld_verts)
-        bmesh.ops.remove_doubles(bm, verts=_weld_verts, dist=0.00065)  # 0.65mm, 仅末3圈: 角部外圈保持QR干净原样(全环焊会在角部造出新极点=用户截图)
-        last_ring = [v for v in last_ring if v.is_valid]
-        _seen = set(); _lr = []
-        for v in last_ring:
-            if v not in _seen:
-                _seen.add(v); _lr.append(v)
-        last_ring = _lr
-        _n1 = sum(len([v for v in _rv if v.is_valid]) for _rv in _rings_built[-3:])
-        print(f"[{side}] 深部焊接(修尖刺): 末3圈 {_n0}→{_n1} 顶点, 末环 {len(last_ring)} 点", flush=True)
-    except Exception as _e:
-        print(f"[{side}] 深部焊接跳过: {_e}", flush=True)
-
     # ---- 极点收口(用户: "最后成为一个点"): 单顶点 + 三角扇 ----
     try:
         _px = float(np.mean([v.co.x for v in last_ring]))
         _pz = float(np.mean([v.co.z for v in last_ring]))
         # 2026-09-16 修尖刺: 极点y必须与末环连续. 参考碗中心射线(r≈0)非单调(实测r=2mm处-87.6, r=0处回弹-82.9),
         # 直接用会造出朝前4.7mm的圆锥尖(用户截图报的'放射状尖刺'). 改为末环平面+0.2mm微凸, 圆滑收口.
-        _py = float(np.mean([v.co.y for v in last_ring])) + 0.0002
+        # 2026-09-17: 极点取末环【最靠后(/最大y)】+0.5mm — 均值会落进环内导致扇面翻折
+        _py = float(max(v.co.y for v in last_ring)) + 0.0005
         _pole = bm.verts.new(Vector((_px, _py, _pz)))
         bm.verts.ensure_lookup_table()
         _nf = 0
