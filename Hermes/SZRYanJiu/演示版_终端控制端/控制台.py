@@ -38,7 +38,7 @@ NOISE = ("register_class", "Registered", "register()", "WARN", "Warning", "bpy_t
          "blender.exe", "ModuleNotFound", "    ~~~", "import bpy", "self.", "mod.register")
 
 # ============ 命令提示常驻 ============
-CMD_HINT = (f"{D}命令:{W} {G}01{W}修复 {G}01a{W}眼窝 {G}02{W}拓扑+眼球+碗 {G}03{W}UV {G}04{W}烘焙 {G}05{W}绑定 "
+CMD_HINT = (f"{D}命令:{W} {G}01{W}修复 {G}01a{W}眼窝 {G}02{W}拓扑+碗+眼球 {G}03{W}UV {G}04{W}烘焙 {G}05{W}绑定 "
             f"{G}all{W}全流程 {G}clean{W}清理 {G}status{W}状态 {G}quit{W}退出")
 
 def show_hint():
