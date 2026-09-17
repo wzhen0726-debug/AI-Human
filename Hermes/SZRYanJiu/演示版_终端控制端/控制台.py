@@ -7,7 +7,7 @@
   ④ 新增 clean 命令清理输出文件夹(单环节/all)
   ⑤ 取消清屏: 内容连续显示可翻页回看, 只加分隔线
   ⑥ (骨骼断开经诊断=Mixamo标准布局, 非bug, 见日志)
-  ⑦ (2026-09-16) 眼球摆入从01a挪到02(QR之后,碗之前)
+  ⑦ (2026-09-17) 眼球摆入在02的【碗之后】(QR → 碗(纯rim) → 眼球摆入并并入输出)
   ⑧ (2026-09-17) 用户: 无交付概念; 测试期产物一律写各stage的 输出/, 中间件收各stage的 _中间/
 命令: 01 / 01a / 02 / 03 / 04 / 05 / all / clean / status / help / quit
 """
@@ -245,13 +245,13 @@ def step_01a():
     # 5. 眼窝
     if not run_blender(os.path.join(S01A, "run_eye_socket.py"), "01a_4", "④ 眼窝开孔+封碗+内圆角(v48)"):
         summary("环节 01a", False, t0, []); return False
-    # (2026-09-16 用户: 01a 不加眼球 — 眼球摆入挪到02 QR之后)
+    # 2026-09-17 用户新流程: 01a 不加眼球 — 眼球摆入在02的【碗之后】(QR→碗→眼球)
     # 6. 眼窝独立材质(2026-09-08): 供02 QR沿材质边界布线保住眼窝结构; 输出_qr.blend, 不动烘焙源文件
     if not run_blender(os.path.join(S01A, "assign_socket_material.py"), "01a_6", "⑤ 眼窝碗面赋独立材质(供QR沿rim布线)"):
         summary("环节 01a", False, t0, []); return False
     lines = [f"{D}眼窝{W} inward_fillet 内圆角定案",
              f"{D}材质{W} EyeSocket碗面分区 → QR沿rim布线",
-             f"{D}眼球{W} 已按新流程挪到 02 (QR之后摆入)"]
+             f"{D}眼球{W} 已按新流程挪到 02 (碗之后摆入并并入输出)"]
     outd = os.path.join(BASE, "01a眼窝眼球", "输出")
     ok = all([deliver(os.path.join(M01A, "01_1_eye_socket.blend"), outd)])
     summary("环节 01a 眼窝与眼球", ok, t0, lines)
@@ -259,20 +259,20 @@ def step_01a():
 
 def step_02():
     divider()
-    print(f"{Y}{BOLD}▶ 环节 02 · 拓扑重建 + 眼球摆入 + 眼窝碗{W}")
-    print(f"{D}  细分: QR自动拓扑 → 眼球摆入(角膜自动测量) → 眼窝碗(按眼球反推) · 引导=眼窝独立材质{W}\n")
+    print(f"{Y}{BOLD}▶ 环节 02 · 拓扑重建 + 眼窝碗 + 眼球摆入{W}")
+    print(f"{D}  细分: QR自动拓扑 → 眼窝碗(纯rim程序化: 深度/环数自算) → 眼球摆入(并并入输出) · 碗不含眼球几何{W}\n")
     t0 = time.time()
     if not check("01a眼窝眼球/_中间/01_1_eye_socket_qr.blend"):
         print(f"{R}✗ 缺少输入(带材质分区版), 先运行 01a{W}"); return False
     if not run_blender(os.path.join(BASE, "02QR拓扑", "scripts", "02_qr_auto.py"),
                        "02_QR", "QuadRemesher 自动拓扑(目标15万quad)"):
         summary("环节 02", False, t0, []); return False
-    # 2026-09-16 用户: 眼球摆入挪到 QR 之后(碗依赖眼球真值, 仍在此之前)
-    if not run_blender(os.path.join(S01A, "run_eyeball_v2.py"), "02_眼球", "眼球摆入(角膜自动测量+Hazel)"):
-        summary("环节 02", False, t0, []); return False
-    # 眼窝碗重建(按眼球反推+打平+极点收口) — 正典产物=带碗版
+    # 2026-09-17 用户新流程: 碗=纯 rim 几何(不看眼球) → 眼球在碗之后摆入, 并并入碗输出
     if not run_blender(os.path.join(BASE, "02QR拓扑", "scripts", "02qr_socket_cup.py"),
-                       "02_碗", "眼窝碗重建(按眼球几何, 非穿透)", done_mark="SAVED:"):
+                       "02_碗", "眼窝碗重建(纯rim: 深度/环数自算)", done_mark="SAVED:"):
+        summary("环节 02", False, t0, []); return False
+    if not run_blender(os.path.join(S01A, "run_eyeball_v2.py"), "02_眼球",
+                       "眼球摆入(角膜自动测量, 并并入碗输出)"):
         summary("环节 02", False, t0, []); return False
     qr = os.path.join(BASE, "02QR拓扑", "输出", "02_qr_150k_socket.blend")
     # 2026-09-17 用户要求: 02 每次也产出"拓扑完、未补洞"的中间件(QR输出, 眼洞开放)供检查/手工处理
@@ -382,15 +382,38 @@ def clean_output(target=None):
         "04": os.path.join(BASE, "04纹理烘焙", "输出"),
         "05": os.path.join(BASE, "05骨骼绑定", "输出"),
     }
-    # ③ 各stage里的 Blender 自动备份(.blend1)与标记点历史备份
-    sweep_dirs = [os.path.join(BASE, "01a眼窝眼球", "输出"),
-                  os.path.join(BASE, "01a眼窝眼球", "_中间"),
-                  os.path.join(BASE, "02QR拓扑"),
-                  os.path.join(BASE, "03自动UV"),
-                  os.path.join(BASE, "04纹理烘焙"),
-                  os.path.join(BASE, "05骨骼绑定", "ARP新版测试_20260831")]
+    PROTECT = ("01A_markers_eyelid.blend", "eyelid_contour_manual.json", "iris_3ddfa.json",
+               "eyeball_finetune_manual.json", ".gitkeep")
+    def _wipe(d):
+        cnt = 0
+        if not os.path.isdir(d):
+            return 0
+        for root, dirs, files in os.walk(d, topdown=False):
+            for f in files:
+                if f in PROTECT or f.startswith("01A_markers_eyelid_备份_"):
+                    continue
+                try: os.remove(os.path.join(root, f)); cnt += 1
+                except Exception: pass
+            for dd in dirs:
+                try: os.rmdir(os.path.join(root, dd)); cnt += 1
+                except Exception: pass
+        return cnt
+    if target in (None, "all"):
+        sel = list(targets.keys())
+    elif target in targets:
+        sel = [target]
+    else:
+        print(f"{R}✗ 未知环节: {target} (可选: 01/01a/02/03/04/05/all){W}"); show_hint(); return
+    n = 0
+    for t in sel:
+        n += _wipe(targets[t])                                              # ① 输出/ 递归清空(保留手调文件)
+        n += _wipe(os.path.join(os.path.dirname(targets[t]), "_中间"))       # ② _中间/ 一并清(防下游读旧件)
+    n += _wipe(os.path.join(BASE, "01a眼窝眼球", "screenshots"))
     import glob as _glob
-    for d in sweep_dirs:
+    for d in [os.path.join(BASE, "01高模修复"), os.path.join(BASE, "01a眼窝眼球"),
+              os.path.join(BASE, "01a眼窝眼球", "_中间"),
+              os.path.join(BASE, "02QR拓扑"), os.path.join(BASE, "03自动UV"),
+              os.path.join(BASE, "04纹理烘焙"), os.path.join(BASE, "05骨骼绑定", "ARP新版测试_20260831")]:
         for pat in ("*.blend1", "01A_markers_eyelid_备份_*.blend"):
             for fp in _glob.glob(os.path.join(d, pat)):
                 try: os.remove(fp); n += 1
@@ -403,7 +426,7 @@ def status():
     items = [
         ("01 高模修复", "01高模修复/输出/01_highpoly_repair.blend"),
         ("01a 眼窝", "01a眼窝眼球/输出/01_1_eye_socket.blend"),
-        ("02 眼球(QR后摆入)", "01a眼窝眼球/输出/01_2_eyeball_placed.blend"),
+        ("02 眼球(碗后摆入)", "01a眼窝眼球/输出/01_2_eyeball_placed.blend"),
         ("02 QR拓扑", "02QR拓扑/输出/02_qr_150k_socket.blend"),
         ("02 未补洞(QR)", "02QR拓扑/输出/02_qr_150k_未补洞_拓扑后.blend"),
         ("03 UV", "03自动UV/输出/03_auto_uv.blend"),

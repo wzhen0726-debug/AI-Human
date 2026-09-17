@@ -1,14 +1,17 @@
 # -*- coding: utf-8 -*-
-"""02 QR 之后: 低模碗状眼窝重建(眼球坐进去).
-2026-09-16 用户确认方向: "在低模上重建碗状眼窝(有碗面, 眼球坐进去)".
+"""02 QR 之后: 低模碗状眼窝重建(复刻用户手工方法, 纯 rim 几何, 不看眼球).
+2026-09-17 用户口径: "没补洞(QR原样)没问题; 按我那个方案做眼窝——先根据 rim 做一个
+  Y轴打平的'眼窝心'环, 中间加均匀分段; 深度/密度都要算出来, 不做死参数; 不去管眼珠."
 
-做法(全部随动, 无硬编码):
-  ① 从 01_2 的真实眼球对象推导: 球心 yc(xz 与眼中心一致)、半径 R、间隙 clr(默认 0.0015m)
-  ② 每个眼孔边界环(QR 输出的开放边界闭环) → 内收 N 圈; 第 k 圈半径 = 原半径×s_k,
-     深度按【眼球同心球面+间隙】取值: y = yc + sqrt(max(0,(R+clr)^2 - r'^2))
-     → 碗面天然包住眼球, 不穿球
-  ③ 最内圈用小 n-gon 封底(旧版验证过: 单极点三角扇有放射条纹, 单 n-gon 盖干净)
-  ④ smooth shading; 保存为新文件(不覆盖 02_qr_150k.blend)
+做法(全部程序化, 无绝对mm):
+  ① 每个眼孔边界环(QR 输出开放边界闭环) = rim
+  ② 几何基准 r_ref = rim 顶点到眼心的 XZ 距离中位数(开口等效半径, 现场测量)
+  ③ 碗深 D = 2.04×r_ref; 分段步进 = 0.255×r_ref; 环数 n = round(D/步进) 夹5..12 (=8);
+     最深环(眼窝心)半径比 0.152(无量纲), 全平; 极点再深 0.176×r_ref
+     (五组系数 = 用户手调参考碗逐环实测反推, 见 方案md记录/v3_QuadRemesher/02QuadRemesher拓扑/)
+  ④ 中间 = 线性插值 y_k_i=(1-t_k)·rim_y_i + t_k·y_deep, t_k=k/n → 末环恰好全平
+  ⑤ 极点收口 + smooth; 保存为正典产物
+  ⑥ 眼球由 run_eyeball_v2 在其后摆入并并入本输出(本脚本不接触眼球)
 
 输出: 02QR拓扑/输出/02_qr_150k_socket.blend
 """
@@ -19,59 +22,11 @@ from mathutils import Vector
 
 D = r"E:/WangZhen_Project/AI/ShuZiRen/Hermes/SZRYanJiu/演示版_终端控制端"
 QR_BLEND = os.path.join(D, "02QR拓扑", "_中间", "02_qr_150k.blend")
-EYE_BLEND = os.path.join(D, "01a眼窝眼球", "输出", "01_2_eyeball_placed.blend")
 OUT = os.path.join(D, "02QR拓扑", "输出", "02_qr_150k_socket.blend")
 J = json.load(open(os.path.join(D, "01a眼窝眼球", "3ddfa", "eyelid_contour_manual.json"), encoding="utf-8"))
 
-# ---- ① 从 01_2 拿真实眼球的球心/半径 ----
-bpy.ops.wm.open_mainfile(filepath=EYE_BLEND)
-balls = [o for o in bpy.data.objects if o.type == 'MESH']
-head = max(balls, key=lambda o: len(o.data.vertices))
-eyeballs = [o for o in balls if o is not head]
-BALL = {}
-if eyeballs:
-    for o in eyeballs:
-        mw = np.array(o.matrix_world)
-        co = np.empty(len(o.data.vertices) * 3)
-        o.data.vertices.foreach_get("co", co)
-        co = co.reshape(-1, 3) @ mw[:3, :3].T + mw[:3, 3]
-        # v6(2026-09-16): 不能用顶点均值当球心 —— 角膜侧顶点更密, 均值被带偏,
-        #   半径谱因此虚胖成 6.9~18.7mm(v5 用 max 的坑就源于此)。
-        #   规范球体估计: 球心=包围盒中心; 半径=到该中心距离的 p90(含角膜凸起)。
-        ctr = (co.min(axis=0) + co.max(axis=0)) * 0.5
-        rr = np.linalg.norm(co - ctr, axis=1)
-        rad = float(np.percentile(rr, 90))
-        s = "L" if ctr[0] < 0 else "R"
-        BALL[s] = (Vector(tuple(ctr)), rad)
-        print(f"眼球[{s}]: 球心(bbox中心)({ctr[0]*1000:.1f},{ctr[1]*1000:.1f},{ctr[2]*1000:.1f})mm "
-              f"半径(p90)={rad*1000:.2f}mm 半径谱[{rr.min()*1000:.1f}~{rr.max()*1000:.1f}]")
-CLR = 0.0015   # 碗面与球面的间隙(眼球后极不穿碗底)
+# (2026-09-17 v19 移除: 眼球载入(BALL) 与 旧参考件(_eye_cup_ref)载入 — 碗=纯 rim 几何)
 
-# ---- ①b 参考碗: 高模旧版眼窝(_eye_cup_ref.blend) 的深度剖面 ----
-# 用户要求"类似之前高模上做的眼窝形状" → 逐点采样旧碗面的 y 作为低模碗的深度
-REF_BLEND = os.path.join(D, "_eye_cup_ref.blend")
-REF_BVH = {}
-REF_TAG = {}
-if os.path.exists(REF_BLEND):
-    from mathutils.bvhtree import BVHTree
-    bpy.ops.wm.open_mainfile(filepath=REF_BLEND)
-    robj = max([o for o in bpy.data.objects if o.type == 'MESH'], key=lambda o: len(o.data.vertices))
-    rme = robj.data
-    rvl = [tuple(v.co) for v in rme.vertices]
-    for s in ("L", "R"):
-        attr = rme.attributes.get("v44tag_" + s)
-        if attr is None:
-            continue
-        tg = np.zeros(len(rme.polygons), dtype=np.int32)
-        attr.data.foreach_get("value", tg)
-        idxs = np.where(tg == 2)[0]           # 2 = 旧版碗面
-        if len(idxs) < 50:
-            continue
-        pl = [list(rme.polygons[int(i)].vertices) for i in idxs]
-        REF_BVH[s] = BVHTree.FromPolygons(rvl, pl)
-        print(f"参考碗[{s}]: {len(pl)} 面 BVH 就绪")
-else:
-    print(f"⚠ 参考件不存在({os.path.basename(REF_BLEND)}), 将用眼球同心球剖面")
 
 # ---- ② 打开 QR 低模, 对每个眼孔建碗 ----
 bpy.ops.wm.open_mainfile(filepath=QR_BLEND)
@@ -88,12 +43,8 @@ _tag = bm.faces.layers.int.new("qrbowl")
 
 for side in ("L", "R"):
     c3 = Vector(tuple(float(x) for x in J[side]['center']))
-    if side not in BALL:
-        print(f"[{side}] 01_2 里没找到眼球, 跳过")
-        continue
-    _bc = BALL[side][0]
-    yc, R = _bc[1], BALL[side][1]
-    bx, bz = _bc[0], _bc[2]     # ★以【眼球中心】为碗的轴心(轮廓中心与球心差~1.4mm, 直接用会吃掉间隙)
+    # v19: 轴心 = 轮廓自身中心(x,z) — 不再依赖眼球
+    bx, bz = float(c3.x), float(c3.z)
     # 找该眼孔的开放边界环
     oe = [e for e in bm.edges if len(e.link_faces) == 1 and (e.verts[0].co - c3).xz.length < 0.05]
     dg = {}
@@ -112,7 +63,7 @@ for side in ("L", "R"):
             break
         ring0.append(cand[0]); pv, cu = cu, cand[0]
     M = len(ring0)
-    print(f"[{side}] 孔环 {M} 点 → 建碗(球心y{yc*1000:.1f} 半径{R*1000:.2f} 间隙{CLR*1000:.1f}mm)")
+    print(f"[{side}] 孔环 {M} 点 → 建碗")
     ring_v = [bm.verts[i] for i in ring0]
     # ---- 绕序种子: 环上第一条与头模面共享的边; 头模面沿 a→b 则新面须沿 b→a(流形一致) ----
     bm.verts.index_update(); bm.edges.index_update(); bm.faces.index_update()
@@ -150,20 +101,27 @@ for side in ("L", "R"):
     _r_min = max(1e-4, min(r for (r, th) in polar))
     # v8(用户: "眼窝内的都是环线, 随rim环逐渐变小…最后成为一个点"):
     #   等比缩小保持 rim 形状轮廓逐圈变小 → 末环 0.15 → 极点收口(不再用 n-gon 平盖 '花生仁')
-    # 2026-09-17 v18 用户口径: rim→最深环【线性】缩放(参考碗实测每环缩放步进恒定)
-    _S_DEEP = 0.152          # 最深环(眼窝心)半径比 = 参考碗实测 0.153
-    _NB = 8
+    # 2026-09-17 v19 方法化(用户要求"算出来, 不做死参数"; 系数=参考碗实测反推, 全部无量纲随动):
+    #   r_ref = rim 顶点到眼心的 XZ 距离中位数(开口等效半径)
+    #   D (碗深)      = 2.04 × r_ref
+    #   步进(决定环密度) = 0.255 × r_ref
+    #   n (环数)      = round(D/步进), 夹 5..12
+    _r_ref = float(np.median([r for (r, th) in polar]))
+    _D_socket = 2.04 * _r_ref
+    _step_ref = 0.255 * _r_ref
+    _NB = int(np.clip(round(_D_socket / _step_ref), 5, 12))
+    _S_DEEP = 0.152          # 最深环(眼窝心)半径比(无量纲, 参考碗实测)
     _SCALES = [1.0 - (1.0 - _S_DEEP) * (k / _NB) for k in range(1, _NB + 1)]
 
-    # ---- 2026-09-17 v18 用户口径(实测其参考碗反推 = 纯线性插值, 无任何非线性剖面) ----
-    # 用户方法: rim环 → 缩放+Y轴打平成"眼窝心"环(最深环, 全平) → 中间均匀分段(Ctrl+R) → 再挤一点合并中心.
-    # 参考碗逐环实测: 深度步进 +3.13mm×7 全等; 波动线性衰减 (8-k)/8×rim波动; 最深环 std=0(全平); 极点再深+2.17mm.
-    # 实现 = y_k_i = (1-t_k)·rim_y_i + t_k·y_deep, t_k = k/8 → k=8 时恰好全平.
-    # y_deep(眼窝心平面) = rim_y均值 + 0.662×eye_w (参考碗实测 24.6mm @ 37.13mm; 随尺寸随动)
+    # ---- 2026-09-17 v19 用户方法(实测其参考碗反推 = 纯线性插值; 深度/密度全部算出来) ----
+    # 用户方法: rim环 → 缩放+Y轴打平成"眼窝心"环(最深环, 全平) → 中间均匀分段 → 再挤一点合并中心.
+    # 参考碗逐环实测: 深度步进全等; 波动线性衰减 (n-k)/n×rim波动; 最深环 std=0(全平); 极点再深≈2.17mm.
+    # 实现 = y_k_i = (1-t_k)·rim_y_i + t_k·y_deep, t_k = k/n → 末环恰好全平.
     _rim_y = [v.co.y for v in ring_v]
-    _eye_w = float(J[side].get('width_mm', 37.0)) / 1000.0
-    _y_deep = float(np.mean(_rim_y)) + 0.675 * _eye_w  # 0.675 = 参考碗 deepest ring 绝对y对齐实测反推
-    _POLE_STEP = 0.058 * _eye_w
+    _y_deep = float(np.mean(_rim_y)) + _D_socket          # 眼窝心平面(全平)
+    _POLE_STEP = 0.176 * _r_ref
+    print(f"[{side}] 碗参数(自算): r_ref={_r_ref*1000:.2f}mm 深D={_D_socket*1000:.2f}mm "
+          f"步进={_step_ref*1000:.2f}mm 环数={_NB} 极点再深={_POLE_STEP*1000:.2f}mm", flush=True)
     def _t_of(s_k):
         return (1.0 - s_k) / max(1e-9, (1.0 - _S_DEEP))
     def _y_of(s_k, _i):
@@ -292,21 +250,8 @@ bm.to_mesh(me); bm.free()
 me.update()
 for p in me.polygons:
     p.use_smooth = True
-# ---- v19(用户: 眼球要在02输出中出现, 后续UV/烘焙/绑定/导出全程连贯) ----
-# 把01_2里的眼球对象(Eye002_L/R)并入本文件(保持世界位置; 只并入眼球, 不带高模)
-try:
-    _existing = [o for o in bpy.data.objects if o.name.startswith('Eye002')]
-    if not _existing:
-        with bpy.data.libraries.load(EYE_BLEND) as (_src, _dst):
-            _dst.objects = [n for n in _src.objects if n.startswith('Eye002')]
-        _eyes = [o for o in _dst.objects if o is not None]
-        for _o in _eyes:
-            bpy.context.scene.collection.objects.link(_o)
-        print(f"眼球并入: {[o.name for o in _eyes]}")
-    else:
-        print(f"眼球已存在, 跳过: {[o.name for o in _existing]}")
-except Exception as _e:
-    print(f"眼球并入失败: {_e}")
+# 2026-09-17 流程变更(用户): 眼球摆入挪到【碗之后】(碗=纯rim几何, 不看眼球);
+# 眼球并入改由 run_eyeball_v2 在摆入完成后进行 → 本脚本不再接触眼球。
 
 bpy.ops.wm.save_as_mainfile(filepath=OUT)
 print("SAVED:", OUT)
