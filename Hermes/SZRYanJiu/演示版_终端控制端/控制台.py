@@ -313,12 +313,12 @@ def step_03():
 
 def step_04():
     divider()
-    print(f"{Y}{BOLD}▶ 环节 04 · 纹理烘焙 (4K) + 贴图溢出处理{W}\n")
+    print(f"{Y}{BOLD}▶ 环节 04 · 纹理烘焙 (4K) + 贴图溢出/异常斑处理{W}\n")
     t0 = time.time()
     if not check("03自动UV/输出/03_auto_uv.blend"):
         print(f"{R}✗ 缺少输入, 先运行 03{W}"); return False
     if not run_blender(os.path.join(BASE, "04纹理烘焙", "scripts", "04_bake.py"),
-                       "04_烘焙", "烘焙 4K Diffuse+Normal + 贴图溢出处理"):
+                       "04_烘焙", "烘焙 4K Diffuse+Normal + 贴图溢出+异常斑处理"):
         summary("环节 04", False, t0, []); return False
     o = os.path.join(BASE, "04纹理烘焙", "输出"); outd = o
     ok = all([deliver(os.path.join(o, "04_bake.blend"), outd),

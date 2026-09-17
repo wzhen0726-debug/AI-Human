@@ -129,9 +129,19 @@ print(f"Diffuse贴图: min={pixels.min():.3f}, max={pixels.max():.3f}, mean={pix
 try:
     import sys as _sys
     _sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from texture_fix import fix_diffuse_png
+    from texture_fix import fix_diffuse_png, fix_diffuse_mesh_guided
     _tx = fix_diffuse_png(tex_path)
     print(f"贴图溢出处理: {_tx.get('note', '')}")
+    # v2: 网格引导的统计离群清理(皮肤上的孤立异常斑: 脚趾暗斑/手侧暗斑等; 阈值全部由模型自身推导)
+    #     迭代两遍: 第一遍清完后邻域变干净, 第二遍能吃到剩余的弱斑
+    for _p in (1, 2):
+        _ty = fix_diffuse_mesh_guided(tex_path, [low_poly])
+        print(f"贴图异常斑清理(第{_p}遍): {_ty.get('note', '')}")
+        if _p == 1:
+            for _ci in _ty.get('cluster_mm_facecol', [])[:8]:
+                print(f"    簇: 面={_ci[0]} 位置=({_ci[1][0]},{_ci[1][1]},{_ci[1][2]})mm 色={_ci[2]}")
+        if _ty.get('clusters', 0) == 0:
+            break
     img.reload()
 except Exception as _e:
     print(f"⚠ 贴图溢出处理跳过(不影响烘焙): {_e}")
