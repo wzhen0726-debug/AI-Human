@@ -9,7 +9,7 @@
   ⑥ (骨骼断开经诊断=Mixamo标准布局, 非bug, 见日志)
   ⑦ (2026-09-17) 眼球摆入在02的【碗之后】(QR → 碗(纯rim) → 眼球摆入并并入输出)
   ⑧ (2026-09-17) 用户: 无交付概念; 测试期产物一律写各stage的 输出/, 中间件收各stage的 _中间/
-命令: 01 / 01a / 02 / 03 / 04 / 05 / all / clean / status / help / quit
+命令: 01 / 01a / 02 / 03 / 04 / 05 / 06 / all / clean / status / help / quit
 """
 import os, sys, time, shutil, subprocess, io, re, threading, queue
 
@@ -38,7 +38,7 @@ NOISE = ("register_class", "Registered", "register()", "WARN", "Warning", "bpy_t
          "blender.exe", "ModuleNotFound", "    ~~~", "import bpy", "self.", "mod.register")
 
 # ============ 命令提示常驻 ============
-CMD_HINT = (f"{D}命令:{W} {G}01{W}修复 {G}01a{W}眼窝 {G}02{W}拓扑+碗+眼球 {G}03{W}UV {G}04{W}烘焙 {G}05{W}绑定 "
+CMD_HINT = (f"{D}命令:{W} {G}01{W}修复 {G}01a{W}眼窝 {G}02{W}拓扑+碗+眼球 {G}03{W}UV {G}04{W}烘焙 {G}05{W}绑定 {G}06{W}GLB "
             f"{G}all{W}全流程 {G}clean{W}清理 {G}status{W}状态 {G}quit{W}退出")
 
 def show_hint():
@@ -372,6 +372,27 @@ def step_05():
     summary("环节 05 骨骼绑定与动作", ok, t0, lines)
     return ok
 
+def step_06():
+    divider()
+    print(f"{Y}{BOLD}▶ 环节 06 · GLB导出 (含 走/跑/跳 三动画){W}")
+    print(f"{D}  细分: 导出GLB(贴图内嵌) → 自查(比例/三动画/网格蒙皮) → 重导入复核(逐帧变形签名){W}\n")
+    t0 = time.time()
+    if not check("05骨骼绑定/ARP新版测试_20260831/04_动作测试.blend"):
+        print(f"{R}✗ 缺少输入, 先运行 05{W}"); return False
+    script = os.path.join(BASE, "06GLB导出", "scripts", "06_output_glb.py")
+    if not run_blender(script, "06", "导出GLB(走/跑/跳三动画+自查)", done_mark="06_DONE"):
+        summary("环节 06", False, t0, []); return False
+    glb = os.path.join(BASE, "06GLB导出", "输出", "06_角色_走跑跳.glb")
+    ok = os.path.exists(glb)
+    lines = []
+    if ok:
+        sz = os.path.getsize(glb) / 1024 / 1024
+        lines.append(f"{D}文件{W} 06_角色_走跑跳.glb · {sz:.1f}MB · glTF 2.0 单文件(4K贴图内嵌)")
+        lines.append(f"{D}动画{W} Standard Walk 1.20s / Running 0.67s / Jump 1.03s (30fps)")
+        lines.append(f"{D}复核{W} 重导入验证: 比例(1单位=1米) · 55骨 · 三动画帧数 · 4K贴图 · 变形签名全过")
+    summary("环节 06 GLB导出", ok, t0, lines)
+    return ok
+
 # ============ clean 清理输出 ============
 def clean_output(target=None):
     """清理各stage 输出/ 文件夹(递归) + 中间件 + blend自动备份. target=None/单环节/all
@@ -385,6 +406,7 @@ def clean_output(target=None):
         "03": os.path.join(BASE, "03自动UV", "输出"),
         "04": os.path.join(BASE, "04纹理烘焙", "输出"),
         "05": os.path.join(BASE, "05骨骼绑定", "输出"),
+        "06": os.path.join(BASE, "06GLB导出", "输出"),
     }
     # 2026-09-17 用户要求: 01a输出里的标记点blend也要能清掉(每轮01a会自动重建; 手调权威版在_备份/手调文件_权威/01A/)
     PROTECT = ("eyelid_contour_manual.json", "iris_3ddfa.json",
@@ -419,7 +441,7 @@ def clean_output(target=None):
     elif target in targets:
         sel = [target]
     else:
-        print(f"{R}✗ 未知环节: {target} (可选: 01/01a/02/03/04/05/all){W}"); show_hint(); return
+        print(f"{R}✗ 未知环节: {target} (可选: 01/01a/02/03/04/05/06/all){W}"); show_hint(); return
     n = 0
     for t in sel:
         n += _wipe(targets[t])                                              # ① 输出/ 递归清空(保留手调文件)
@@ -435,7 +457,8 @@ def clean_output(target=None):
                 n += _try_rm(fp)
     for d in [os.path.join(BASE, "01高模修复"), os.path.join(BASE, "01a眼窝眼球"),
               os.path.join(BASE, "02QR拓扑"), os.path.join(BASE, "03自动UV"),
-              os.path.join(BASE, "04纹理烘焙"), os.path.join(BASE, "05骨骼绑定")]:
+              os.path.join(BASE, "04纹理烘焙"), os.path.join(BASE, "05骨骼绑定"),
+              os.path.join(BASE, "06GLB导出")]:
         for pc in _glob.glob(os.path.join(d, "**", "__pycache__"), recursive=True):
             try: _sh.rmtree(pc); n += 1
             except Exception: pass
@@ -459,6 +482,7 @@ def status():
         ("05 绑定(未标准化)", "05骨骼绑定/ARP新版测试_20260831/03_骨骼绑定.blend"),
         ("05 骨骼标准化", "05骨骼绑定/ARP新版测试_20260831/03B_骨骼标准化.blend"),
         ("05 动作", "05骨骼绑定/ARP新版测试_20260831/04_动作测试.blend"),
+        ("06 GLB", "06GLB导出/输出/06_角色_走跑跳.glb"),
     ]
     for label, rel in items:
         p = os.path.join(BASE, rel)
@@ -470,7 +494,7 @@ def status():
             print(f"  {D}○ {label:<12} 未生成{W}")
     show_hint()
 
-STEPS = {"01": step_01, "01a": step_01a, "02": step_02, "03": step_03, "04": step_04, "05": step_05}
+STEPS = {"01": step_01, "01a": step_01a, "02": step_02, "03": step_03, "04": step_04, "05": step_05, "06": step_06}
 
 def main():
     banner()
@@ -487,10 +511,10 @@ def main():
             clean_output(target)
         elif cmd == "all":
             t0 = time.time(); allok = True
-            for c in ["01", "01a", "02", "03", "04", "05"]:
+            for c in ["01", "01a", "02", "03", "04", "05", "06"]:
                 if not STEPS[c]():
                     print(f"\n{R}✗ 环节{c}失败, 全流程中止{W}"); allok = False; break
-                if c != "05":
+                if c != "06":
                     try: input(f"{D}  (回车继续下一环节){W}")
                     except (EOFError, KeyboardInterrupt): pass
             if allok:
