@@ -111,7 +111,7 @@ def main():
     _empty = (SOCKET_CUT_MODE == "boolean" and SOCKET_EMPTY_INTERIOR)
     if _empty:
         _finish = None
-        print("开孔模式: boolean 掏空环内(v64) — 只交付 rim 环+空腔, 不做材质分区/UV")
+        print("开孔模式: boolean 掏空环内(v64) — 只保留 rim 环+空腔, 不做材质分区/UV")
     else:
         _finish = finish_socket_boolean if SOCKET_CUT_MODE == "boolean" else make_eye_cup
         print(f"开孔模式: {SOCKET_CUT_MODE} (收尾={_finish.__name__})")
