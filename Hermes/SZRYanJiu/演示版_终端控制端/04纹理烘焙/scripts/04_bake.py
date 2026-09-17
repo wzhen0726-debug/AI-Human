@@ -123,6 +123,19 @@ img.save()
 pixels = np.array(img.pixels[:])
 print(f"Diffuse贴图: min={pixels.min():.3f}, max={pixels.max():.3f}, mean={pixels.mean():.3f}")
 
+# 2026-09-17 用户要求: 烘焙后【贴图溢出处理】— 暗色衣物渗出到皮肤的区域 → 就近替换为皮肤色 + 边缘过渡
+#   (判据: 亮度<95 且 紧贴衣物本体≤18px 且 非UV空白 且 不在衣物本体连通块内; 处理前自动备份)
+#   reload 让后续 pack/保存/FBX(embed) 全部携带处理后的像素
+try:
+    import sys as _sys
+    _sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from texture_fix import fix_diffuse_png
+    _tx = fix_diffuse_png(tex_path)
+    print(f"贴图溢出处理: {_tx.get('note', '')}")
+    img.reload()
+except Exception as _e:
+    print(f"⚠ 贴图溢出处理跳过(不影响烘焙): {_e}")
+
 # Bake Normal (方案md要求)
 print('\\n烘焙Normal中 (4K)...')
 # 创建Normal贴图节点
