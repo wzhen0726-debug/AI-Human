@@ -9,8 +9,8 @@ from mathutils import Vector, kdtree
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from eye_socket_config import *
 
-MARKERS = os.path.join(DELIVERY, "01A眼窝与眼球", "models", "01A_markers_eyelid.blend")
-OUT = os.path.join(DELIVERY, "01A眼窝与眼球", "screenshots", "3ddfa", "eyelid_contour_manual.json")
+MARKERS = os.path.join(S01A, "输出", "01A_markers_eyelid.blend")
+OUT = os.path.join(S01A, "3ddfa", "eyelid_contour_manual.json")
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.wm.open_mainfile(filepath=MARKERS)
@@ -34,7 +34,7 @@ for side in ['L', 'R']:
     if not coll:
         print(f"!! 找不到集合 LM_{side}")
         continue
-    objs = sorted([o for o in coll.objects], key=lambda o: o.name)
+    objs = sorted([o for o in coll.objects if o.type == 'EMPTY'], key=lambda o: o.name)
     for o in objs:
         print(f"  {o.name}: loc=({o.location.x:.4f},{o.location.y:.4f},{o.location.z:.4f})")
     pts = np.array([[o.location.x, surface_y(o.location.x, o.location.z), o.location.z] for o in objs])

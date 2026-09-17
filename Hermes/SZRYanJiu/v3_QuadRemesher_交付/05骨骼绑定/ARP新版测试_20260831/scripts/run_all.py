@@ -7,7 +7,7 @@
 自检: qa_rig.py(骨架对称/连贯/权重) qa_walk.py(行走起伏) — 跑完自动执行"""
 import subprocess, sys, os
 
-BASE = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\ARP新版测试_20260831"
+BASE = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端\05骨骼绑定\ARP新版测试_20260831"
 BLENDER = r"D:\Program Files\Blender Foundation\Blender 5.1\blender.exe"
 LOGS = os.path.join(BASE, "logs")
 os.makedirs(LOGS, exist_ok=True)
@@ -16,13 +16,14 @@ STEPS = [
     ("step1_ai_markers.py", "01_AI打点", "STEP1_DONE"),
     ("step2_go_detect.py", "02_go_detect", "STEP2_DONE"),
     ("step3_to_7_rig_and_walk.py", "03~07_建骨行走", "STEPS_3_TO_7_DONE"),
-]
+    ("retarget_mixamo.py", "Mixamo重定向", "RETARGET_DONE"),
+    ]
 
 def run(script, tag, done_mark):
     log = os.path.join(LOGS, f"run_{tag}.txt")
     print(f"\n{'='*50}\n运行 {tag}: {script}\n日志: {log}\n{'='*50}")
     with open(log, 'w', encoding='utf-8') as lf:
-        p = subprocess.run([BLENDER, '-b', '--python', os.path.join(BASE, script)],
+        p = subprocess.run([BLENDER, '-b', '--python', os.path.join(BASE, 'scripts', script)],
                            stdout=lf, stderr=subprocess.STDOUT, cwd=BASE)
     with open(log, encoding='utf-8', errors='ignore') as f:
         content = f.read()
@@ -44,7 +45,7 @@ for i, (script, tag, mark) in enumerate(STEPS, 1):
         run(script, tag, mark)
 print("\n" + "="*50 + "\n全部完成, 跑自检...\n" + "="*50)
 for qa in ["qa_rig.py", "qa_walk.py"]:
-    subprocess.run([BLENDER, '-b', '--python', os.path.join(BASE, qa)],
+    subprocess.run([BLENDER, '-b', '--python', os.path.join(BASE, 'scripts', qa)],
                    stdout=open(os.path.join(LOGS, f"run_qa_{os.path.splitext(qa)[0]}.txt"), 'w', encoding='utf-8'),
                    stderr=subprocess.STDOUT, cwd=BASE)
     print(f"  qa {qa} 已跑, 结果在 logs/")

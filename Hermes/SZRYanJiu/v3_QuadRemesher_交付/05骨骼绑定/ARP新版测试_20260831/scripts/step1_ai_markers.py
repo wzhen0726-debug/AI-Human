@@ -4,8 +4,8 @@
 import bpy, sys, os, math
 from mathutils import Vector
 
-BASE = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定"
-BAKE = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\04纹理烘焙\04_bake.blend"
+BASE = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端\05骨骼绑定"
+BAKE = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端\04纹理烘焙\输出\04_bake.blend"
 AI_PATH = r"C:\Users\Liyunzhong\Documents\AutoRigPro\AI"
 OUT = os.path.join(BASE, "ARP新版测试_20260831")
 os.makedirs(OUT, exist_ok=True)

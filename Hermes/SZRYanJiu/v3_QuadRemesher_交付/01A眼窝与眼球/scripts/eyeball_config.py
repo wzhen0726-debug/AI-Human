@@ -5,13 +5,17 @@
 """
 import os
 
-DELIVERY = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付"
-IN_BLEND = os.path.join(DELIVERY, "01A眼窝与眼球", "models", "01_1_eye_socket.blend")
-OUT_BLEND = os.path.join(DELIVERY, "01A眼窝与眼球", "models", "01_2_eyeball_placed.blend")
-SHOT_DIR = os.path.join(DELIVERY, "01A眼窝与眼球", "screenshots")
+ROOT = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端"
+S01A = os.path.join(ROOT, "01a眼窝眼球")
+
+WORK = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端\01a眼窝眼球\输出"
+os.makedirs(WORK, exist_ok=True)
+IN_BLEND = os.path.join(S01A, "输出", "01_1_eye_socket.blend")
+OUT_BLEND = os.path.join(S01A, "输出", "01_2_eyeball_placed.blend")
+SHOT_DIR = os.path.join(WORK, "screenshots")
 
 # 眼球GLB路径
-EYE_GLB = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\原始模型\Metahuman低模\眼睛模型001\eye_01.glb"
+EYE_GLB = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端\原始文件\eye_01.glb"
 
 # 虹膜中心 (v2算法: 全脸眼带+K-means外簇+最暗30%核心, 作为眼球x/z基准)
 # 2026-08-06: 旧算法偏鼻梁(眼间距测小42%), v2实测间距71.7mm与vision标定一致
@@ -19,7 +23,7 @@ IRIS_L = (-0.0369, -0.1121, 1.6762)
 IRIS_R = (0.0348, -0.1126, 1.6761)
 
 # 3DDFA反投影结果 (精确定位眼部, 替代暗像素法; x/z=角膜表面交点=眼球中心基准)
-DDFA_JSON = os.path.join(DELIVERY, "01A眼窝与眼球", "screenshots", "3ddfa", "iris_3ddfa.json")
+DDFA_JSON = os.path.join(S01A, "3ddfa", "iris_3ddfa.json")
 USE_3DDFA = True   # True=用3DDFA语义定位, False=回退暗像素法IRIS_L/IRIS_R
 
 # 眼窝唇缘前缘y (环前缘实测, 用于计算眼球深度)

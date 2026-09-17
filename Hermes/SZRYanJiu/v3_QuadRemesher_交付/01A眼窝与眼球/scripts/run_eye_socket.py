@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from eye_socket_config import *
 from iris_detect import detect_iris_centers
-from socket_ops import make_eye_socket, make_eye_cup
+from socket_ops import make_eye_socket, make_eye_cup, finish_socket_boolean
 
 def load_3ddfa_centers():
     """从3DDFA反投影结果读眼中心 (语义定位, 比暗像素准).
@@ -105,12 +105,22 @@ def main():
         print("Using dark-pixel detection (fallback)")
         cL, cR = detect_iris_centers()
     
+    # v63/v64: boolean切割模式 → make_eye_socket 已切出 pit(开口=手描轮廓精确), 收尾走 finish_socket_boolean;
+    #           v64 掏空模式(SOCKET_EMPTY_INTERIOR=True)则只留 rim 环+空腔, 不做材质分区/UV重映射;
+    #           洪泛模式仍用 make_eye_cup 建碗.
+    _empty = (SOCKET_CUT_MODE == "boolean" and SOCKET_EMPTY_INTERIOR)
+    if _empty:
+        _finish = None
+        print("开孔模式: boolean 掏空环内(v64) — 只保留 rim 环+空腔, 不做材质分区/UV")
+    else:
+        _finish = finish_socket_boolean if SOCKET_CUT_MODE == "boolean" else make_eye_cup
+        print(f"开孔模式: {SOCKET_CUT_MODE} (收尾={_finish.__name__})")
     # 左眼
     make_eye_socket(obj, cL, "L")
-    make_eye_cup(obj, cL, "L")
+    if _finish: _finish(obj, cL, "L")
     # 右眼
     make_eye_socket(obj, cR, "R")
-    make_eye_cup(obj, cR, "R")
+    if _finish: _finish(obj, cR, "R")
     
     # v31: 删custom_normal属性 + 眼窝区局部recalc(皮肤参考). 绝不全局recalc/质心翻转.
     unify_normals_global(obj, cL, cR)
@@ -118,6 +128,13 @@ def main():
     # v39: UV分配已在make_eye_cup内完成(防止被update_edit_mesh覆盖), 这里不再重复分配.
 
     # 保存
+    # 存盘前切回对象模式(否则文件会以编辑模式保存)
+    try:
+        if bpy.context.mode != 'OBJECT':
+            bpy.ops.object.mode_set(mode='OBJECT')
+    except Exception:
+        pass
+
     bpy.ops.wm.save_as_mainfile(filepath=OUT_BLEND)
     print(f"Saved: {OUT_BLEND}")
     

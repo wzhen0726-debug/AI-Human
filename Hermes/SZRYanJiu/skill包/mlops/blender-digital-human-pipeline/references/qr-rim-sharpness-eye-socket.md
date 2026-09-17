@@ -46,12 +46,23 @@ Measured on QR output (02_qr_150k.blend, 14.3万 quads):
 After 5 failed approaches, the working solution is a post-QR Bevel modifier on rim-adjacent
 edges with `limit_method='WEIGHT'` and per-edge `bevel_weight_edge` attributes:
 
-1. Select rim-adjacent edges (midpoint within 3mm of the rim contour from
-   `eyelid_contour_manual.json`)
-2. Set `bevel_weight_edge` attribute to 1.0 on those edges (see Blender 5.1 API note below)
+1. Select rim edges with the **nearest-edge + tangent-filter method** — for each point of the
+   rim contour (`eyelid_contour_manual.json`), take the closest edge (point-segment distance)
+   within an adaptive threshold (0.4× local median edge length, floor 1mm), AND reject edges
+   whose direction makes >35° with the local contour tangent. **Do NOT select by distance
+   band alone** ("midpoint within 3mm"): the band catches 2-3 staggered rows of stray edges
+   (measured 138), and distance-only nearest-edge still catches edges crossing the contour
+   at 44-77° (measured 14 of 25). Distance+tangent leaves only edges that hug the lid margin
+   (measured 14, all tangent <32°). Full analysis:
+   `references/mixamo-rest-compensation-retarget.md` §2.
+2. Set `bevel_weight_edge` attribute to 1.0 on selected edges, all others explicitly 0
+   (see Blender 5.1 API note below; write attributes AFTER bm.to_mesh, never before)
 3. Add Bevel modifier: `width=0.0005` (0.5mm), `segments=2`, `limit_method='WEIGHT'`
 4. **Apply the modifier BEFORE UV unwrap** — UV ops rebuild the mesh and destroy
    edge attributes. Order: QR → rim bevel → apply bevel → UV → bake.
+5. Verify per-edge, not by count: print each weighted edge's (length, distance to contour,
+   tangent angle, hug/stray class) — the user inspects weighted edges in the GUI sidebar
+   and will spot stray ones the totals hide.
 
 Vision-verified result: rim edges sharp, folds clearly visible, dramatic improvement
 over the "blurry smooth" version. Face count 143,308 → 143,717 after bevel application.
@@ -65,6 +76,12 @@ Script: `02QuadRemesher拓扑/scripts/rim_bevel.py`
 | Sharp-edge marking | No visual effect | 3mm quads too large; can't sharpen geometry that isn't there |
 | Local subdivide (blind) | Topology destroyed | Subdivide produced slivers/triangles/poles — chaotic edge flow |
 | QR MaterialIds boundary | Sharp but jagged | QR forced edge loops at material boundary → sawtooth artifacts |
+
+> **补充（2026-09-09）**：MaterialIds 边界的"锯齿"根因是 **xremesh 非确定**——同参两跑结果差很多，
+> QR 在 rim 环降采样时对材质归属随机。若目标是**材质分区贴 rim**（不是几何锐利度），
+> 正解是 QR 后几何校正 rim 邻域面归属（与 xremesh 随机性解耦）。
+> 眼窝碗面识别用 make_eye_cup 的 v44tag 拓扑标记（边界=rim），不用几何投影。
+> 完整方法：`references/qr-eye-socket-material-partition.md`
 | QR GuidesFile (curves) | No measurable change | Guides are WIP in QR 1.0 — not implemented as hard constraints |
 | Rim ring + bridge | Sharp but unnatural | Ring floated on surface; bridge created harsh disconnected geometry |
 

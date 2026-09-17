@@ -4,7 +4,7 @@
 输出: 02_go_detect骨架.blend + 参考骨位置报告"""
 import bpy, sys, os
 
-OUT = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\ARP新版测试_20260831"
+OUT = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端\05骨骼绑定\ARP新版测试_20260831"
 IN = os.path.join(OUT, "01_AI打点.blend")
 
 bpy.ops.wm.open_mainfile(filepath=IN)

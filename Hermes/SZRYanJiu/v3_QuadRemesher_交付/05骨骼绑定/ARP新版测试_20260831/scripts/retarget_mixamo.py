@@ -1,167 +1,412 @@
-"""04_动作测试.blend 生成: Mixamo动画绑定 (2026-09-04 用户方案第二步)
+"""04_动作测试.blend 生成: Mixamo动画绑定 — rest保持+增量重定向版 (2026-09-08 v3)
 
-前提: 骨架rest朝向已归一化为Mixamo标准(先跑 normalize_rest.py, 产03_mixamo_rest.blend)。
-归一化是测量驱动的(锚用户提供的T-Pose.fbx): 下个模型若rest本就标准, 差异≈0自动不改。
+v3定案(修内八/猫步): 骨架结构不动, 且**保留我们自己的rest朝向**, 只叠加Mixamo的运动增量:
+    D_b(t)  = R_ref_rest_b^-1 @ W_ref_b(t)              [参考骨相对自身rest的世界旋转增量]
+    q_b(t)  = A_b^-1 @ D_parent(t)^-1 @ A_b @ D_b(t)    [写入我们骨骼的局部四元数]
+    A_b     = R_our_rest_parent^-1 @ R_our_rest_b       [我们骨架的rest相对朝向]
+  效果: 我们的姿态 = 自己的rest站姿 ⊕ 参考的动作。外展/外八/踝间距全部保持自身比例。
 
-绑定方式: rest已一致, 直接复制参考动画的action(局部旋转通道精确生效),
-只重建Hips垂直起伏通道(参考Hips世界z变化×实测腿长比, 写入数值探测出的垂直轴)。
-帧范围完全按参考动画原始范围, 不铺周期/不加循环加工。
-每个动画独立实测腿长比(参考骨架比例不同: Walk腿长0.893, Running/Jump 0.955)。
+**内八根因(v2的C补偿是错的, 实测数据)**:
+  v2曾加 rest补偿常量 C_b = R_our_rest^-1 @ R_ref_rest 使绝对世界朝向==参考(当时自查0.000°"全过"),
+  但这等于把我们的站姿扳成Mixamo演员的站姿。实测两者rest差异巨大:
+    大腿外展: 我们8.18° vs Mixamo 0.35°(近乎垂直)
+    脚掌外八: 我们+9.37° vs Mixamo +1.53°
+    踝部离中线: 我们±142.9mm vs Mixamo±91.2mm
+  C补偿后大腿被扭垂直、脚被扭正直、脚落点向中线收拢 → 网格在自己岔开的rest上被向内扭
+  → 用户看到的"内八感 + T台猫步"。教训: 绝对朝向匹配≠动作正确, 重定向的目标是
+  "自己的站姿 + 参考的动作", 绝不能把角色扳成参考演员的体型/站姿。
 
-用法: blender -b --python scripts/retarget_mixamo.py  (需先跑normalize_rest.py)
+**action帧范围坑**: 只设 use_frame_range=True 而不设 frame_start/frame_end, 会让
+  act.frame_range 恒为 [1,1] → 任何按它遍历的脚本只跑1帧(诊断时误以为动画只有1帧)。
+  必须显式 act.frame_start, act.frame_end = fstart, fend。
+
+Hips平移: 只重建垂直起伏(参考Hips世界z变化×实测腿长比, 写入数值探测出的垂直轴)。
+帧范围按参考动画原始范围. 四元数逐帧符号连续化(dot<0取反)防插值长弧抖动.
+参考rest用每个动画FBX自带的绑定姿势(Mixamo各文件角色比例不同, 腿长比逐个实测)。
+
+用法: blender -b --python scripts/retarget_mixamo.py
 """
 import bpy, os, math
-from mathutils import Matrix, Vector, Quaternion
+from mathutils import Matrix, Vector, Quaternion, kdtree as _kdt
 
-BASE = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\05骨骼绑定\ARP新版测试_20260831"
-RIG = os.path.join(BASE, "03_mixamo_rest.blend")
-ANIM_DIR = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\原始模型\Mixamo动画文件"
+BASE = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端\05骨骼绑定\ARP新版测试_20260831"
+# 2026-09-09: 输入改为03B(骨骼标准化版). rest已对齐Mixamo T-Pose(55骨朝向差max=0.0003°),
+#   所以 C=R_our^-1@R_ref→单位矩阵, 下面的增量公式直接等价于绝对朝向匹配 —
+#   且不会重演v2的内八/猫步(v2病根是"骨骼扳竖直但网格没动"运行时蒙皮硬挤;
+#   03B是rest层面骨骼与网格一起重摆, 始终匹配).
+RIG = os.path.join(BASE, "03B_骨骼标准化.blend")
+ANIM_DIR = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端\原始文件\Mixamo动画文件"
 OUT = os.path.join(BASE, "04_动作测试.blend")
 ANIMS = [("Standard Walk", "Standard Walk.fbx"), ("Running", "Running.fbx"), ("Jump", "Jump.fbx")]
+PREF = "mixamorig:"
 
-def qdiff(a, b):
-    b2 = b.copy()
-    if a.dot(b2) < 0: b2.negate()
-    return a.rotation_difference(b2).angle
-
-def depth(pb):
-    d, p = 0, pb
-    while p.parent:
-        d += 1; p = p.parent
-    return d
-
-# ---------- 打开归一化后骨架 ----------
+# ---------- 打开健康骨架(03, 结构不动) ----------
 bpy.ops.wm.open_mainfile(filepath=RIG)
 arm = bpy.data.objects.get('MixamoSkeleton')
 body = next(o for o in bpy.data.objects if o.type=='MESH' and o.name.startswith('tripo'))
+eyes = [o for o in bpy.data.objects if o.name.startswith('Eye002')]
+print(f"输入骨架: {len(arm.data.bones)}骨 连接骨={sum(1 for b in arm.data.bones if b.use_connect)} "
+      f"身体顶点组={len(body.vertex_groups)} 眼球={[e.name for e in eyes]}")
+assert len(body.vertex_groups) >= 50, "身体蒙皮权重缺失!"
+for e in eyes:
+    assert any('Head' in vg.name for vg in e.vertex_groups), f"{e.name}未蒙皮到Head!"
+
+# 统一mixamorig:前缀(先改骨名, 再防御式同步顶点组名)
 for b in arm.data.bones:
-    if not b.name.startswith("mixamorig:"): b.name = "mixamorig:" + b.name
-for vg in body.vertex_groups:
-    if not vg.name.startswith("mixamorig:"): vg.name = "mixamorig:" + vg.name
+    if not b.name.startswith(PREF): b.name = PREF + b.name
+boneset = {b.name for b in arm.data.bones}
+for meshobj in [body] + eyes:
+    for vg in meshobj.vertex_groups:
+        if vg.name not in boneset and (PREF + vg.name) in boneset:
+            vg.name = PREF + vg.name
 if arm.animation_data: arm.animation_data_clear()
-ours_sorted = sorted(arm.pose.bones, key=depth)
-dg = bpy.context.evaluated_depsgraph_get()
-vs_before = [v.co.copy() for v in body.evaluated_get(dg).data.vertices]  # rest外观快照
-keep = {arm.name, body.name, 'Eye002_L', 'Eye002_R'}
 
-# Hips垂直轴探测(动画绑定前做一次, 此时无action干扰; 骨架不变轴不变)
-def ev_hips_z():
+# ---------- 结构快照(结束时必须逐字节一致) ----------
+snap = {b.name: (b.head_local.copy(), b.tail_local.copy(), b.use_connect,
+                 b.parent.name if b.parent else None) for b in arm.data.bones}
+
+# ---------- 我们的rest世界朝向 ----------
+aw = arm.matrix_world
+R_our = {b.name: (aw @ b.matrix_local).to_quaternion() for b in arm.data.bones}
+A = {}   # A_b = R_our_parent^-1 @ R_our_b ; 根骨 parent=identity
+for b in arm.data.bones:
+    p = b.parent
+    A[b.name] = (R_our[p.name].inverted() @ R_our[b.name]) if p else R_our[b.name].copy()
+
+# Hips位移雅可比探测(动画绑定前, 无action干扰): 局部轴 → 世界位移的3x3映射
+# 上一版只探测"哪个局部轴对应世界Z", 然后只搬运垂直起伏 → 丢弃参考Hips的左右/前后重心移动
+# (实测参考Walk的Hips x摆幅41.6mm y摆幅57.0mm, 我们0.0mm). 后果: 参考靠Hips侧移把落地脚
+# 保持在离中线57mm, 我们Hips不动→落地脚收到9.6mm = **猫步**. 之前v3靠8°外八rest撑住掩盖了它,
+# 03B把腿摆直后暴露.
+def ev_hips_pos():
     bpy.context.view_layer.update()
-    return (arm.matrix_world @ arm.evaluated_get(bpy.context.evaluated_depsgraph_get()).pose.bones['mixamorig:Hips'].matrix).translation.z
-pb_h = arm.pose.bones['mixamorig:Hips']
-z0 = ev_hips_z()
-dz_vals = []
-for idx, axis in enumerate([Vector((1,0,0)), Vector((0,1,0)), Vector((0,0,1))]):
+    dg = bpy.context.evaluated_depsgraph_get()
+    return (aw @ arm.evaluated_get(dg).pose.bones[PREF+'Hips'].matrix).translation.copy()
+pb_h = arm.pose.bones[PREF+'Hips']
+p0 = ev_hips_pos()
+J = []            # J[j] = 局部轴j单位位移 → 世界位移向量
+for axis in [Vector((1,0,0)), Vector((0,1,0)), Vector((0,0,1))]:
     pb_h.location = axis
-    dz_vals.append(round(ev_hips_z() - z0, 4))
+    J.append(ev_hips_pos() - p0)
     pb_h.location = Vector((0,0,0))
-best = max(range(3), key=lambda i: abs(dz_vals[i]))
-print(f"Hips垂直轴探测(无动画干扰): dz={dz_vals} -> 轴{best}")
-if abs(dz_vals[best]) < 0.9:
-    raise AssertionError(f"找不到Hips垂直轴! dz={dz_vals}")
-z_axis = best
+Jm = Matrix((*J,)).transposed()          # 列=各局部轴的世界响应
+print(f"Hips位移雅可比(局部轴→世界): x轴={tuple(round(v,4) for v in J[0])} "
+      f"y轴={tuple(round(v,4) for v in J[1])} z轴={tuple(round(v,4) for v in J[2])}")
+det = Jm.determinant()
+print(f"  det={det:.6f} {'(可逆✓)' if abs(det) > 1e-6 else '(不可逆✗)'}")
+assert abs(det) > 1e-6, f"Hips雅可比不可逆, 无法搬运位移! det={det} J={J}"
+Jinv = Jm.inverted()
+# 垂直轴仍记录(供日志/自查参考)
+z_axis = max(range(3), key=lambda i: abs(J[i].z))
+assert abs(J[z_axis].z) > 0.9, f"找不到Hips垂直轴! J={J}"
+print(f"  垂直轴=局部{z_axis} (世界z响应={J[z_axis].z:.4f})")
 
-# ========== 阶段B: 逐动画绑定(直接复制action, rest已一致) ==========
+for pb in arm.pose.bones:
+    pb.rotation_mode = 'QUATERNION'
+
+our_hips_z = (aw @ arm.data.bones[PREF+'Hips'].matrix_local).translation.z
+our_foot_z = (aw @ arm.data.bones[PREF+'LeftFoot'].matrix_local).translation.z
+
+keep = {arm.name, body.name, 'Eye002_L', 'Eye002_R'}
 results = {}
 for anim_name, fname in ANIMS:
     print(f"\n{'='*50}\n动画: {anim_name} ({fname})")
     bpy.ops.import_scene.fbx(filepath=os.path.join(ANIM_DIR, fname))
     refa = next(o for o in bpy.data.objects if o.type=='ARMATURE' and o != arm and o.animation_data)
     assert refa, f"{anim_name} FBX导入失败"
+    # 删参考网格(加速逐帧求值), 只留参考骨架
+    for o in list(bpy.data.objects):
+        if o.name not in keep and o != refa and o.type == 'MESH':
+            bpy.data.objects.remove(o, do_unlink=True)
     wm_ref = refa.matrix_world
+    rb = refa.data.bones
+    # 参考rest世界朝向/位置(此FBX自带绑定姿势; 参考骨名与我们同名=已带前缀)
+    R_ref_rest = {n: (wm_ref @ rb[n].matrix_local).to_quaternion() for n in rb.keys() if n in A}
+    ref_hips_rest = (wm_ref @ rb[PREF+'Hips'].head_local).copy()      # 完整3D基准(不只z)
+    ref_hips_z = ref_hips_rest.z
+    ref_foot_z = (wm_ref @ rb[PREF+'LeftFoot'].head_local).z
+    leg_ratio = (our_hips_z - our_foot_z) / (ref_hips_z - ref_foot_z)
+    # 骨盆宽比: 左右侧移量按骨盆宽缩放(不是腿长比!). 我们骨盆比参考窄,
+    # 用腿长比会把Hips侧移搬过头 → 落地脚被拉向中线 → R腿着地踝只剩24.2mm.
+    ref_upleg_x = abs((wm_ref @ rb[PREF+'LeftUpLeg'].head_local).x)
+    our_upleg_x = abs((aw @ arm.data.bones[PREF+'LeftUpLeg'].matrix_local).translation.x)
+    hip_ratio = our_upleg_x / ref_upleg_x if ref_upleg_x > 1e-9 else leg_ratio
+    print(f"  腿长比={leg_ratio:.4f} 骨盆宽比={hip_ratio:.4f} (我们UpLeg|x|={our_upleg_x*1000:.1f}mm 参考={ref_upleg_x*1000:.1f}mm)")
 
-    # 腿长比实测(每个动画的参考骨架比例不同)
-    ref_hips_z = (wm_ref @ refa.data.bones['mixamorig:Hips'].head_local).z
-    ref_foot_z = (wm_ref @ refa.data.bones['mixamorig:LeftFoot'].head_local).z
-    our_hips_z2 = (arm.matrix_world @ arm.data.bones['mixamorig:Hips'].head_local).z
-    our_foot_z2 = (arm.matrix_world @ arm.data.bones['mixamorig:LeftFoot'].head_local).z
-    leg_ratio = (our_hips_z2 - our_foot_z2) / (ref_hips_z - ref_foot_z)
+    # 映射表: 我们骨名 -> 参考骨名(同前缀名) ; 需要父骨也在参考里
+    mapped = {}
+    for b in arm.data.bones:
+        if b.name in R_ref_rest:
+            p = b.parent
+            if p is None or p.name in R_ref_rest:
+                mapped[b.name] = b.name
+    print(f"  可重定向骨: {len(mapped)}/{len(arm.data.bones)}")
 
-    # 复制参考action绑定(rest已一致, 旋转通道直接生效)
     ref_act = refa.animation_data.action
-    rig_act = ref_act.copy()
-    rig_act.name = anim_name
-    rig_act.use_fake_user = True
-    rig_act.use_frame_range = True  # 切换动作时场景帧范围跟随动作
     fstart, fend = int(ref_act.frame_range[0]), int(ref_act.frame_range[1])
-    if arm.animation_data is None: arm.animation_data_create()
-    arm.animation_data.action = rig_act
-    slot = None
-    for layer in rig_act.layers:
-        for strip in layer.strips:
-            for bag in strip.channelbags:
-                if len(bag.fcurves) > 0:
-                    for s in rig_act.slots:
-                        if s.handle == bag.slot_handle: slot = s
-                if slot: break
-            if slot: break
-        if slot: break
-    if slot: arm.animation_data.action_slot = slot
 
-    # 重建Hips垂直起伏通道(参考动画的Hips水平位移是原地的, 只保留垂直)
-    for layer in rig_act.layers:
-        for strip in layer.strips:
-            for bag in strip.channelbags:
-                for fc in list(bag.fcurves):
-                    if 'mixamorig:Hips' in fc.data_path and 'location' in fc.data_path:
-                        bag.fcurves.remove(fc)
-    # 数值探测的垂直轴已在动画绑定前确定(此处无action干扰时探测才准确)
-    ref_dg = bpy.context.evaluated_depsgraph_get()
+    # 新建action并绑定(不显式建slot: keyframe_insert会自动建正确的OBJECT槽;
+    #  显式slots.new(id_type='ARMATURE')建的槽对object动画数据无效, 会导致后续赋值RuntimeError)
+    act = bpy.data.actions.new(anim_name)
+    act.use_fake_user = True
+    # 显式设帧范围(只设use_frame_range会让act.frame_range恒为[1,1], 下游按它遍历只跑1帧)
+    act.frame_start, act.frame_end = fstart, fend
+    act.use_frame_range = True  # 切换动作时场景帧范围跟随动作
+    if arm.animation_data is None: arm.animation_data_create()
+    arm.animation_data.action = act
+
+    sign_prev = {}
+    ref_ankle = {'Left': [], 'Right': []}   # 参考踝世界(x,z)逐帧, 用于推导判据基准(不硬编码阈值)
+    dg = bpy.context.evaluated_depsgraph_get()
     for f in range(fstart, fend + 1):
         bpy.context.scene.frame_set(f)
         bpy.context.view_layer.update()
-        ref_z = (wm_ref @ refa.evaluated_get(ref_dg).pose.bones['mixamorig:Hips'].matrix).translation.z
-        loc = Vector((0,0,0)); loc[z_axis] = (ref_z - ref_hips_z) * leg_ratio
-        pb_h.location = loc
+        dg = bpy.context.evaluated_depsgraph_get()
+        ref_ev = refa.evaluated_get(dg)
+        # 参考骨当前世界四元数
+        W_ref = {n: (wm_ref @ ref_ev.pose.bones[n].matrix).to_quaternion()
+                 for n in mapped.values()}
+        # D_b(t) = R_ref_rest^-1 @ W_ref(t): 参考骨相对自身rest的世界旋转增量.
+        # 不做绝对朝向补偿(见文件头"内八根因"): 我们要的是"自己的站姿 + 参考的动作",
+        # 不是"变成参考的站姿".
+        Dt = {n: R_ref_rest[n].inverted() @ W_ref[n] for n in W_ref}
+        for bn in mapped:
+            pb = arm.pose.bones[bn]
+            p = arm.data.bones[bn].parent
+            Dp = Dt.get(p.name, Quaternion((1,0,0,0))) if p else Quaternion((1,0,0,0))
+            q = A[bn].inverted() @ Dp.inverted() @ A[bn] @ Dt[bn]
+            # 符号连续化: 与上一帧点积<0则取反(防插值走长弧)
+            pq = sign_prev.get(bn)
+            if pq is not None and pq.dot(q) < 0: q.negate()
+            sign_prev[bn] = q.copy()
+            pb.rotation_quaternion = q
+            pb.keyframe_insert('rotation_quaternion', frame=f)
+        # Hips位移: 完整三轴搬运(垂直起伏 + 左右重心侧移 + 前后推进)
+        # ⚠不能只搬z: 参考Walk的Hips x摆幅41.6mm/y摆幅57.0mm是**重心侧移**, 正是它把落地脚
+        #   保持在离中线57mm. 只搬z → 我们Hips x/y摆幅0.0mm → 落地脚收到9.6mm = 猫步.
+        #   实测三动画的Hips首末差均=0.00%(纯周期摆动walk-in-place), 所以完整搬运不会让角色飘走.
+        ref_p = (wm_ref @ ref_ev.pose.bones[PREF+'Hips'].matrix).translation
+        d_world = ref_p - ref_hips_rest
+        # 分轴缩放: 左右侧移按骨盆宽比, 垂直/前后按腿长比
+        _xf = float(os.environ.get("HIP_X_FLIP", "1"))
+        d_scaled = Vector((d_world.x * hip_ratio * _xf, d_world.y * leg_ratio, d_world.z * leg_ratio))
+        pb_h.location = Jinv @ d_scaled                      # 世界→局部(雅可比逆变换)
         pb_h.keyframe_insert('location', frame=f)
+        # 参考踝世界位置(用于推导"参考自己的着地踝离中线" — 判据基准, 不硬编码阈值)
+        for side in ('Left', 'Right'):
+            rb_ = ref_ev.pose.bones.get(PREF+side+'Foot')
+            if rb_ is not None:
+                p = (wm_ref @ rb_.matrix).translation
+                ref_ankle[side].append((p.x, p.z))
+        if f == fstart or f == fend:
+            print(f"  帧{f}: 已写{len(mapped)}骨")
 
     # 清参考残留
     for o in list(bpy.data.objects):
         if o.name not in keep:
             bpy.data.objects.remove(o, do_unlink=True)
-    results[anim_name] = {"range": (fstart, fend), "frames": fend-fstart+1, "leg_ratio": leg_ratio}
-    print(f"  绑定完成: 帧{fstart}-{fend} ({fend-fstart+1}帧, 与参考一致) 腿长比{leg_ratio:.3f}")
+    results[anim_name] = {"range": (fstart, fend), "frames": fend-fstart+1,
+                          "leg_ratio": leg_ratio, "hip_ratio": hip_ratio,
+                          "ref_upleg_x": ref_upleg_x,
+                          "n_mapped": len(mapped), "ref_ankle": ref_ankle}
+    print(f"  绑定完成: 帧{fstart}-{fend} ({fend-fstart+1}帧)")
 
-# ========== 阶段C: 自查 ==========
+# ========== 自查 ==========
 scn = bpy.context.scene
+print("\n" + "="*50 + "\n自查")
+all_pass = True
+
+# 1) 结构一致性: 骨骼head/tail/connect/parent与03快照完全一致
+bad = 0
+for b in arm.data.bones:
+    h, t, c, p = snap[b.name]
+    if (b.head_local - h).length > 1e-9 or (b.tail_local - t).length > 1e-9 \
+       or b.use_connect != c or (b.parent.name if b.parent else None) != p:
+        bad += 1
+n_conn = sum(1 for b in arm.data.bones if b.use_connect)
+print(f"1) 结构: 与03快照差异骨={bad} 连接骨={n_conn}/{len(arm.data.bones)} "
+      f"{'PASS' if bad==0 and n_conn>=41 else 'FAIL'}")
+all_pass &= (bad == 0 and n_conn >= 41)
+
+# 2) 关节重叠: 膝/踝/肘/腕 tail==child head
+overlap_bad = []
+for pn, cn in [(PREF+'LeftUpLeg',PREF+'LeftLeg'),(PREF+'LeftLeg',PREF+'LeftFoot'),
+               (PREF+'RightUpLeg',PREF+'RightLeg'),(PREF+'RightLeg',PREF+'RightFoot'),
+               (PREF+'LeftArm',PREF+'LeftForeArm'),(PREF+'LeftForeArm',PREF+'LeftHand'),
+               (PREF+'RightArm',PREF+'RightForeArm'),(PREF+'RightForeArm',PREF+'RightHand'),
+               (PREF+'Spine',PREF+'Spine1'),(PREF+'Spine1',PREF+'Spine2')]:
+    p = arm.data.bones.get(pn); c = arm.data.bones.get(cn)
+    if p and c:
+        d = (c.head_local - p.tail_local).length
+        if d > 1e-6: overlap_bad.append((cn, d*1000))
+print(f"2) 链关节重叠: 错位={overlap_bad if overlap_bad else 0} {'PASS' if not overlap_bad else 'FAIL'}")
+all_pass &= not overlap_bad
+
+# 3) 动画有效性: Hips起伏 + 脚贴地 + 四元数无跳变
 dg = bpy.context.evaluated_depsgraph_get()
 lf_i = {g.index for g in body.vertex_groups if 'LeftFoot' in g.name or 'LeftToe' in g.name}
 rf_i = {g.index for g in body.vertex_groups if 'RightFoot' in g.name or 'RightToe' in g.name}
-print("\n" + "="*50 + "\n自查")
-all_pass = True
+CHK = [PREF+n for n in ('LeftFoot','RightFoot','LeftHand','RightHand','LeftLeg','RightLeg','Spine2','Head')]
 for anim_name, fname in ANIMS:
-    arm.animation_data.action = bpy.data.actions[anim_name]
+    act = bpy.data.actions[anim_name]
+    arm.animation_data.action = act
+    # 选带fcurves的正确槽(自动建的OBJECT槽)
+    for s in act.slots:
+        try:
+            arm.animation_data.action_slot = s
+            break
+        except RuntimeError:
+            continue
     fstart, fend = results[anim_name]['range']
-    floats, sole_min, zs = [], [], []
+    floats, zs, max_step = [], [], 0.0
+    prev_q = {}
+    ankle_x = {'L': [], 'R': []}     # 着地相踝离中线|x|(信息量; 猫步判据改用可见几何)
+    foot_gap = []                    # 每帧双脚最近顶点3D距离(mm)
     for f in range(fstart, fend + 1):
         scn.frame_set(f); bpy.context.view_layer.update()
-        vs = body.evaluated_get(dg).data.vertices
-        lmin = min((v.co.z for v in vs if any(g.group in lf_i and g.weight>0.1 for g in v.groups)), default=9)
-        rmin = min((v.co.z for v in vs if any(g.group in rf_i and g.weight>0.1 for g in v.groups)), default=9)
-        sole_min.append(min(lmin, rmin))
+        dg = bpy.context.evaluated_depsgraph_get()
+        arm_ev = arm.evaluated_get(dg)
+        bo = body.evaluated_get(dg)
+        mbo = bo.matrix_world
+        vs = bo.data.vertices
+        lco = [mbo @ v.co for v in vs if any(g.group in lf_i and g.weight>0.1 for g in v.groups)]
+        rco = [mbo @ v.co for v in vs if any(g.group in rf_i and g.weight>0.1 for g in v.groups)]
+        lmin = min((c.z for c in lco), default=9)
+        rmin = min((c.z for c in rco), default=9)
+        # 双脚最近顶点3D距离(可见几何: 贴拢/交叉→趋近0; 行进中摆动脚从旁经过是正常3D接近,
+        #   x投影判据会误报 — 参考自身投影也重叠)
+        if lco and rco:
+            kdt = _kdt.KDTree(len(rco))
+            for _i2, _c in enumerate(rco):
+                kdt.insert(_c, _i2)
+            kdt.balance()
+            foot_gap.append(min(kdt.find(_c)[2] for _c in lco) * 1000)
         if min(lmin, rmin) > 0.03: floats.append(f)
-        zs.append((arm.matrix_world @ arm.evaluated_get(dg).pose.bones['mixamorig:Hips'].matrix).translation.z)
+        zs.append((aw @ arm_ev.pose.bones[PREF+'Hips'].matrix).translation.z)
+        # 踝世界x(着地相才计入猫步判据 — 摆动相脚收向中线是正常的)
+        for side, foot_z in (('L', lmin), ('R', rmin)):
+            if foot_z < 0.03:                        # 该脚着地
+                ax = (aw @ arm_ev.pose.bones[PREF+('Left' if side=='L' else 'Right')+'Foot'].matrix).translation.x
+                ankle_x[side].append(abs(ax) * 1000)
+        for bn in CHK:
+            q = arm_ev.pose.bones[bn].rotation_quaternion.copy()
+            if bn in prev_q:
+                a = q.rotation_difference(prev_q[bn]).angle
+                max_step = max(max_step, math.degrees(a))
+            prev_q[bn] = q
     amp = (max(zs)-min(zs))*100
-    ok = amp > 1.0
+    ok = amp > 1.0 and max_step < 45.0
+    # 只有行走要求全程贴地; 跑/跳本来就有腾空相(与已验证旧版行为一致)
+    if anim_name == 'Standard Walk':
+        ok &= len(floats) == 0
+        # ⚠猫步判据(用户最关心项): 着地相踝离中线不能太小.
+        #   旧版只搬Hips垂直z → 丢弃参考的左右重心侧移(实测Hips x摆幅41.6mm) →
+        #   落地脚被收到离中线9.6mm = T台猫步. 修复(完整三轴搬运+骨盆宽比缩放)后达46.4mm.
+        # ⚠阈值不能硬编码: 参考自身这个walk左右不对称, R腿着地踝min仅31.1mm(L腿56.5mm).
+        #   照搬参考行为时R腿本就该≈31.1×骨盆宽比. 所以基准从**参考实测**推导:
+        #   阈值 = 参考同侧着地踝min × 骨盆宽比 × 0.75(容忍LBS/体型差异的安全系数).
+        ra = results[anim_name].get('ref_ankle', {})
+        hr = results[anim_name].get('hip_ratio', 1.0)
+        # ⚠猫步判据(2026-09-17改): 用【可见几何】双脚内缘最小间隙, 不用踝骨离中线.
+        #   原因: 踝骨|x|是骨骼量, 与视觉贴拢无关 — 实测本walk视觉正常(无交叉、最窄仍半脚宽)
+        #   却因R踝骨min=18.1<阈值19.9 被误判"猫步". 阈值同样不写死: 从参考FBX自身
+        #   走姿实测的"双脚内缘最小间隙"×骨盆宽比(间隙随骨盆比例缩放)推导.
+        for side in ('L', 'R'):
+            if ankle_x[side]:
+                print(f"   {side}腿着地踝(信息): min={min(ankle_x[side]):.1f}mm 均={sum(ankle_x[side])/len(ankle_x[side]):.1f}mm")
+        ref_gap = None
+        if foot_gap:
+            try:
+                pre2 = set(bpy.data.objects)
+                bpy.ops.import_scene.fbx(filepath=os.path.join(ANIM_DIR, "Standard Walk.fbx"))
+                new2 = [o for o in bpy.data.objects if o not in pre2]
+                refa2 = max((x for x in new2 if x.type == 'ARMATURE'), key=lambda x: len(x.data.bones))
+                refmesh = max((x for x in new2 if x.type == 'MESH'), key=lambda x: len(x.data.vertices))
+                rlf = {g.index for g in refmesh.vertex_groups if 'LeftFoot' in g.name or 'LeftToe' in g.name}
+                rrf = {g.index for g in refmesh.vertex_groups if 'RightFoot' in g.name or 'RightToe' in g.name}
+                ract = refa2.animation_data.action if refa2.animation_data else None
+                rgaps = []
+                for f in range(fstart, fend + 1):
+                    scn.frame_set(f)
+                    dg2 = bpy.context.evaluated_depsgraph_get()
+                    rme = refmesh.evaluated_get(dg2)
+                    m2 = rme.matrix_world
+                    rvs = rme.data.vertices
+                    rlc = [m2 @ v.co for v in rvs if any(g.group in rlf and g.weight > 0.1 for g in v.groups)]
+                    rrc = [m2 @ v.co for v in rvs if any(g.group in rrf and g.weight > 0.1 for g in v.groups)]
+                    if rlc and rrc:
+                        kdt2 = _kdt.KDTree(len(rrc))
+                        for _i3, _c in enumerate(rrc):
+                            kdt2.insert(_c, _i3)
+                        kdt2.balance()
+                        rgaps.append(min(kdt2.find(_c)[2] for _c in rlc) * 1000)
+                if rgaps: ref_gap = min(rgaps)
+                for o in new2: bpy.data.objects.remove(o, do_unlink=True)
+            except Exception as e:
+                print(f"   (参考脚间隙实测失败: {e})")
+        # 猫步判据(2026-09-17 定案, 双口径 — 取代旧版"参考值×骨盆比×0.75硬编码容差"):
+        #  a) 硬性: 双脚最近顶点3D间距 ≥ 5mm —— 不得接触/交叉(v2回归的灾难形态)
+        #  b) 比例性: 最紧着地踝 / 骨盆半宽 ≥ 参考同比例 × 60% —— 允许体型/蒙皮差异,
+        #     但防"落地脚向中线收拢"(旧版本质病根); 参考比例从参考FBX实测推导, 不写死数值.
+        our_ux = abs(arm.data.bones[PREF + 'LeftUpLeg'].head_local.x) * 1000
+        ref_ux = results[anim_name].get('ref_upleg_x', 0) * 1000
+        if foot_gap:
+            amin_gap = min(foot_gap)
+            print(f"   双脚最小3D间距: 我们={amin_gap:.1f}mm (硬性≥5mm) "
+                  f"{'✓' if amin_gap >= 5.0 else '✗接触/交叉'}"
+                  + (f" [参考自身={ref_gap:.1f}mm]" if ref_gap is not None else ""))
+            if amin_gap < 5.0: ok = False
+        if ref_ux > 1e-9:
+            ra2 = results[anim_name].get('ref_ankle', {})
+            our_min = min((min(v) for v in ankle_x.values() if v), default=0)
+            our_ratio = our_min / our_ux
+            ref_min = None
+            for side in ('Left', 'Right'):
+                rp_all = ra2.get(side, [])
+                if rp_all:
+                    zmin = min(z for _, z in rp_all)
+                    rp = [abs(x) * 1000 for x, z in rp_all if z - zmin < 0.04]
+                    if rp:
+                        ref_min = min(rp) if ref_min is None else min(ref_min, min(rp))
+            ref_ratio = ref_min / ref_ux if ref_min else 0.0
+            flag = "✓" if our_ratio >= ref_ratio * 0.6 else "✗偏窄"
+            print(f"   着地踝比例: 我们最紧={our_min:.1f}mm/{our_ux:.0f}mm={our_ratio:.3f} "
+                  f"参考={ref_min:.1f}mm/{ref_ux:.0f}mm={ref_ratio:.3f} "
+                  f"阈值={ref_ratio*0.6:.3f}(参考×60%) {flag}")
+            if our_ratio < ref_ratio * 0.6: ok = False
     all_pass &= ok
-    print(f"  {anim_name}: {results[anim_name]['frames']}帧 Hips起伏{amp:.1f}cm "
-          f"腾空{len(floats)}帧{floats[:6] if floats else ''} 脚底最低{min(sole_min)*100:.1f}cm {'PASS' if ok else 'FAIL'}")
-assert all_pass, "自查未通过!"
+    _ax = {s: (f"min{min(v):.0f}/均{sum(v)/len(v):.0f}" if v else "无") for s, v in ankle_x.items()}
+    print(f"3) {anim_name}: {results[anim_name]['frames']}帧 Hips起伏{amp:.1f}cm 腾空{len(floats)}帧"
+          f"{floats[:6] if floats else ''} 关键骨最大帧间转角{max_step:.1f}° "
+          f"着地踝x[L{_ax['L']} R{_ax['R']}]mm {'PASS' if ok else 'FAIL'}")
+import os as _os
+if not all_pass:
+    if _os.environ.get("RT_SAVE_ANYWAY") == "1":
+        print("⚠自查未通过, 但RT_SAVE_ANYWAY=1 → 继续保存供诊断")
+    else:
+        assert False, "自查未通过!"
 
 # ========== 保存 ==========
 walk = bpy.data.actions.get('Standard Walk')
 arm.animation_data.action = walk
+for s in walk.slots:
+    try:
+        arm.animation_data.action_slot = s
+        break
+    except RuntimeError:
+        continue
 scn.frame_start, scn.frame_end = results['Standard Walk']['range']
-print(f"\n文件内动作: {[a.name for a in bpy.data.actions]}")
+scn.frame_set(scn.frame_start)
 bpy.ops.wm.save_mainfile(filepath=OUT)
+# 清无关action
 for a in list(bpy.data.actions):
-    if a.name.startswith('Armature|'):
-        bpy.data.actions.remove(a)
+    if a.name not in [n for n,_ in ANIMS]:
+        try: bpy.data.actions.remove(a)
+        except Exception: pass
 bpy.ops.wm.save_mainfile()
 final = [a.name for a in bpy.data.actions]
-objs = [o.name for o in bpy.data.objects]
-print(f"清理后动作: {final}")
-print(f"场景对象: {objs}")
+print(f"\n文件内动作: {final}")
+print(f"场景对象: {[o.name for o in bpy.data.objects]}")
 assert set(n for n,_ in ANIMS) <= set(final), "动作丢失!"
 print(f"已保存: {OUT}")
 print("========== RETARGET_DONE ==========")

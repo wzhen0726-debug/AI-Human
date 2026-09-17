@@ -1,103 +1,77 @@
+"""03 自动UV: Smart UV Project (2026-09-08 A方案: 去掉rim倒角环节)
+
+输入: 02_qr_150k.blend (QR低模, 干净无倒角权重)
+输出: 03_auto_uv.blend
+
+历史: 旧版先应用"RimBevel"倒角修改器再UV展开(文件夹曾名03自动UV_rim_bevel)。
+2026-09-08实测该倒角链失效: rim预锐化的bevel权重被bm.to_mesh冲掉→高模倒角空转→
+QR没拿到眼睑缘引导→低模无rim边环→倒角只能落在散碎边上(276条, 眼周碎线带权重),
+既不连续也无锐化效果。整套机制已删除, 眼睑缘锐利度由烘焙法线贴图从高模获取。
+本脚本主动剥离任何残留的bevel_weight_edge/crease属性, 保证下游不再出现权重线."""
 import bpy, os, math
 
-# === 配置 ===
-DELIVERY = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付"
-QR_BLEND = os.path.join(DELIVERY, "02QuadRemesher拓扑", "02_qr_150k.blend")
-OUT_03 = os.path.join(DELIVERY, "03自动UV")
+ROOT = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端"
+PROJECT_ROOT = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端"
+QR_BLEND = os.path.join(ROOT, "02QR拓扑", "输出", "02_qr_150k_socket.blend")
+OUT_03 = os.path.join(ROOT, "03自动UV", "输出")
 os.makedirs(OUT_03, exist_ok=True)
 
-print("=== Step 3: Auto UV ===")
-
+print("=== Step 3: Auto UV (A方案, 无倒角) ===")
 bpy.ops.wm.open_mainfile(filepath=QR_BLEND)
-mesh = [o for o in bpy.data.objects if o.type == 'MESH'][0]
-print(f"低模: {mesh.name}, {len(mesh.data.polygons)}面")
+mesh = max([o for o in bpy.data.objects if o.type == 'MESH'],
+           key=lambda o: len(o.data.vertices))
+print(f"低模: {mesh.name}, {len(mesh.data.vertices):,}顶点 {len(mesh.data.polygons):,}面")
 
+# ---- 剥离残留倒角/折痕属性 + 无用修改器(防御: 输入若来自旧产物也保证干净) ----
+removed_attr = []
+for name in ("bevel_weight_edge", "bevel_weight_vert", "crease_edge", "crease_vert"):
+    a = mesh.data.attributes.get(name)
+    if a is not None:
+        mesh.data.attributes.remove(a)
+        removed_attr.append(name)
+removed_mod = [m.name for m in mesh.modifiers if m.type == 'BEVEL']
+for m in list(mesh.modifiers):
+    if m.type == 'BEVEL':
+        mesh.modifiers.remove(m)
+print(f"剥离属性: {removed_attr if removed_attr else '无(输入已干净)'} 移除BEVEL修改器: {removed_mod if removed_mod else '无'}")
+
+# ---- 变换归零检查(FBX导入残留微旋转不能带进UV/烘焙) ----
+rot = tuple(round(r, 9) for r in mesh.rotation_euler)
+print(f"对象旋转: {rot}")
+if any(abs(r) > 1e-9 for r in mesh.rotation_euler):
+    bpy.ops.object.select_all(action='DESELECT')
+    mesh.select_set(True)
+    bpy.context.view_layer.objects.active = mesh
+    bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+    print(f"  已归零 -> {tuple(round(r,9) for r in mesh.rotation_euler)}")
+
+# ---- UV展开 ----
 bpy.ops.object.select_all(action='DESELECT')
 mesh.select_set(True)
 bpy.context.view_layer.objects.active = mesh
 bpy.ops.object.mode_set(mode='EDIT')
 bpy.ops.mesh.select_all(action='SELECT')
-
-# 方案: 在23.5万面高模上，边缘角度>55°会标记过多接缝导致碎岛
-# 改用Smart UV Project（角度限制66°，岛边距0.01），在高面数模型上更稳定
-# 它能自动处理接缝和岛合并，避免每个面都是碎岛
 bpy.ops.uv.smart_project(
-    angle_limit=math.radians(66.0),  # 66°角度限制
-    island_margin=0.01,              # 岛边距（用户要求0.01）
-    area_weight=0.0,                 # 不按面积加权
-    correct_aspect=True,             # 校正宽高比
-    scale_to_bounds=False            # 不缩放到边界
+    angle_limit=math.radians(66.0),
+    island_margin=0.01,
+    area_weight=0.0,
+    correct_aspect=True,
+    scale_to_bounds=False
 )
-print("Smart UV Project完成 (angle=66°, margin=0.01)")
-
 bpy.ops.object.mode_set(mode='OBJECT')
 
-# 验证UV
-import numpy as np
-uv = mesh.data.uv_layers.active
-uvs = np.empty(len(uv.data)*2, dtype=np.float32)
-uv.data.foreach_get('uv', uvs)
-uvs = uvs.reshape(-1, 2)
-print(f"UV范围: U[{uvs[:,0].min():.3f}, {uvs[:,0].max():.3f}] V[{uvs[:,1].min():.3f}, {uvs[:,1].max():.3f}]")
+uv_layer = mesh.data.uv_layers.active
+us = [l.uv[0] for l in uv_layer.data]
+vs = [l.uv[1] for l in uv_layer.data]
+print(f"UV范围: U[{min(us):.3f}, {max(us):.3f}] V[{min(vs):.3f}, {max(vs):.3f}]")
+print(f"UV岛边距: 0.01 角度限制: 66°")
 
-# 统计UV岛数量 (修复08-05: 旧版BFS走几何邻接忽略UV接缝, 连通网格恒报1岛, 指标失真)
-# 正确做法: 共享边两侧loop的UV坐标一致(无接缝)才算同一岛
-import bmesh
-bm = bmesh.new()
-bm.from_mesh(mesh.data)
-bm.faces.ensure_lookup_table()
-uv_layer = bm.loops.layers.uv.active
-EPS = 1e-6
+# ---- 自查: 确认无bevel权重残留 ----
+assert mesh.data.attributes.get("bevel_weight_edge") is None, "bevel_weight_edge未清除!"
+assert not [m for m in mesh.modifiers if m.type == 'BEVEL'], "BEVEL修改器未清除!"
+print("自查: 无倒角权重/无BEVEL修改器 PASS")
 
-# 每面每顶点的UV坐标 (一个loop对应一个vert)
-face_vert_uv = {}
-for f in bm.faces:
-    d = {}
-    for l in f.loops:
-        uvc = l[uv_layer].uv
-        d[l.vert.index] = (uvc.x, uvc.y)
-    face_vert_uv[f.index] = d
-
-# 无接缝邻接表: 边两侧面在两端点处UV一致 → 同岛
-adj = {f.index: [] for f in bm.faces}
-for e in bm.edges:
-    lf = e.link_faces
-    if len(lf) != 2:
-        continue
-    f1, f2 = lf
-    v1, v2 = e.verts[0].index, e.verts[1].index
-    a1, a2 = face_vert_uv[f1.index].get(v1), face_vert_uv[f1.index].get(v2)
-    b1, b2 = face_vert_uv[f2.index].get(v1), face_vert_uv[f2.index].get(v2)
-    if a1 and a2 and b1 and b2:
-        if (abs(a1[0]-b1[0]) < EPS and abs(a1[1]-b1[1]) < EPS and
-                abs(a2[0]-b2[0]) < EPS and abs(a2[1]-b2[1]) < EPS):
-            adj[f1.index].append(f2.index)
-            adj[f2.index].append(f1.index)
-
-island_count = 0
-visited = set()
-sizes = []
-for fi in adj:
-    if fi in visited:
-        continue
-    island_count += 1
-    stack = [fi]
-    size = 0
-    while stack:
-        cur = stack.pop()
-        if cur in visited:
-            continue
-        visited.add(cur)
-        size += 1
-        stack.extend(adj[cur])
-    sizes.append(size)
-bm.free()
-
-sizes.sort(reverse=True)
-print(f"UV岛数量: {island_count} (最大岛{sizes[0]}面, 前5: {sizes[:5]})")
-
-# 保存
 out_blend = os.path.join(OUT_03, "03_auto_uv.blend")
-bpy.ops.wm.save_as_mainfile(filepath=out_blend)
+bpy.ops.wm.save_mainfile(filepath=out_blend)
 print(f"已保存: {out_blend}")
-print("DONE")
+print("UV_DONE")

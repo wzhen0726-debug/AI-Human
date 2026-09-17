@@ -1,4 +1,7 @@
 """01_2 眼球摆入 v2 — 眼睛模型002 (MetaHuman风格 虹膜+巩膜+阴影)
+2026-09-16 流程变更: 本脚本从01a环节挪到【02环节】调用(QR拓扑之后、眼窝碗之前);
+  输出 01a眼窝眼球/输出/01_2_eyeball_placed.blend; 2026-09-17 起在【眼窝碗之后】调用,
+  并在末尾把眼球并入 02 碗输出(正典 02_qr_150k_socket.blend), 供03 UV/04烘焙/05绑定全程携带。
 
 与run_eyeball.py(001 GLB)的区别:
 1. 模型源: Eye.blend append (贴图打包在blend内, 支持19色变体)
@@ -63,6 +66,22 @@ def append_eye_objects():
     print(f"appended: {[o.name for o in objs]}")
     return objs
 
+def import_eye_fbx():
+    """从用户预制 Eye.fbx 导入单只眼(已合并的单网格, 瞳孔朝-Y, 贴图已接).
+    FBX会带入 Camera/Cube/Light 垃圾, 用对象集合差集识别新增的mesh并删非mesh残留.
+    返回 [eye_mesh] (单元素列表, 与append_eye_objects接口一致)."""
+    before = set(bpy.data.objects.keys())
+    bpy.ops.import_scene.fbx(filepath=EYE002_FBX)
+    new_objs = [bpy.data.objects[n] for n in bpy.data.objects.keys() if n not in before]
+    # 眼球mesh名字以Eye开头(第二次导入会变 Eye_Iris.001); 垃圾是 Camera/Cube/Light
+    eye = next((o for o in new_objs if o.type == 'MESH' and o.name.startswith('Eye')), None)
+    assert eye is not None, f"Eye.fbx未找到眼球mesh(以Eye开头的MESH)"
+    for o in new_objs:
+        if o is not eye:
+            bpy.data.objects.remove(o, do_unlink=True)
+    print(f"imported FBX eye: {eye.name} 顶点{len(eye.data.vertices)}")
+    return [eye]
+
 def unparent_eye(eye):
     """取消父节点(Eye1 empty), 保持世界变换. 层级简化为一只眼一个对象."""
     if eye.parent is not None:
@@ -120,7 +139,7 @@ def main():
 
     centers = []
     for side in ("L", "R"):
-        objs = append_eye_objects()
+        objs = import_eye_fbx()          # 用户预制 Eye.fbx 单只眼(已合并)
         eye = build_single_eye(objs, f"Eye002_{side}")
         unparent_eye(eye)
         apply_eye_color(eye, EYE_COLOR, EYE_BLOODLINE)
@@ -137,6 +156,27 @@ def main():
 
     # 验证渲染(正面+特写, EEVEE三灯同run_eyeball.py)
     render_verification(centers[0], centers[1])
+    # ---- 2026-09-17 新流程(用户): QR → 碗 → 眼球摆入 — 摆好后并入碗输出(正典), 幂等 ----
+    try:
+        _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        _sock = os.path.join(_root, "02QR拓扑", "输出", "02_qr_150k_socket.blend")
+        if os.path.exists(_sock):
+            bpy.ops.wm.open_mainfile(filepath=_sock)
+            _has = [o.name for o in bpy.data.objects if o.name.startswith("Eye002")]
+            if _has:
+                print(f"碗输出已含眼球, 跳过并入: {_has}")
+            else:
+                with bpy.data.libraries.load(OUT_BLEND) as (_src, _dst):
+                    _dst.objects = [n for n in _src.objects if n.startswith("Eye002")]
+                _eyes = [o for o in _dst.objects if o is not None]
+                for _o in _eyes:
+                    bpy.context.scene.collection.objects.link(_o)
+                bpy.ops.wm.save_as_mainfile(filepath=_sock)
+                print(f"眼球已并入碗输出: {[o.name for o in _eyes]} → {os.path.basename(_sock)}")
+        else:
+            print(f"碗输出不存在({os.path.basename(_sock)}), 仅产出 01_2 (独立运行模式)")
+    except Exception as _e:
+        print(f"眼球并入碗输出失败: {_e}")
     print("=== Done ===")
 
 def render_verification(cL, cR):

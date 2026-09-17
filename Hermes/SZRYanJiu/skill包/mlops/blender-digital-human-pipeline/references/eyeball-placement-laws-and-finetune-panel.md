@@ -67,6 +67,19 @@ in GUI; the result is saved back into the pipeline so re-runs reproduce it.
   the model for a camera bug (one full wasted round here).
 - Area light energies ~40/15/20 (key/fill/rim) — high values overexpose and mislead vision.
 
+## Swapping the eyeball source model (user supplies a new one)
+
+- Prefer a **pre-merged single-mesh FBX** (one eye, iris+sclera+shadow already joined, pupil
+  facing -Y, textures linked) over a multi-part `.blend` you must append+join. Verify before
+  adopting: import it, check the cornea-apex auto-measure (`abs(min(v.y))` with origin=center)
+  still returns a sane radius and the iris faces -Y — the placement laws depend on both.
+- A single eye must be **duplicated/mirrored for L and R**; keep the downstream naming
+  `Eye002_L` / `Eye002_R` so the rig-binding step (which links eyeballs by `startswith('Eye002')`
+  and skins them to the Head bone) still finds them. Renaming the model breaks binding silently.
+- The placement laws are model-agnostic by design (auto-measured cornea distance, rim plane y,
+  iris radius), so a swap needs **no hand-tuned mm constants** — re-run and the laws recompute.
+  Only re-verify with a rendered front view (geometry-only checks miss iris/texture mismatches).
+
 ## Process lesson
 
 Letting the user adjust in the GUI once and reverse-engineering the laws is faster than

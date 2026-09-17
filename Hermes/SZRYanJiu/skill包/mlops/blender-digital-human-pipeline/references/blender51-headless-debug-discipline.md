@@ -32,6 +32,18 @@ Durable lessons from many headless `blender -b --python` runs this project.
   `empty_display_size=0.012`, `show_in_front=True` — the user-validated hand-made
   marker style. Mesh balls with materials render gray/invisible in Workbench and
   the user rejected them repeatedly. Object `.color` works on Empty wireframes.
+- Native-Windows Blender's Python does NOT resolve MSYS `/tmp` — `open('/tmp/x.txt')`
+  raises FileNotFoundError. Write debug/marker files to `$LOCALAPPDATA/Temp` with a
+  native `C:/...` path. Symptom of this bite: a probe script that writes a marker file
+  before/after each step appears to "exit right after reading the blend" (marker never
+  lands), making a slow-but-running job look like a silent no-op crash. A full headless
+  pass over a ~2M-face mesh (socket rebuild etc.) takes 5-7+ min — don't conclude
+  "script died" from an empty log until timeout is generous AND marker/output files are
+  written with native paths.
+- Headless background (`terminal background=true`) Blender runs have repeatedly vanished
+  mid-job with no traceback while the SAME command in foreground completes — if a
+  background Blender job disappears with an empty log, re-run it in the foreground with
+  a long timeout before suspecting the script.
 
 ## Verification before delivery
 Bone positions must be checked against the user's marker coordinates numerically

@@ -1,15 +1,17 @@
 """眼睛模型002配置 — 01_2眼球摆入v2用"""
 import os
 
-MODEL_DIR = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\原始模型\Metahuman低模\眼睛模型002"
+MODEL_DIR = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端\原始文件\眼睛模型002"
 EYE002_BLEND = os.path.join(MODEL_DIR, "Eye.blend")
+EYE002_FBX = os.path.join(MODEL_DIR, "Eye.fbx")   # 用户预制单只眼FBX(663顶点已合并, 瞳孔朝-Y, Hazel贴图)
+EYE002_FBX_MESH = "Eye_Iris"                       # FBX内眼球网格名(导入后需过滤Camera/Cube/Light)
 EYE002_REGISTRY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "eye002_colors.json")
 
 # Eye.blend内要append的对象(虹膜+巩膜+阴影片)
 EYE002_OBJECTS = ["Eye_Iris", "Eye_Sclera", "Eye_Shadow"]
 
 # 眼珠x/z基准: 手动标记轮廓中心(与眼窝同基准, 不再用3DDFA center_3d)
-EYE_XZ_JSON = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付\01A眼窝与眼球\screenshots\3ddfa\eyelid_contour_manual.json"
+EYE_XZ_JSON = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端\01a眼窝眼球\3ddfa\eyelid_contour_manual.json"
 
 # 缩放: 巩膜实测中位半径12.45mm → 缩到14.5mm(与001方案角膜位置对齐, 保持已验证摆入参数)
 EYE002_SCALE = 14.5 / 12.45   # ≈1.1647

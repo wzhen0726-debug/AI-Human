@@ -14,18 +14,19 @@
 脚本：`scripts/place_eyelid_markers.py`
 - 只出一边（R 眼，x 正），12 个 Empty 球（2.5mm），show_in_front=True
 - 初始位置 = 3DDFA 眼裂加密 12 点（用户只需微调）
-- 每个标记点加 Shrinkwrap 约束（NEAREST_SURFACE），拖动时自动吸附模型表面
+- **不要给标记 Empty 加 Shrinkwrap 约束** —— 约束每帧把点硬拉回表面，用户手动拖动的调整会弹回、无法离开表面调深度。改用场景级**原生面捕捉**：`tool_settings.use_snap=True` + `snap_elements={'FACE'}`（只在拖动时按需吸附，不跟手打架）
+- snap 设置要防御式写：Blender 5.x 删了 `use_project`，`snap_elements` 旧版叫 `snap_elements_base` —— 全部 `hasattr`/try-except 包住
 - 命名：`LM_01_外眼角_outer_canthus_R` 等
 
 ### 2. 用户 GUI 调整
-- 打开 `models/01A_markers_eyelid.blend`
-- 正视图（Numpad 1），拖动 12 个标记点到贴图睫毛根部深色眼睑缘线
+- 控制台用 `blender <markers.blend> --python setup_marker_gui.py` 打开 GUI，setup 脚本自动：①正交前视图对准标记区（按 12 点 bbox 算中心和 ortho_scale，不硬编码坐标）②`shading.type='MATERIAL'` 显示纹理 ③兜底开启面捕捉。headless 下无 VIEW_3D 区域，脚本要静默跳过不报错
+- 拖动 12 个标记点到贴图睫毛根部深色眼睑缘线
 - 只调 R 眼（x 正），保存
 
 ### 3. 镜像 R→L
 脚本：`scripts/mirror_markers.py`
 - 镜像公式：L(x, y, z) = (-R_x, R_y, R_z)
-- 删除 L 眼旧标记点，创建新镜像标记点（带 Shrinkwrap 约束）
+- 删除 L 眼旧标记点，创建新镜像标记点（同样**不加约束**）
 
 ### 4. 读取轮廓
 脚本：`scripts/read_eyelid_markers.py`
@@ -47,3 +48,15 @@
 
 ## 回退到 3DDFA
 config 中 `EYELID_CONTOUR_3DDFA_JSON` 保留原始 3DDFA 轮廓路径，可随时切回。
+
+## 测试此链的纪律
+- **place→mirror→read 测试跑会覆盖用户手调成果**：read 环节重新生成 `eyelid_contour_manual.json`，把用户 GUI 微调的数据替换成自动初始点数据。该 json 被 git 跟踪 = 用户资产；测试完立即 `git checkout HEAD -- <manual.json>` 恢复，提交前用 `git status`/`git diff --stat` 确认它不在暂存区
+- markers blend 是运行时中间产物，不入 git，测试覆盖无害
+- Blender stdout 混大量插件噪声（better_fbx/ARP/MACHIN3 的 Traceback 都是无害的），判断脚本成败要 grep 脚本自己打印的成功标记行，不能见 Traceback 就算失败
+
+## 下游：眼窝碗面材质分区（QR 用）
+手描 rim 轮廓定好后，碗面材质边界**不要**用几何投影（XZ pip/SVD 平面）事后识别——
+手描 rim 是眼睑缘，比实际碗口沿小一圈，会漏判碗面。`make_eye_cup` 建碗面时已打
+bmesh 标记 `v44tag_L/R==2`（边界=rim），`assign_socket_material.py` 直接读它即可。
+QR 阶段 rim 边界归属用几何校正（xremesh 非确定）。
+完整方法：`references/qr-eye-socket-material-partition.md`

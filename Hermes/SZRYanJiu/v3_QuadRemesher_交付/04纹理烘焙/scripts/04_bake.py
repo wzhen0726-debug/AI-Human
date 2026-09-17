@@ -1,26 +1,32 @@
 import bpy, os
 import numpy as np
 
-DELIVERY = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\v3_QuadRemesher_交付"
-UV_BLEND = os.path.join(DELIVERY, "03自动UV_rim_bevel", "03_auto_uv.blend")
-HIGH_POLY = os.path.join(DELIVERY, "01A眼窝与眼球", "models", "01_1_eye_socket.blend")
-FIXED_TEX = os.path.join(DELIVERY, "01高模修复与黏连检测", "models", "01_original_tex_fixed.png")
-OUT_04 = os.path.join(DELIVERY, "04纹理烘焙")
+ROOT = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端"
+PROJECT_ROOT = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端"
+UV_BLEND = os.path.join(ROOT, "03自动UV", "输出", "03_auto_uv.blend")
+HIGH_POLY = os.path.join(ROOT, "01a眼窝眼球", "输出", "01_1_eye_socket.blend")
+FIXED_TEX = os.path.join(ROOT, "01高模修复", "输出", "01_original_tex_fixed.png")
+OUT_04 = os.path.join(ROOT, "04纹理烘焙", "输出")
 os.makedirs(OUT_04, exist_ok=True)
 
 print("=== Step 4: Bake 4K (修复贴图) ===")
 
 # 加载低模(UV已展开)
 bpy.ops.wm.open_mainfile(filepath=UV_BLEND)
-low_poly = [o for o in bpy.data.objects if o.type == 'MESH'][0]
+# 2026-09-16: 文件里现在含眼球(02起全程连贯), 不能取[0]; 低模=最大网格
+low_poly = max([o for o in bpy.data.objects if o.type == 'MESH'], key=lambda o: len(o.data.vertices))
 print(f"低模: {low_poly.name}, {len(low_poly.data.polygons)}面")
 
 # 导入高模
 with bpy.data.libraries.load(HIGH_POLY) as (data_from, data_to):
     data_to.objects = data_from.objects
+_loaded = []
 for obj in data_to.objects:
-    bpy.context.collection.objects.link(obj)
-high_poly = [o for o in bpy.data.objects if o.type == 'MESH' and o != low_poly][0]
+    if obj is not None and obj.type == 'MESH':
+        bpy.context.collection.objects.link(obj)
+        _loaded.append(obj)
+# 2026-09-16: 从"新载入的"里取最大=高模(避免多物体时选错)
+high_poly = max(_loaded, key=lambda o: len(o.data.vertices))
 
 # 对齐安全检查 (08-05新增): 低模经FBX往返可能带变换, 与高模错位会导致烘焙整体偏移
 # 判定: 世界bbox中心偏差>5mm 或 尺寸偏差>1% → 立即报错, 不静默产出废贴图
@@ -117,6 +123,29 @@ img.save()
 pixels = np.array(img.pixels[:])
 print(f"Diffuse贴图: min={pixels.min():.3f}, max={pixels.max():.3f}, mean={pixels.mean():.3f}")
 
+# 2026-09-17 用户要求: 烘焙后【贴图溢出处理】— 暗色衣物渗出到皮肤的区域 → 就近替换为皮肤色 + 边缘过渡
+#   (判据: 亮度<95 且 紧贴衣物本体≤18px 且 非UV空白 且 不在衣物本体连通块内; 处理前自动备份)
+#   reload 让后续 pack/保存/FBX(embed) 全部携带处理后的像素
+try:
+    import sys as _sys
+    _sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from texture_fix import fix_diffuse_png, fix_diffuse_mesh_guided
+    _tx = fix_diffuse_png(tex_path)
+    print(f"贴图溢出处理: {_tx.get('note', '')}")
+    # v2: 网格引导的统计离群清理(皮肤上的孤立异常斑: 脚趾暗斑/手侧暗斑等; 阈值全部由模型自身推导)
+    #     迭代两遍: 第一遍清完后邻域变干净, 第二遍能吃到剩余的弱斑
+    for _p in (1, 2):
+        _ty = fix_diffuse_mesh_guided(tex_path, [low_poly])
+        print(f"贴图异常斑清理(第{_p}遍): {_ty.get('note', '')}")
+        if _p == 1:
+            for _ci in _ty.get('cluster_mm_facecol', [])[:8]:
+                print(f"    簇: 面={_ci[0]} 位置=({_ci[1][0]},{_ci[1][1]},{_ci[1][2]})mm 色={_ci[2]}")
+        if _ty.get('clusters', 0) == 0:
+            break
+    img.reload()
+except Exception as _e:
+    print(f"⚠ 贴图溢出处理跳过(不影响烘焙): {_e}")
+
 # Bake Normal (方案md要求)
 print('\\n烘焙Normal中 (4K)...')
 # 创建Normal贴图节点
@@ -151,8 +180,11 @@ bpy.data.objects.remove(high_poly, do_unlink=True)
 
 # 导出FBX
 fbx_path = os.path.join(OUT_04, "05_for_mixamo.fbx")
+# 2026-09-16: 导出含眼球(全场景剩余网格: 低模+眼球; 高模已删)
 bpy.ops.object.select_all(action='DESELECT')
-low_poly.select_set(True)
+for o in bpy.data.objects:
+    if o.type == 'MESH':
+        o.select_set(True)
 bpy.context.view_layer.objects.active = low_poly
 bpy.ops.export_scene.fbx(
     filepath=fbx_path, use_selection=True, use_mesh_modifiers=False,
