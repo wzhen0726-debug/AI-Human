@@ -7,13 +7,14 @@
   ④ 新增 clean 命令清理输出文件夹(单环节/all)
   ⑤ 取消清屏: 内容连续显示可翻页回看, 只加分隔线
   ⑥ (骨骼断开经诊断=Mixamo标准布局, 非bug, 见日志)
-  ⑦ (2026-09-16) 眼球摆入从01a挪到02(QR之后,碗之前); clean改递归+清交付生成物; 交付=正典, 中间件收_中间/
+  ⑦ (2026-09-16) 眼球摆入从01a挪到02(QR之后,碗之前)
+  ⑧ (2026-09-17) 用户: 无交付概念; 测试期产物一律写各stage的 输出/, 中间件收各stage的 _中间/
 命令: 01 / 01a / 02 / 03 / 04 / 05 / all / clean / status / help / quit
 """
 import os, sys, time, shutil, subprocess, io, re, threading, queue
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-DELIVERY = os.path.join(BASE, "交付")
+ROOT = BASE  # 2026-09-17 用户: 测试期不搞交付, 产物直接写各stage的 输出/
 BLENDER = r"D:\Program Files\Blender Foundation\Blender 5.1\blender.exe"
 SRC = os.path.join(BASE, "原始文件")
 LOGS = os.path.join(BASE, "logs")
@@ -25,10 +26,10 @@ BOLD = "\033[1m"
 os.system("")  # 启用Windows终端ANSI
 SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
-S01A = os.path.join(DELIVERY, "01A眼窝与眼球", "scripts")
-M01A = os.path.join(DELIVERY, "01A眼窝与眼球", "models")
-S05 = os.path.join(DELIVERY, "05骨骼绑定", "ARP新版测试_20260831", "scripts")
-B05 = os.path.join(DELIVERY, "05骨骼绑定", "ARP新版测试_20260831")
+S01A = os.path.join(BASE, "01a眼窝眼球", "scripts")
+M01A = os.path.join(BASE, "01a眼窝眼球", "输出")
+S05 = os.path.join(BASE, "05骨骼绑定", "ARP新版测试_20260831", "scripts")
+B05 = os.path.join(BASE, "05骨骼绑定", "ARP新版测试_20260831")
 
 NOISE = ("register_class", "Registered", "register()", "WARN", "Warning", "bpy_types",
          "better_fbx", "Traceback", 'File "', "Exception in module", "Zen UV", "MACHIN3",
@@ -155,7 +156,7 @@ def gui_adjust(blend, prompt, md=None, setup=None):
     print(f"  {G}✓ GUI 调整完成{W}")
     return True
 
-# ============ 产物统计 / 交付 ============
+# ============ 产物统计 / 投放 ============
 def stat_blend(blend):
     code = ("import bpy\nms=[o for o in bpy.data.objects if o.type=='MESH']\n"
             "print('STAT|'+str(len(ms)))\n"
@@ -178,17 +179,21 @@ def deliver(src, dst_dir):
     if not os.path.exists(src):
         print(f"  {R}✗ 产物缺失: {os.path.basename(src)}{W}"); return False
     dst = os.path.join(dst_dir, os.path.basename(src))
+    if os.path.abspath(src) == os.path.abspath(dst):
+        sz = os.path.getsize(src) / 1024 / 1024
+        print(f"  {G}✓ 产物{W} {os.path.relpath(src, BASE)} {D}({sz:.1f}MB){W}")
+        return True
     if os.path.exists(dst):
         old_sz = os.path.getsize(dst) / 1024 / 1024
         print(f"  {Y}⚠ 覆盖旧产物 {os.path.basename(dst)} ({old_sz:.1f}MB){W}")
     shutil.copy2(src, dst)
     sz = os.path.getsize(dst) / 1024 / 1024
     rel = os.path.relpath(dst, BASE)
-    print(f"  {G}✓ 交付{W} {rel} {D}({sz:.1f}MB){W}")
+    print(f"  {G}✓ 产物{W} {rel} {D}({sz:.1f}MB){W}")
     return True
 
 def check(rel):
-    return os.path.exists(os.path.join(DELIVERY, rel))
+    return os.path.exists(os.path.join(BASE, rel))
 
 def summary(title, ok, t0, lines):
     el = (time.time() - t0) / 60
@@ -206,8 +211,8 @@ def step_01():
     glb = os.path.join(SRC, "raw_model.glb")
     if not os.path.exists(glb):
         print(f"{R}✗ 缺少原始文件 raw_model.glb{W}"); return False
-    out = os.path.join(DELIVERY, "01高模修复与黏连检测", "models", "01_highpoly_repair.blend")
-    script = os.path.join(DELIVERY, "01高模修复与黏连检测", "scripts", "run_repair.py")
+    out = os.path.join(BASE, "01高模修复", "输出", "01_highpoly_repair.blend")
+    script = os.path.join(BASE, "01高模修复", "scripts", "run_repair.py")
     ok = run_blender(script, "01", f"高模修复+黏连检测", args=[glb, out])
     lines = []
     if ok:
@@ -222,7 +227,7 @@ def step_01a():
     print(f"{Y}{BOLD}▶ 环节 01a · 眼窝重建 (半自动打点; 眼球在02摆入){W}")
     print(f"{D}  细分: 放点→GUI手调→镜像→读取→眼窝→赋材质{W}\n")
     t0 = time.time()
-    if not check("01高模修复与黏连检测/models/01_highpoly_repair.blend"):
+    if not check("01高模修复/输出/01_highpoly_repair.blend"):
         print(f"{R}✗ 缺少输入, 先运行 01{W}"); return False
     # 1. 放点
     if not run_blender(os.path.join(S01A, "place_eyelid_markers.py"), "01a_1", "① 放置眼睑缘标记点(右眼12点)"):
@@ -257,22 +262,22 @@ def step_02():
     print(f"{Y}{BOLD}▶ 环节 02 · 拓扑重建 + 眼球摆入 + 眼窝碗{W}")
     print(f"{D}  细分: QR自动拓扑 → 眼球摆入(角膜自动测量) → 眼窝碗(按眼球反推) · 引导=眼窝独立材质{W}\n")
     t0 = time.time()
-    if not check("01A眼窝与眼球/models/_中间/01_1_eye_socket_qr.blend"):
+    if not check("01a眼窝眼球/_中间/01_1_eye_socket_qr.blend"):
         print(f"{R}✗ 缺少输入(带材质分区版), 先运行 01a{W}"); return False
-    if not run_blender(os.path.join(DELIVERY, "02QuadRemesher拓扑", "scripts", "02_qr_auto.py"),
+    if not run_blender(os.path.join(BASE, "02QR拓扑", "scripts", "02_qr_auto.py"),
                        "02_QR", "QuadRemesher 自动拓扑(目标15万quad)"):
         summary("环节 02", False, t0, []); return False
     # 2026-09-16 用户: 眼球摆入挪到 QR 之后(碗依赖眼球真值, 仍在此之前)
     if not run_blender(os.path.join(S01A, "run_eyeball_v2.py"), "02_眼球", "眼球摆入(角膜自动测量+Hazel)"):
         summary("环节 02", False, t0, []); return False
     # 眼窝碗重建(按眼球反推+打平+极点收口) — 正典产物=带碗版
-    if not run_blender(os.path.join(DELIVERY, "02QuadRemesher拓扑", "scripts", "02qr_socket_cup.py"),
+    if not run_blender(os.path.join(BASE, "02QR拓扑", "scripts", "02qr_socket_cup.py"),
                        "02_碗", "眼窝碗重建(按眼球几何, 非穿透)", done_mark="SAVED:"):
         summary("环节 02", False, t0, []); return False
-    qr = os.path.join(DELIVERY, "02QuadRemesher拓扑", "02_qr_150k_socket.blend")
+    qr = os.path.join(BASE, "02QR拓扑", "输出", "02_qr_150k_socket.blend")
     # 2026-09-17 用户要求: 02 每次也产出"拓扑完、未补洞"的中间件(QR输出, 眼洞开放)供检查/手工处理
-    _pre_src = os.path.join(DELIVERY, "02QuadRemesher拓扑", "_中间", "02_qr_150k.blend")
-    _pre = os.path.join(DELIVERY, "02QuadRemesher拓扑", "02_qr_150k_未补洞_拓扑后.blend")
+    _pre_src = os.path.join(BASE, "02QR拓扑", "_中间", "02_qr_150k.blend")
+    _pre = os.path.join(BASE, "02QR拓扑", "输出", "02_qr_150k_未补洞_拓扑后.blend")
     try:
         import shutil as _sh
         if os.path.exists(_pre_src):
@@ -295,12 +300,12 @@ def step_03():
     divider()
     print(f"{Y}{BOLD}▶ 环节 03 · 自动UV展开{W}\n")
     t0 = time.time()
-    if not check("02QuadRemesher拓扑/02_qr_150k_socket.blend"):
+    if not check("02QR拓扑/输出/02_qr_150k_socket.blend"):
         print(f"{R}✗ 缺少输入, 先运行 02{W}"); return False
-    if not run_blender(os.path.join(DELIVERY, "03自动UV", "scripts", "03_auto_uv.py"),
+    if not run_blender(os.path.join(BASE, "03自动UV", "scripts", "03_auto_uv.py"),
                        "03_UV", "Smart UV Project"):
         summary("环节 03", False, t0, []); return False
-    out = os.path.join(DELIVERY, "03自动UV", "03_auto_uv.blend")
+    out = os.path.join(BASE, "03自动UV", "输出", "03_auto_uv.blend")
     ok = deliver(out, os.path.join(BASE, "03自动UV", "输出"))
     summary("环节 03 自动UV", ok, t0, [f"{D}UV范围{W} 少接缝无碎岛(66°角度限制)"])
     return ok
@@ -309,12 +314,12 @@ def step_04():
     divider()
     print(f"{Y}{BOLD}▶ 环节 04 · 纹理烘焙 (4K){W}\n")
     t0 = time.time()
-    if not check("03自动UV/03_auto_uv.blend"):
+    if not check("03自动UV/输出/03_auto_uv.blend"):
         print(f"{R}✗ 缺少输入, 先运行 03{W}"); return False
-    if not run_blender(os.path.join(DELIVERY, "04纹理烘焙", "scripts", "04_bake.py"),
+    if not run_blender(os.path.join(BASE, "04纹理烘焙", "scripts", "04_bake.py"),
                        "04_烘焙", "烘焙 4K Diffuse + Normal"):
         summary("环节 04", False, t0, []); return False
-    o = os.path.join(DELIVERY, "04纹理烘焙"); outd = os.path.join(BASE, "04纹理烘焙", "输出")
+    o = os.path.join(BASE, "04纹理烘焙", "输出"); outd = o
     ok = all([deliver(os.path.join(o, "04_bake.blend"), outd),
               deliver(os.path.join(o, "04_diffuse_4k.png"), outd),
               deliver(os.path.join(o, "04_normal_4k.png"), outd)])
@@ -326,7 +331,7 @@ def step_05():
     print(f"{Y}{BOLD}▶ 环节 05 · 骨骼绑定与动作重定向{W}")
     print(f"{D}  细分: AI打点→GUI手调→go_detect→提取55骨+权重+眼球→rest补偿重定向{W}\n")
     t0 = time.time()
-    if not check("04纹理烘焙/04_bake.blend"):
+    if not check("04纹理烘焙/输出/04_bake.blend"):
         print(f"{R}✗ 缺少输入, 先运行 04{W}"); return False
     # 1. AI打点
     if not run_blender(os.path.join(S05, "step1_ai_markers.py"), "05_1",
@@ -365,9 +370,9 @@ def step_05():
 
 # ============ clean 清理输出 ============
 def clean_output(target=None):
-    """清理输出文件夹(递归) + 交付里的生成产物. target=None/单环节/all
+    """清理各stage 输出/ 文件夹(递归) + 中间件 + blend自动备份. target=None/单环节/all
     2026-09-16 修复: ①原版只删文件不删文件夹(screenshots残留) → 改递归
-                    ②交付里的生成产物也一并清理(否则status一直显示已生成, 且下游读到旧产物)
+                    ②各stage _中间/ 也清理(否则下游读到旧产物)
     绝不删除: 脚本 / 手调文件(01A_markers_eyelid.blend/手调json/手调点位备份) / 原始文件 / _备份"""
     targets = {
         "01": os.path.join(BASE, "01高模修复", "输出"),
@@ -377,59 +382,13 @@ def clean_output(target=None):
         "04": os.path.join(BASE, "04纹理烘焙", "输出"),
         "05": os.path.join(BASE, "05骨骼绑定", "输出"),
     }
-    # 交付里的"生成产物"白名单(相对交付目录)
-    gen_delivery = {
-        "01": ["01高模修复与黏连检测/models/01_highpoly_repair.blend"],
-        "01a": ["01A眼窝与眼球/models/01_1_eye_socket.blend",
-                "01A眼窝与眼球/models/01_2_eyeball_placed.blend",
-                "01A眼窝与眼球/models/_中间/01_1_eye_socket_qr.blend"],
-        "02": ["02QuadRemesher拓扑/02_qr_150k_socket.blend",
-               "02QuadRemesher拓扑/02_qr_150k_未补洞_拓扑后.blend",
-               "02QuadRemesher拓扑/02_qr_150k.fbx",
-               "02QuadRemesher拓扑/_中间/02_qr_150k.blend",
-               "02QuadRemesher拓扑/_中间/02QR输入_眼窝材质分区_高模.blend",
-               "02QuadRemesher拓扑/_中间/02_qr_150k_材质分区检查.blend"],
-        "03": ["03自动UV/03_auto_uv.blend"],
-        "04": ["04纹理烘焙/04_bake.blend", "04纹理烘焙/04_diffuse_4k.png",
-               "04纹理烘焙/04_normal_4k.png", "04纹理烘焙/05_for_mixamo.fbx"],
-        "05": ["05骨骼绑定/ARP新版测试_20260831/01_AI打点.blend",
-               "05骨骼绑定/ARP新版测试_20260831/02_go_detect骨架.blend",
-               "05骨骼绑定/ARP新版测试_20260831/03_骨骼绑定.blend",
-               "05骨骼绑定/ARP新版测试_20260831/03B_骨骼标准化.blend",
-               "05骨骼绑定/ARP新版测试_20260831/04_动作测试.blend"],
-    }
-    if target is None or target == "all":
-        to_clean = list(targets.items())
-    elif target in targets:
-        to_clean = [(target, targets[target])]
-    else:
-        print(f"{R}✗ 未知目标: {target} (可用: 01/01a/02/03/04/05/all){W}"); return
-    n = 0
-    for k, d in to_clean:
-        # ① 工作输出: 递归清空
-        if os.path.exists(d):
-            for f in os.listdir(d):
-                fp = os.path.join(d, f)
-                try:
-                    if os.path.isdir(fp):
-                        shutil.rmtree(fp); n += 1
-                    else:
-                        os.remove(fp); n += 1
-                except Exception as e:
-                    print(f"  {D}○ 跳过 {fp}: {e}{W}")
-        # ② 交付生成产物: 白名单逐个删
-        for rel in gen_delivery.get(k, []):
-            fp = os.path.join(DELIVERY, rel)
-            if os.path.exists(fp):
-                try: os.remove(fp); n += 1
-                except Exception: pass
-        print(f"  {G}✓ 清理 {k} (输出/ + 交付生成物){W}")
-    # ③ 交付里的 Blender 自动备份(.blend1)与标记点历史备份
-    sweep_dirs = [os.path.join(DELIVERY, "01A眼窝与眼球", "models"),
-                  os.path.join(DELIVERY, "02QuadRemesher拓扑"),
-                  os.path.join(DELIVERY, "03自动UV"),
-                  os.path.join(DELIVERY, "04纹理烘焙"),
-                  os.path.join(DELIVERY, "05骨骼绑定", "ARP新版测试_20260831")]
+    # ③ 各stage里的 Blender 自动备份(.blend1)与标记点历史备份
+    sweep_dirs = [os.path.join(BASE, "01a眼窝眼球", "输出"),
+                  os.path.join(BASE, "01a眼窝眼球", "_中间"),
+                  os.path.join(BASE, "02QR拓扑"),
+                  os.path.join(BASE, "03自动UV"),
+                  os.path.join(BASE, "04纹理烘焙"),
+                  os.path.join(BASE, "05骨骼绑定", "ARP新版测试_20260831")]
     import glob as _glob
     for d in sweep_dirs:
         for pat in ("*.blend1", "01A_markers_eyelid_备份_*.blend"):
@@ -442,17 +401,18 @@ def clean_output(target=None):
 def status():
     print(f"\n{Y}{BOLD}═══ 产物状态 ═══{W}")
     items = [
-        ("01 高模修复", "01高模修复与黏连检测/models/01_highpoly_repair.blend"),
-        ("01a 眼窝", "01A眼窝与眼球/models/01_1_eye_socket.blend"),
-        ("02 眼球(QR后摆入)", "01A眼窝与眼球/models/01_2_eyeball_placed.blend"),
-        ("02 QR拓扑", "02QuadRemesher拓扑/02_qr_150k_socket.blend"),
-        ("03 UV", "03自动UV/03_auto_uv.blend"),
-        ("04 烘焙", "04纹理烘焙/04_bake.blend"),
+        ("01 高模修复", "01高模修复/输出/01_highpoly_repair.blend"),
+        ("01a 眼窝", "01a眼窝眼球/输出/01_1_eye_socket.blend"),
+        ("02 眼球(QR后摆入)", "01a眼窝眼球/输出/01_2_eyeball_placed.blend"),
+        ("02 QR拓扑", "02QR拓扑/输出/02_qr_150k_socket.blend"),
+        ("02 未补洞(QR)", "02QR拓扑/输出/02_qr_150k_未补洞_拓扑后.blend"),
+        ("03 UV", "03自动UV/输出/03_auto_uv.blend"),
+        ("04 烘焙", "04纹理烘焙/输出/04_bake.blend"),
         ("05 绑定", "05骨骼绑定/ARP新版测试_20260831/03_骨骼绑定.blend"),
         ("05 动作", "05骨骼绑定/ARP新版测试_20260831/04_动作测试.blend"),
     ]
     for label, rel in items:
-        p = os.path.join(DELIVERY, rel)
+        p = os.path.join(BASE, rel)
         if os.path.exists(p):
             sz = os.path.getsize(p) / 1024 / 1024
             t = time.strftime("%m-%d %H:%M", time.localtime(os.path.getmtime(p)))
