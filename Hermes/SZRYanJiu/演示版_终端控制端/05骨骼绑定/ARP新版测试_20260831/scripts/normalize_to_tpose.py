@@ -2,6 +2,9 @@
 """03B 骨骼标准化: 把03绑定好的骨架 rest 开度对齐 Mixamo T-Pose, 网格跟随重摆.
 
 用户决定(2026-09-09): ①全部55骨对齐标准T-Pose ②网格跟随重摆(不是只改骨骼朝向).
+用户修改(2026-09-17): 只对齐【四肢】; 躯干(脊柱链)与头【保持原朝向】——头骨一转动,
+  眼球是独立对象(蒙皮到Head)会随之平移, 头/眼相对关系与五官区域的观感出现位移风险;
+  且最终只影响静态T-pose观感. 躯干/头的rest差异由 retarget 的 D 补偿照常处理(bind一致, 无v2病根).
 
 为什么这么做(治本):
   v3 retarget 靠 D=R_ref_rest^-1@W_ref(t) 增量补偿来"绕过"我们rest与Mixamo的差异.
@@ -127,6 +130,8 @@ for o in new_objs:
 print(f"已移除FBX新增的{len(new_objs)}个对象, 场景保留{len(bpy.data.objects)}个(含眼球/ARP自定义形状)")
 
 # ---------------- 4. 计算新rest(层级累积) ----------------
+# 躯干+头: 保持原朝向(2026-09-17 用户要求) —— 这些骨不参与 Mixamo 对齐
+TORSO_HEAD = {"Hips", "Spine", "Spine1", "Spine2", "Neck", "Head"}
 head_new, R_new, tail_new = {}, {}, {}
 for n in order:
     o = ours[n]
@@ -138,7 +143,10 @@ for n in order:
     else:
         Rd = R_new[p] @ ours[p]['R'].T                          # 非connect: 按父delta变换
         hn = head_new[p] + Rd @ (o['head'] - ours[p]['head'])
-    Rn = ref[n] if n in ref else o['R']                         # Mixamo朝向(无对应则保持)
+    if n in ref and n not in TORSO_HEAD:
+        Rn = ref[n]                                             # 四肢: Mixamo朝向
+    else:
+        Rn = o['R']                                             # 躯干/头(及无对应骨): 保持原朝向
     tn = hn + Rn[:, 1] * o['length']                            # 骨长保持我们的
     head_new[n], R_new[n], tail_new[n] = hn, Rn, tn
 
@@ -306,8 +314,13 @@ def _aa(Rm):
 
 ang_full, ang_dir, ang_roll = [], [], []
 worst = None
+keep_dev = []
 for n in ours:
     if n not in ref: continue
+    if n in TORSO_HEAD:
+        # 躯干/头: 与**原始rest**比, 须零变化
+        full, _ = _aa(Rn2[n].T @ ours[n]['R'])
+        keep_dev.append((n, full)); continue
     Ro, Rr = Rn2[n], ref[n]
     full, ax = _aa(Ro.T @ Rr)
     d = math.degrees(math.acos(np.clip(Ro[:,1].dot(Rr[:,1]), -1, 1)))
@@ -315,11 +328,13 @@ for n in ours:
     ang_full.append(full); ang_dir.append(d); ang_roll.append(rl)
     if worst is None or full > worst[1]: worst = (n, full, d, rl)
 ang_full = np.array(ang_full)
-print(f"② 朝向对齐Mixamo: {len(ang_full)}骨")
-print(f"    完整旋转差(axis-angle): 中位={np.median(ang_full):.4f}° max={ang_full.max():.4f}° (须<0.5°)")
-print(f"    其中骨向(Y轴)差 max={max(ang_dir):.4f}° | roll分量差 max={max(ang_roll):.4f}°")
-print(f"    最差骨: {worst[0]} 完整={worst[1]:.4f}° 骨向={worst[2]:.4f}° roll={worst[3]:.4f}°")
-ok2 = ang_full.max() < 0.5
+kmax = max((v for _, v in keep_dev), default=0.0)
+print(f"② 朝向: 四肢对齐Mixamo {len(ang_full)}骨 | 躯干+头保持原朝向 {len(keep_dev)}骨")
+print(f"    四肢: 完整旋转差 中位={np.median(ang_full):.4f}° max={ang_full.max():.4f}° (须<0.5°)")
+print(f"    四肢: 骨向(Y轴)差 max={max(ang_dir):.4f}° | roll分量差 max={max(ang_roll):.4f}°")
+print(f"    最差四肢骨: {worst[0]} 完整={worst[1]:.4f}° 骨向={worst[2]:.4f}° roll={worst[3]:.4f}°")
+print(f"    躯干+头零变化检查: max={kmax:.6f}° (须≈0): " + ", ".join(f"{n}={v:.5f}" for n, v in keep_dev))
+ok2 = ang_full.max() < 0.5 and kmax < 0.01
 
 # 9.3 骨长保持
 dl = np.array([abs(ln2[n] - ours[n]['length']) * 1000 for n in ours])
@@ -449,11 +464,29 @@ ank_l = hn2.get("LeftFoot"); ank_r = hn2.get("RightFoot")
 if ank_l is not None and ank_r is not None:
     print(f"    踝离中线: 重摆前 L={abs(ours['LeftFoot']['head'][0])*1000:.1f}mm → 后 L={abs(ank_l[0])*1000:.1f}mm (Mixamo参考≈91mm)")
 
-ALL = ok1 and ok2 and ok3 and ok4 and ok5 and ok6 and ok8
+# 9.9 头/眼球零位移(2026-09-17 用户关切: 头动过但眼珠没跟着动)
+#   判据: Head/Neck 主导的顶点 与 眼球, 相对"脚贴地全局平移 dz"的残余位移须≈0
+#   (全身随脚贴地统一平移了 dz 是预期; 关键是它们相对躯干**不再有任何旋转/相对位移**)
+dzv = np.array([0.0, 0.0, dz])
+_head_ids = {bidx[n] for n in ('Head', 'Neck') if n in bidx}
+hm = np.where(np.isin(dom_bone, list(_head_ids)) & (dom_wn > 0.9999))[0]
+res_head = float(np.abs((Vn[hm] - Vw[hm]) - dzv).max()) * 1000 if len(hm) else 0.0
+print(f"⑨ 头/眼相对躯干零位移: Head/Neck 主导顶点 {len(hm):,}个 → 扣除全局dz({dz*1000:+.2f}mm)后残余={res_head:.6f}mm (须≈0)")
+ok9 = res_head < 1e-3
+for o in skinned:
+    if o.name not in results: continue
+    if 'eye' in o.name.lower():
+        _Vo, _Vw2, _Vn2, _Ws, _mw, _vi, _bi, _w = results[o.name]
+        res = float(np.abs((_Vn2 - _Vw2) - dzv).max()) * 1000
+        mv = float(np.abs(_Vn2 - _Vw2).max()) * 1000
+        print(f"    眼球 '{o.name}': 总位移={mv:.3f}mm(=全局dz) 相对残余={res:.6f}mm (须≈0)")
+        if res >= 1e-3: ok9 = False
+
+ALL = ok1 and ok2 and ok3 and ok4 and ok5 and ok6 and ok8 and ok9
 print(f"\n{'='*70}")
 print(f"自查判定: ①结构{'✓' if ok1 else '✗'} ②朝向{'✓' if ok2 else '✗'} ③骨长{'✓' if ok3 else '✗'} "
       f"④蒙皮探针{'✓' if ok4 else '✗'} ⑤贴地/身高{'✓' if ok5 else '✗'} ⑥对称{'✓' if ok6 else '✗'} "
-      f"⑧边长完整{'✓' if ok8 else '✗'}")
+      f"⑧边长完整{'✓' if ok8 else '✗'} ⑨头/眼零位移{'✓' if ok9 else '✗'}")
 print(f"→ {'ALL PASS' if ALL else 'FAIL'}")
 if not ALL:
     print("⚠ 自查未全过, 不保存(避免产出坏文件)")
