@@ -2097,7 +2097,7 @@ def make_eye_socket(obj, center, side):
         #   走"全带重建"的源头, 不动 strip → 不会引入 fold/穿插。
         _Rt_c = 0.07 * float(CUR.get('eye_w', 0.035))
         _k_try = int(RIM_CONTOUR_HARMONICS)
-        _k_floor = max(4, int(RIM_CONTOUR_HARMONICS) - 9)  # 2026-09-16 实测: K=2达标但碗的放射环在圆化后的角部比值27.9(远差于K=4的9.5)且内眼角也冒问题 → 回退K=4
+        _k_floor = max(2, int(RIM_CONTOUR_HARMONICS) - 10)  # 2026-09-16 用户拍板K=2(可见的眼睑边缘锯齿是验收面; 碗内部隐藏面比值稍涨可接受): 角半径1.60→2.68mm达标
         _best = None
         while _k_try >= _k_floor:
             _p2, _dev2 = smooth_contour(poly, harm=_k_try)
