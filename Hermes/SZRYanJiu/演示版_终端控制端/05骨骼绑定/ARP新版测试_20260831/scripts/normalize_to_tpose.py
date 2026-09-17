@@ -31,7 +31,7 @@ from mathutils import Matrix, Vector
 D = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端"
 W05 = os.path.join(D, "05骨骼绑定", "ARP新版测试_20260831")
 RIG03 = os.path.join(W05, "03_骨骼绑定.blend")
-OUT = os.path.join(W05, "03B_骨骼标准化.blend")
+OUT = os.environ.get("NORM_OUT", os.path.join(W05, "03B_骨骼标准化.blend"))
 TP = os.path.join(D, "原始文件", "Mixamo动画文件", "T-Pose.fbx")
 
 # ---------------- 工具 ----------------
@@ -130,8 +130,20 @@ for o in new_objs:
 print(f"已移除FBX新增的{len(new_objs)}个对象, 场景保留{len(bpy.data.objects)}个(含眼球/ARP自定义形状)")
 
 # ---------------- 4. 计算新rest(层级累积) ----------------
-# 躯干+头: 保持原朝向(2026-09-17 用户要求) —— 这些骨不参与 Mixamo 对齐
+# 躯干+头: 2026-09-17 用户要求 —— 四肢复刻 Mixamo; 躯干/头"适当匹配"(按实测).
+# TORSO_BLEND: 躯干/头 每骨的 Mixamo 对齐系数(0=保持原朝向, 1=完全对齐), env 可覆盖.
+#   背景: 原模型 Spine2(胸)偏差4.43°、Neck(颈)偏差21.2°(前伸) → 挺胸观感;
+#   系数按实测渲染选择(过大的颈部对齐会明显搬动头部, 需眼部一致性证明).
+import json as _json
 TORSO_HEAD = {"Hips", "Spine", "Spine1", "Spine2", "Neck", "Head"}
+# 默认(2026-09-17 实测选定): 躯干/头全对齐 —— 侧面渲染对比证明"挺胸+弓背+头前伸"
+#   (Spine2偏差4.43°+Neck偏差21.19°) 全对齐后躯干竖直、头直立回收; 眼珠一致性已量化证明.
+_tb_env = os.environ.get("TORSO_BLEND", "Hips:1,Spine:1,Spine1:1,Spine2:1,Neck:1,Head:1")
+TORSO_BLEND = {n: 0.0 for n in TORSO_HEAD}
+if _tb_env:
+    for kv in _tb_env.split(","):
+        k, v = kv.split(":"); TORSO_BLEND[k.strip()] = float(v)
+print("躯干/头对齐系数:", {k: TORSO_BLEND[k] for k in ("Hips","Spine","Spine1","Spine2","Neck","Head")})
 head_new, R_new, tail_new = {}, {}, {}
 for n in order:
     o = ours[n]
@@ -144,9 +156,12 @@ for n in order:
         Rd = R_new[p] @ ours[p]['R'].T                          # 非connect: 按父delta变换
         hn = head_new[p] + Rd @ (o['head'] - ours[p]['head'])
     if n in ref and n not in TORSO_HEAD:
-        Rn = ref[n]                                             # 四肢: Mixamo朝向
+        Rn = ref[n]                                             # 四肢: Mixamo朝向(复刻)
+    elif n in TORSO_HEAD and n in ref and TORSO_BLEND.get(n, 0.0) > 0:
+        f = TORSO_BLEND[n]                                      # 躯干/头: 按系数 slerp 到 Mixamo
+        Rn = np.array(Matrix(o['R']).to_quaternion().slerp(Matrix(ref[n]).to_quaternion(), f).to_matrix())
     else:
-        Rn = o['R']                                             # 躯干/头(及无对应骨): 保持原朝向
+        Rn = o['R']                                             # 保持原朝向
     tn = hn + Rn[:, 1] * o['length']                            # 骨长保持我们的
     head_new[n], R_new[n], tail_new[n] = hn, Rn, tn
 
@@ -318,8 +333,13 @@ keep_dev = []
 for n in ours:
     if n not in ref: continue
     if n in TORSO_HEAD:
-        # 躯干/头: 与**原始rest**比, 须零变化
-        full, _ = _aa(Rn2[n].T @ ours[n]['R'])
+        # 躯干/头: 与**目标**(原朝向→Mixamo 按系数slerp)比, 须≈0
+        f = TORSO_BLEND.get(n, 0.0)
+        if f > 0 and n in ref:
+            tgt = np.array(Matrix(ours[n]['R']).to_quaternion().slerp(Matrix(ref[n]).to_quaternion(), f).to_matrix())
+        else:
+            tgt = ours[n]['R']
+        full, _ = _aa(Rn2[n].T @ tgt)
         keep_dev.append((n, full)); continue
     Ro, Rr = Rn2[n], ref[n]
     full, ax = _aa(Ro.T @ Rr)
@@ -329,12 +349,12 @@ for n in ours:
     if worst is None or full > worst[1]: worst = (n, full, d, rl)
 ang_full = np.array(ang_full)
 kmax = max((v for _, v in keep_dev), default=0.0)
-print(f"② 朝向: 四肢对齐Mixamo {len(ang_full)}骨 | 躯干+头保持原朝向 {len(keep_dev)}骨")
+print(f"② 朝向: 四肢复刻Mixamo {len(ang_full)}骨 | 躯干+头按系数对齐 {len(keep_dev)}骨")
 print(f"    四肢: 完整旋转差 中位={np.median(ang_full):.4f}° max={ang_full.max():.4f}° (须<0.5°)")
 print(f"    四肢: 骨向(Y轴)差 max={max(ang_dir):.4f}° | roll分量差 max={max(ang_roll):.4f}°")
 print(f"    最差四肢骨: {worst[0]} 完整={worst[1]:.4f}° 骨向={worst[2]:.4f}° roll={worst[3]:.4f}°")
 print(f"    躯干+头零变化检查: max={kmax:.6f}° (须≈0): " + ", ".join(f"{n}={v:.5f}" for n, v in keep_dev))
-ok2 = ang_full.max() < 0.5 and kmax < 0.01
+ok2 = ang_full.max() < 0.5 and kmax < 0.05   # 0.05°=矩阵往返浮点噪声级
 
 # 9.3 骨长保持
 dl = np.array([abs(ln2[n] - ours[n]['length']) * 1000 for n in ours])
@@ -464,23 +484,32 @@ ank_l = hn2.get("LeftFoot"); ank_r = hn2.get("RightFoot")
 if ank_l is not None and ank_r is not None:
     print(f"    踝离中线: 重摆前 L={abs(ours['LeftFoot']['head'][0])*1000:.1f}mm → 后 L={abs(ank_l[0])*1000:.1f}mm (Mixamo参考≈91mm)")
 
-# 9.9 头/眼球零位移(2026-09-17 用户关切: 头动过但眼珠没跟着动)
-#   判据: Head/Neck 主导的顶点 与 眼球, 相对"脚贴地全局平移 dz"的残余位移须≈0
-#   (全身随脚贴地统一平移了 dz 是预期; 关键是它们相对躯干**不再有任何旋转/相对位移**)
-dzv = np.array([0.0, 0.0, dz])
+# 9.9 眼球一致性(2026-09-17 用户关切: 头动过但眼珠没跟着动)
+#   正确判据(躯干/头现在会按系数合理移动, 不能再要求"零位移"):
+#   a) 眼珠中心在 **Head 骨局部坐标系** 的位置, 前后必须完全一致;
+#   b) Head/Neck 主导的顶点, 位移必须等于其主导骨的**刚性变换** D_b(v).
 _head_ids = {bidx[n] for n in ('Head', 'Neck') if n in bidx}
 hm = np.where(np.isin(dom_bone, list(_head_ids)) & (dom_wn > 0.9999))[0]
-res_head = float(np.abs((Vn[hm] - Vw[hm]) - dzv).max()) * 1000 if len(hm) else 0.0
-print(f"⑨ 头/眼相对躯干零位移: Head/Neck 主导顶点 {len(hm):,}个 → 扣除全局dz({dz*1000:+.2f}mm)后残余={res_head:.6f}mm (须≈0)")
-ok9 = res_head < 1e-3
+res_head = 0.0
+if len(hm):
+    exp = np.empty((len(hm), 3))
+    for k, i in enumerate(hm):
+        b = dom_bone[i]
+        exp[k] = H_new[b] + Rd_all[b] @ (Vw[i] - H_old[b]) + np.array([0.0, 0.0, dz])
+    res_head = float(np.abs(Vn[hm] - exp).max()) * 1000
+print(f"⑨ 头/眼一致性: Head/Neck 主导顶点 {len(hm):,}个 → 与主导骨刚性变换残余={res_head:.6f}mm (须≈0)")
+ok9 = res_head < 0.01   # 0.01mm=矩阵往返浮点噪声级(slerp+editbone写读)
 for o in skinned:
     if o.name not in results: continue
     if 'eye' in o.name.lower():
         _Vo, _Vw2, _Vn2, _Ws, _mw, _vi, _bi, _w = results[o.name]
-        res = float(np.abs((_Vn2 - _Vw2) - dzv).max()) * 1000
+        cen_o, cen_n = _Vw2.mean(axis=0), _Vn2.mean(axis=0)
+        loc_o = ours['Head']['R'].T @ (cen_o - ours['Head']['head'])
+        loc_n = Rn2['Head'].T @ (cen_n - hn2['Head'])
+        res = float(np.linalg.norm(loc_n - loc_o)) * 1000
         mv = float(np.abs(_Vn2 - _Vw2).max()) * 1000
-        print(f"    眼球 '{o.name}': 总位移={mv:.3f}mm(=全局dz) 相对残余={res:.6f}mm (须≈0)")
-        if res >= 1e-3: ok9 = False
+        print(f"    眼球 '{o.name}': 总位移={mv:.3f}mm 头骨局部位置前后差={res:.6f}mm (须≈0)")
+        if res >= 0.01: ok9 = False
 
 ALL = ok1 and ok2 and ok3 and ok4 and ok5 and ok6 and ok8 and ok9
 print(f"\n{'='*70}")
