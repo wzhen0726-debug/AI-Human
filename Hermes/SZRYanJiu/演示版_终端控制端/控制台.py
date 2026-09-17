@@ -361,10 +361,13 @@ def step_05():
     rig = os.path.join(B05, "03B_骨骼标准化.blend")
     lines = []
     nobj, rows = stat_blend(rig)
-    lines.append(f"{D}骨架{W} 55骨 Mixamo命名 · rest已对齐T-Pose · 眼球蒙皮Head")
+    lines.append(f"{D}骨架{W} 55骨 Mixamo命名 · 四肢对齐Mixamo · 肩/躯干/颈/头保持原样 · 眼球蒙皮Head")
     lines.append(f"{D}动作{W} 走36帧/跑20帧/跳31帧 · 帧数按参考原样 · 骨骼保持连接")
+    lines.append(f"{D}交付{W} 三个bl: 03_骨骼绑定(未标准化) / 03B_骨骼标准化 / 04_动作测试")
     outd = os.path.join(BASE, "05骨骼绑定", "输出")
-    ok = all([deliver(rig, outd),
+    # 2026-09-17 用户要求: 05交付三个bl —— ①绑定后未标准化(对照) ②标准化 ③动作测试
+    ok = all([deliver(os.path.join(B05, "03_骨骼绑定.blend"), outd),
+              deliver(rig, outd),
               deliver(os.path.join(B05, "04_动作测试.blend"), outd)])
     summary("环节 05 骨骼绑定与动作", ok, t0, lines)
     return ok
@@ -453,7 +456,8 @@ def status():
         ("02 未补洞(QR)", "02QR拓扑/输出/02_qr_150k_未补洞_拓扑后.blend"),
         ("03 UV", "03自动UV/输出/03_auto_uv.blend"),
         ("04 烘焙", "04纹理烘焙/输出/04_bake.blend"),
-        ("05 绑定", "05骨骼绑定/ARP新版测试_20260831/03_骨骼绑定.blend"),
+        ("05 绑定(未标准化)", "05骨骼绑定/ARP新版测试_20260831/03_骨骼绑定.blend"),
+        ("05 骨骼标准化", "05骨骼绑定/ARP新版测试_20260831/03B_骨骼标准化.blend"),
         ("05 动作", "05骨骼绑定/ARP新版测试_20260831/04_动作测试.blend"),
     ]
     for label, rel in items:

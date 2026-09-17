@@ -130,20 +130,18 @@ for o in new_objs:
 print(f"已移除FBX新增的{len(new_objs)}个对象, 场景保留{len(bpy.data.objects)}个(含眼球/ARP自定义形状)")
 
 # ---------------- 4. 计算新rest(层级累积) ----------------
-# 躯干+头: 2026-09-17 用户要求 —— 四肢复刻 Mixamo; 躯干/头"适当匹配"(按实测).
-# TORSO_BLEND: 躯干/头 每骨的 Mixamo 对齐系数(0=保持原朝向, 1=完全对齐), env 可覆盖.
-#   背景: 原模型 Spine2(胸)偏差4.43°、Neck(颈)偏差21.2°(前伸) → 挺胸观感;
-#   系数按实测渲染选择(过大的颈部对齐会明显搬动头部, 需眼部一致性证明).
-import json as _json
-TORSO_HEAD = {"Hips", "Spine", "Spine1", "Spine2", "Neck", "Head"}
-# 默认(2026-09-17 实测选定): 躯干/头全对齐 —— 侧面渲染对比证明"挺胸+弓背+头前伸"
-#   (Spine2偏差4.43°+Neck偏差21.19°) 全对齐后躯干竖直、头直立回收; 眼珠一致性已量化证明.
-_tb_env = os.environ.get("TORSO_BLEND", "Hips:1,Spine:1,Spine1:1,Spine2:1,Neck:1,Head:1")
-TORSO_BLEND = {n: 0.0 for n in TORSO_HEAD}
-if _tb_env:
-    for kv in _tb_env.split(","):
-        k, v = kv.split(":"); TORSO_BLEND[k.strip()] = float(v)
-print("躯干/头对齐系数:", {k: TORSO_BLEND[k] for k in ("Hips","Spine","Spine1","Spine2","Neck","Head")})
+# 对齐策略 (2026-09-17 最终定案, 用户实测结论):
+#   四肢(含手指/脚趾, **不含肩**): 复刻 Mixamo ✓正优化;
+#   肩/躯干/颈/头(8骨): **保持原样, 不动** ✗对齐即负优化:
+#     · 肩(Left/RightShoulder)偏差21° → 对齐=旋转锁骨/肩胛肉, 顶视图背部挤出沟壑+正面挺胸;
+#     · Neck偏差21.2°: 我们模型的脖子前倾由"颈骨倾斜21°"承担; Mixamo脖子骨垂直(+180.0°),
+#       前倾靠 Head 骨起点前移实现 —— 实测 Mixamo: Neck→Head 相对旋转=0.00°,
+#       Neck尾→Head起点偏移=(0.0,-31.4,-4.7)mm(前移31.4mm) → 把我们的颈骨扳垂直
+#       = 把头骨+面部肉整块后拖~30mm → 五官变形(用户实测);
+#     · Spine/Spine2/Head 同属躯干/头, 一并保持原样.
+NO_ALIGN = {"Hips", "Spine", "Spine1", "Spine2", "Neck", "Head",
+            "LeftShoulder", "RightShoulder"}
+print(f"对齐策略: 四肢 {len(order)-len(NO_ALIGN)}骨复刻Mixamo; 肩/躯干/颈/头 {len(NO_ALIGN)}骨保持原样")
 head_new, R_new, tail_new = {}, {}, {}
 for n in order:
     o = ours[n]
@@ -155,13 +153,10 @@ for n in order:
     else:
         Rd = R_new[p] @ ours[p]['R'].T                          # 非connect: 按父delta变换
         hn = head_new[p] + Rd @ (o['head'] - ours[p]['head'])
-    if n in ref and n not in TORSO_HEAD:
+    if n in ref and n not in NO_ALIGN:
         Rn = ref[n]                                             # 四肢: Mixamo朝向(复刻)
-    elif n in TORSO_HEAD and n in ref and TORSO_BLEND.get(n, 0.0) > 0:
-        f = TORSO_BLEND[n]                                      # 躯干/头: 按系数 slerp 到 Mixamo
-        Rn = np.array(Matrix(o['R']).to_quaternion().slerp(Matrix(ref[n]).to_quaternion(), f).to_matrix())
     else:
-        Rn = o['R']                                             # 保持原朝向
+        Rn = o['R']                                             # 肩/躯干/颈/头: 保持原朝向
     tn = hn + Rn[:, 1] * o['length']                            # 骨长保持我们的
     head_new[n], R_new[n], tail_new[n] = hn, Rn, tn
 
@@ -218,6 +213,50 @@ def lbs_transform(obj):
 skinned = [o for o in bpy.data.objects if o.type == 'MESH' and o.vertex_groups
            and any(m.type == 'ARMATURE' for m in o.modifiers)]
 print(f"\n蒙皮网格={len(skinned)}个: {[(o.name, len(o.data.vertices)) for o in skinned]}")
+
+# ---------------- 5a. 眼区权重统一 (2026-09-17, 用户诊断: "动躯干/脖子骨骼时眼珠没连上") ----------------
+#   实测: 眼球=纯Head(刚性跟随), 但眼睑/眼窝皮肤权重=Head~0.91+Neck~0.09 → 头/颈相对运动时
+#   眼睑滞后~3.9mm, 眼球相对眼眶"独立位移"(爆出感). 修复: 眼球周围区域权重向 Head 统一:
+#   半径由实测眼球半径 R_e 推导(核心 1.5×R_e 内=纯Head, 到 2.5×R_e 平滑归零), 其余组按比例回缩.
+eye_centers = []
+for _eo in bpy.data.objects:
+    if _eo.type == 'MESH' and _eo.name.startswith('Eye002'):
+        _mwe = np.array(_eo.matrix_world)
+        _pts = np.array([np.array(_eo.matrix_world @ v.co) for v in _eo.data.vertices])
+        _c = _pts.mean(axis=0)
+        _re = float(np.mean(np.linalg.norm(_pts - _c, axis=1)))
+        eye_centers.append((_eo.name, _c, _re))
+if eye_centers:
+    print("眼区权重统一: " + ", ".join(f"{n} R={r*1000:.1f}mm" for n, c, r in eye_centers))
+    _fixed = 0
+    for o in skinned:
+        _mw = np.array(o.matrix_world)
+        _vg_by_idx = {g.index: g for g in o.vertex_groups}
+        _head = next((g for g in o.vertex_groups if g.name == 'Head'), None)
+        if _head is None:
+            continue
+        for v in o.data.vertices:
+            _pw = np.array(o.matrix_world @ v.co)
+            _dmin, _re = 1e9, 0.0
+            for _, c, r in eye_centers:
+                d = float(np.linalg.norm(_pw - c))
+                if d < _dmin:
+                    _dmin, _re = d, r
+            if _dmin > 2.5 * _re:
+                continue
+            _f = 1.0 if _dmin <= 1.5 * _re else (2.5 * _re - _dmin) / _re
+            _cur = {g.group: float(g.weight) for g in v.groups}
+            _hw = _cur.get(_head.index, 0.0)
+            if _hw >= 0.999 or _f <= 0:
+                continue
+            _tgt = _hw + (1.0 - _hw) * _f
+            _others = {gi: w for gi, w in _cur.items() if gi != _head.index and w > 0}
+            _so = sum(_others.values())
+            for gi, w in _others.items():
+                _vg_by_idx[gi].add([v.index], w * (1.0 - _tgt) / _so, 'REPLACE')
+            _head.add([v.index], _tgt, 'REPLACE')
+            _fixed += 1
+    print(f"  已将 {_fixed} 个眼区顶点权重统一为 Head 主导(核心纯Head, 边缘平滑)")
 
 results = {}
 for o in skinned:
@@ -332,14 +371,9 @@ worst = None
 keep_dev = []
 for n in ours:
     if n not in ref: continue
-    if n in TORSO_HEAD:
-        # 躯干/头: 与**目标**(原朝向→Mixamo 按系数slerp)比, 须≈0
-        f = TORSO_BLEND.get(n, 0.0)
-        if f > 0 and n in ref:
-            tgt = np.array(Matrix(ours[n]['R']).to_quaternion().slerp(Matrix(ref[n]).to_quaternion(), f).to_matrix())
-        else:
-            tgt = ours[n]['R']
-        full, _ = _aa(Rn2[n].T @ tgt)
+    if n in NO_ALIGN:
+        # 肩/躯干/颈/头: 须与原朝向完全一致(零变化)
+        full, _ = _aa(Rn2[n].T @ ours[n]['R'])
         keep_dev.append((n, full)); continue
     Ro, Rr = Rn2[n], ref[n]
     full, ax = _aa(Ro.T @ Rr)
@@ -349,11 +383,11 @@ for n in ours:
     if worst is None or full > worst[1]: worst = (n, full, d, rl)
 ang_full = np.array(ang_full)
 kmax = max((v for _, v in keep_dev), default=0.0)
-print(f"② 朝向: 四肢复刻Mixamo {len(ang_full)}骨 | 躯干+头按系数对齐 {len(keep_dev)}骨")
+print(f"② 朝向: 四肢复刻Mixamo {len(ang_full)}骨 | 肩/躯干/颈/头零变化 {len(keep_dev)}骨")
 print(f"    四肢: 完整旋转差 中位={np.median(ang_full):.4f}° max={ang_full.max():.4f}° (须<0.5°)")
 print(f"    四肢: 骨向(Y轴)差 max={max(ang_dir):.4f}° | roll分量差 max={max(ang_roll):.4f}°")
 print(f"    最差四肢骨: {worst[0]} 完整={worst[1]:.4f}° 骨向={worst[2]:.4f}° roll={worst[3]:.4f}°")
-print(f"    躯干+头零变化检查: max={kmax:.6f}° (须≈0): " + ", ".join(f"{n}={v:.5f}" for n, v in keep_dev))
+print(f"    肩/躯干/颈/头零变化检查: max={kmax:.6f}° (须≈0): " + ", ".join(f"{n}={v:.5f}" for n, v in keep_dev))
 ok2 = ang_full.max() < 0.5 and kmax < 0.05   # 0.05°=矩阵往返浮点噪声级
 
 # 9.3 骨长保持
@@ -489,6 +523,27 @@ if ank_l is not None and ank_r is not None:
 #   a) 眼珠中心在 **Head 骨局部坐标系** 的位置, 前后必须完全一致;
 #   b) Head/Neck 主导的顶点, 位移必须等于其主导骨的**刚性变换** D_b(v).
 _head_ids = {bidx[n] for n in ('Head', 'Neck') if n in bidx}
+# ⚠勿只查"纯Head顶点": 眼睑旧权重=Head0.91+Neck0.09, 非纯 → 从不被检查(自证盲区).
+#  新增: 眼区全部顶点(距眼心<2.5×R_e) 相对头骨刚性变换的偏差, 须≈0.
+_eye_core = np.zeros(len(Vw), bool); _eye_outer = np.zeros(len(Vw), bool)
+if eye_centers:
+    for _, c, r in eye_centers:
+        _d = np.linalg.norm(Vw - c, axis=1)
+        _eye_core |= (_d < 1.5 * r)          # 核心: 眼睑区(已统一纯Head → 须刚性)
+        _eye_outer |= (_d < 2.5 * r)         # 外缘: 平滑过渡带(允许残留)
+_he = bidx.get('Head', -1)
+ok9b = True
+if _he >= 0 and _eye_core.any():
+    def _rig_dev(mask):
+        return np.abs(Vn[mask] - ((Rd_all[_he] @ (Vw[mask] - H_old[_he]).T).T + H_new[_he])
+                      - np.array([0.0, 0.0, dz])).max() * 1000
+    _dcore = _rig_dev(_eye_core)
+    _douter = _rig_dev(_eye_outer)
+    print(f"⑨b 眼区刚性跟随: 核心(睑) {int(_eye_core.sum())}顶点 残余={_dcore:.6f}mm (须≈0); "
+          f"外缘过渡带 残余={_douter:.3f}mm (平滑带预期)")
+    if _dcore >= 0.05:
+        print("   ⚠ 眼睑核心区存在非刚体偏差(眼球会相对眼睑漂移)")
+        ok9b = False
 hm = np.where(np.isin(dom_bone, list(_head_ids)) & (dom_wn > 0.9999))[0]
 res_head = 0.0
 if len(hm):
@@ -511,11 +566,11 @@ for o in skinned:
         print(f"    眼球 '{o.name}': 总位移={mv:.3f}mm 头骨局部位置前后差={res:.6f}mm (须≈0)")
         if res >= 0.01: ok9 = False
 
-ALL = ok1 and ok2 and ok3 and ok4 and ok5 and ok6 and ok8 and ok9
+ALL = ok1 and ok2 and ok3 and ok4 and ok5 and ok6 and ok8 and ok9 and ok9b
 print(f"\n{'='*70}")
 print(f"自查判定: ①结构{'✓' if ok1 else '✗'} ②朝向{'✓' if ok2 else '✗'} ③骨长{'✓' if ok3 else '✗'} "
       f"④蒙皮探针{'✓' if ok4 else '✗'} ⑤贴地/身高{'✓' if ok5 else '✗'} ⑥对称{'✓' if ok6 else '✗'} "
-      f"⑧边长完整{'✓' if ok8 else '✗'} ⑨头/眼零位移{'✓' if ok9 else '✗'}")
+      f"⑧边长完整{'✓' if ok8 else '✗'} ⑨头/眼{'✓' if ok9 else '✗'} ⑨b眼区刚性{'✓' if ok9b else '✗'}")
 print(f"→ {'ALL PASS' if ALL else 'FAIL'}")
 if not ALL:
     print("⚠ 自查未全过, 不保存(避免产出坏文件)")
