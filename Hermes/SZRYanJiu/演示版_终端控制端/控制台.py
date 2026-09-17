@@ -270,11 +270,24 @@ def step_02():
                        "02_碗", "眼窝碗重建(按眼球几何, 非穿透)", done_mark="SAVED:"):
         summary("环节 02", False, t0, []); return False
     qr = os.path.join(DELIVERY, "02QuadRemesher拓扑", "02_qr_150k_socket.blend")
+    # 2026-09-17 用户要求: 02 每次也产出"拓扑完、未补洞"的中间件(QR输出, 眼洞开放)供检查/手工处理
+    _pre_src = os.path.join(DELIVERY, "02QuadRemesher拓扑", "_中间", "02_qr_150k.blend")
+    _pre = os.path.join(DELIVERY, "02QuadRemesher拓扑", "02_qr_150k_未补洞_拓扑后.blend")
+    try:
+        import shutil as _sh
+        if os.path.exists(_pre_src):
+            _sh.copy2(_pre_src, _pre)
+        else:
+            print(f"{R}未补洞副本: 源不存在 {_pre_src}{W}")
+    except Exception as _e:
+        print(f"{R}未补洞副本失败: {_e}{W}")
     lines = []
     nobj, rows = stat_blend(qr)
     for nm, v, f in rows: lines.append(f"{D}低模{W} {nm[:28]} {Y}{v}顶点 / {f}面{W}")
+    if os.path.exists(_pre):
+        lines.append(f"{D}未补洞版{W} 02_qr_150k_未补洞_拓扑后.blend {D}(QR输出, 眼洞开放){W}")
     outd = os.path.join(BASE, "02QR拓扑", "输出")
-    ok = all([deliver(qr, outd)])
+    ok = all([deliver(qr, outd), (deliver(_pre, outd) if os.path.exists(_pre) else True)])
     summary("环节 02 QR拓扑", ok, t0, lines)
     return ok
 
@@ -371,6 +384,7 @@ def clean_output(target=None):
                 "01A眼窝与眼球/models/01_2_eyeball_placed.blend",
                 "01A眼窝与眼球/models/_中间/01_1_eye_socket_qr.blend"],
         "02": ["02QuadRemesher拓扑/02_qr_150k_socket.blend",
+               "02QuadRemesher拓扑/02_qr_150k_未补洞_拓扑后.blend",
                "02QuadRemesher拓扑/02_qr_150k.fbx",
                "02QuadRemesher拓扑/_中间/02_qr_150k.blend",
                "02QuadRemesher拓扑/_中间/02QR输入_眼窝材质分区_高模.blend",
