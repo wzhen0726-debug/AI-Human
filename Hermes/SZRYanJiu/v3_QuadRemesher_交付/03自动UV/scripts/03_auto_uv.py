@@ -1,21 +1,32 @@
-"""03 自动UV: Smart UV Project + 大面积浪费检测 + 参数自动寻优 (2026-09-17 v2)
+"""03 自动UV: Smart UV Project + 大面积浪费检测 + 自适应参数搜索 (2026-09-17 v3)
 
 输入: 02_qr_150k_socket.blend (QR低模)
 输出: 03_auto_uv.blend + 03_uv_layout_before/after.png
 
-算法(检测方案全部由数据算出, 无写死阈值):
-  ① 基准展开(66° + 自带打包) → 测量: 利用率U / 最大空方块 / 最大岛 / 纹素密度CV
-  ② 废料判据(自参照): 最大空方块面积 ≥ 最大岛面积 → "大面积浪费"(空块大到能装下最大的岛)
-  ③ 若判定浪费(或基准非最优) → 参数阶梯自动重跑并测量:
-       66° / 75° / 82° / 89° 各 + islands均匀化 + CONCAVE重打包(scale=True)
-  ④ 密度约束: 候选纹素密度CV 不得差于基准展开(保护烘焙密度均匀性)
-  ⑤ 选定: 通过①②者中利用率最高; 全不通过则取利用率最高并告警
-  ⑥ 用选定参数重跑一次(确定状态) → 保存 + 输出前后布局PNG
+设计原则(换任何原始模型都成立, 无写死阈值):
+  · 全部判据/约束都相对"本次基准展开"或布局自身计算, 不含模型相关常量;
+  · 搜索有预算(MAX_ROUNDS=5), 跑完择优; 任何异常都回退到"最好一版"并明确告警, 不阻断管线;
+  · 选中方案重跑一次定状态并复测, 复测不过依次退用次优(处理运行波动)。
 
+检测指标(每次展开后测量):
+  利用率U = Σ|UV面面积| / 1.0
+  最大空方块 = 布局栅格化+膨胀封孔+最大空方块DP(归一化边长/面积)
+  岛统计 = UV连通分量(共享边且两端UV相等) → 岛数/最大岛面积/中位岛边长
+  纹素密度CV = 逐面(UV面积/3D面积)的变异系数
+
+判据(自参照, 三项比值 ≤1 即通过; 比值即"控制住的阈值边距"):
+  废料比 = 最大空方块面积 / 最大岛面积   (<1: 空块装不下最大的岛 = 无大面积浪费)
+  密度比 = 候选CV / 基准CV               (≤1: 不破坏展开算法自身的纹素密度均匀度)
+  岛数比 = 候选岛数 / 基准岛数           (≤1: 不新增接缝/碎岛)
+  择优: 三项全过者中取利用率最高; 全不过则按(废料比, -U)取"最好一版"并告警
+
+搜索(自适应二分, 5轮含基准):
+  第1轮 66°(既有"少接缝"定案, 自带打包) = 基准
+  第2轮 66°+光顺+重打包(验证打包增益)   第3轮 89°+…(探上界)
+  第4轮 (66+89)/2 +…                    第5轮 依三点峰值侧再二分一探
 历史: 旧版先应用RimBevel倒角修改器再UV(文件夹曾名03自动UV_rim_bevel);
-2026-09-08实测该倒角链失效(权重被bm.to_mesh冲掉), 整套机制已删除,
-眼睑缘锐利度由烘焙法线贴图从高模获取。本脚本主动剥离bevel/crease残留属性。
-"""
+2026-09-08实测该倒角链失效, 整套机制已删除, 眼睑缘锐利度由烘焙法线贴图获取;
+本脚本主动剥离bevel/crease残留属性。"""
 import bpy, os, math, time
 import numpy as np
 
@@ -24,17 +35,17 @@ QR_BLEND = os.path.join(ROOT, "02QR拓扑", "输出", "02_qr_150k_socket.blend")
 OUT_03 = os.path.join(ROOT, "03自动UV", "输出")
 os.makedirs(OUT_03, exist_ok=True)
 
-MARGIN = 0.01        # 打包边距(=烘焙贴图岛间距需求, 沿用既有交付口径)
-# 候选阶梯: (角度, 是否均匀化纹素密度, 是否CONCAVE重打包) —— 首个为基准(既有66°定案)
-CANDIDATES = ((66.0, False, False), (66.0, True, True), (75.0, True, True),
-              (82.0, True, True), (89.0, True, True))
-GRID = 256           # 空块分析栅格分辨率(256², 分析用, 与模型无关)
+MARGIN = 0.01          # 打包边距(烘焙岛间距需求, 沿用既有交付口径)
+MAX_ROUNDS = 5         # 搜索预算: 含基准共5次展开; 达到即择优(不无限循环)
+ANGLE_START = 66.0     # 既有"少接缝"定案角度 = 搜索下界(不低于它以免新增接缝)
+ANGLE_LIMIT = 89.0     # 搜索上界(≥90°全平失去分岛意义)
+GRID = 256             # 空块分析栅格(分析分辨率, 与模型无关)
 EPS = 1e-6
 t00 = time.time()
 
 def P(*a): print(*a, flush=True)
 
-# ================= 测量工具 =================
+# ================= 测量 =================
 def uv_arrays(mesh):
     me = mesh.data
     uvl = me.uv_layers.active.data
@@ -47,7 +58,7 @@ def uv_arrays(mesh):
     return pts, areas
 
 def uv_islands(mesh, pts, areas):
-    """UV连通分量(共享边且两端UV相等) → [(面数, 面积, bbox边长)]"""
+    """UV连通分量(共享边且两端UV相等) → [(面数, 面积, bbox边长)] 按面积降序"""
     me = mesh.data
     parent = list(range(len(me.polygons)))
     def find(a):
@@ -84,7 +95,7 @@ def uv_islands(mesh, pts, areas):
     return out
 
 def empty_square(pts):
-    """最大空方块(栅格化占位+膨胀封孔+DP), 返回(边长, 面积) 均为归一化0~1量纲"""
+    """最大空方块(栅格化占位+膨胀封孔+DP), 返回(归一化边长, 面积)"""
     gx = np.clip((pts[:, 0] * GRID).astype(int), 0, GRID - 1)
     gy = np.clip((pts[:, 1] * GRID).astype(int), 0, GRID - 1)
     grid = np.zeros((GRID, GRID), bool); grid[gy, gx] = True
@@ -116,10 +127,19 @@ def measure(mesh):
     isl = uv_islands(mesh, pts, areas)
     e_side, e_area = empty_square(pts)
     return dict(U=U, n=len(isl), big_area=isl[0][1], big_side=isl[0][2],
-                med_side=float(np.median([s for _, _, s in isl])),
-                empty_area=e_area, empty_side=e_side, cv=density_cv(mesh.data, areas), pts=pts)
+                empty_area=e_area, empty_side=e_side, cv=density_cv(mesh.data, areas))
 
-# ================= 展开/打包 =================
+def ratios(m, base):
+    """三项比值(≤1通过): 废料比 / 密度比 / 岛数比"""
+    return (m['empty_area'] / max(m['big_area'], 1e-9),
+            m['cv'] / max(base['cv'], 1e-9),
+            m['n'] / max(base['n'], 1))
+
+def passes(m, base):
+    wr, dr, sr = ratios(m, base)
+    return (wr < 1.0) and (dr <= 1.0) and (sr <= 1.0)
+
+# ================= 展开/打包/绘图 =================
 def do_unwrap(mesh, angle_deg, uniformize, repack):
     bpy.ops.object.select_all(action='DESELECT')
     mesh.select_set(True); bpy.context.view_layer.objects.active = mesh
@@ -137,7 +157,7 @@ def do_unwrap(mesh, angle_deg, uniformize, repack):
         bpy.ops.uv.pack_islands(**{k: v for k, v in kw.items() if k in props})
     bpy.ops.object.mode_set(mode='OBJECT')
 
-def draw_layout(mesh, path, title=""):
+def draw_layout(mesh, path):
     me = mesh.data
     uvl = me.uv_layers.active.data
     pts = np.empty(len(uvl) * 2); uvl.foreach_get("uv", pts); pts = pts.reshape(-1, 2)
@@ -164,7 +184,7 @@ def draw_layout(mesh, path, title=""):
     bpy.data.images.remove(im)
 
 # ================= 主流程 =================
-P("=== Step 3: Auto UV (v2: 浪费检测 + 参数寻优) ===")
+P("=== Step 3: Auto UV (v3: 浪费检测 + 自适应搜索[5轮预算] + 择优) ===")
 bpy.ops.wm.open_mainfile(filepath=QR_BLEND)
 mesh = max([o for o in bpy.data.objects if o.type == 'MESH'], key=lambda o: len(o.data.vertices))
 P(f"低模: {mesh.name}, {len(mesh.data.vertices):,}顶点 {len(mesh.data.polygons):,}面")
@@ -186,63 +206,100 @@ if any(abs(r) > 1e-9 for r in mesh.rotation_euler):
     bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
     P(f"对象旋转已归零 -> {tuple(round(r,9) for r in mesh.rotation_euler)}")
 
-# ---- ① 基准展开 ----
+rounds = []   # (round_no, angle, uniformize, repack, metrics)
+
+# ---------- 第1轮: 基准 ----------
 t0 = time.time()
-do_unwrap(mesh, CANDIDATES[0][0], uniformize=CANDIDATES[0][1], repack=CANDIDATES[0][2])
+do_unwrap(mesh, ANGLE_START, uniformize=False, repack=False)
 base = measure(mesh)
-P(f"① 基准展开 {CANDIDATES[0][0]:.0f}°(自带打包): 利用率={base['U']*100:.1f}% 岛数={base['n']} "
-  f"最大空方块={base['empty_side']:.3f}(面积{base['empty_area']*100:.2f}%) 最大岛面积={base['big_area']*100:.2f}% "
-  f"密度CV={base['cv']:.3f}  [{time.time()-t0:.0f}s]")
+rounds.append((1, ANGLE_START, False, False, base))
+wr, dr, sr = ratios(base, base)
+P(f"第1轮 基准 {ANGLE_START:.0f}°(自带打包): U={base['U']*100:.1f}% 岛数={base['n']} "
+  f"最大空方块={base['empty_side']:.3f}({base['empty_area']*100:.2f}%) 最大岛={base['big_area']*100:.2f}% CV={base['cv']:.3f} [{time.time()-t0:.0f}s]")
+P(f"      基准废料比={wr:.2f} → {'⚠ 大面积浪费(空块≥最大岛), 调整参数重跑' if wr >= 1 else '无大面积浪费, 仍寻优'}")
 draw_layout(mesh, os.path.join(OUT_03, "03_uv_layout_before.png"))
 
-# ---- ② 废料判据(自参照) ----
-waste = base['empty_area'] >= base['big_area']
-if waste:
-    P(f"⚠ 大面积浪费: 最大空方块面积{base['empty_area']*100:.2f}% >= 最大岛面积{base['big_area']*100:.2f}% "
-      f"(空块大到能装下最大的岛) → 调整参数重跑")
-else:
-    P(f"基准无大面积浪费(空块{base['empty_area']*100:.2f}% < 最大岛{base['big_area']*100:.2f}%), 仍做候选寻优")
+# ---------- 第2..5轮: 自适应搜索 ----------
+def probe(rno, ang):
+    t = time.time()
+    try:
+        do_unwrap(mesh, ang, uniformize=True, repack=True)
+        m = measure(mesh)
+    except Exception as e:
+        P(f"  第{rno}轮 {ang:.1f}° 展开失败({e}), 跳过"); return None
+    rounds.append((rno, ang, True, True, m))
+    wr_, dr_, sr_ = ratios(m, base)
+    ok = passes(m, base)
+    P(f"  第{rno}轮 {ang:.1f}°+光顺+重打包: U={m['U']*100:.1f}% 空块={m['empty_side']:.3f}({m['empty_area']*100:.2f}%) "
+      f"岛数={m['n']} CV={m['cv']:.3f} | 废料比={wr_:.2f} 密度比={dr_:.2f} 岛数比={sr_:.2f} {'✓' if ok else '✗'} [{time.time()-t:.0f}s]")
+    return m
 
-# ---- ③ 参数阶梯 ----
-cands = []
-for ang, uni, rep in CANDIDATES:
-    t0 = time.time()
-    do_unwrap(mesh, ang, uniformize=uni, repack=rep)
-    m = measure(mesh)
-    m.update(angle=ang, uniform=uni, repo=rep)
-    m['waste'] = m['empty_area'] >= m['big_area']
-    m['ok_density'] = m['cv'] <= base['cv']          # 密度约束: 不得差于基准展开
-    cands.append(m)
-    tag = "+均匀化+重打包" if rep else "(=基准)"
-    P(f"   候选 {ang:.0f}°{tag}: U={m['U']*100:.1f}% "
-      f"空块={m['empty_side']:.3f}({m['empty_area']*100:.2f}%) 岛数={m['n']} CV={m['cv']:.3f} "
-      f"{'✓' if (not m['waste'] and m['ok_density']) else ('✗浪费' if m['waste'] else '✗密度')}  [{time.time()-t0:.0f}s]")
+m66 = probe(2, ANGLE_START)
+m89 = probe(3, ANGLE_LIMIT)
+mid = (ANGLE_START + ANGLE_LIMIT) / 2.0
+mmid = probe(4, mid)
+known = [(a, m) for a, m in ((ANGLE_START, m66), (mid, mmid), (ANGLE_LIMIT, m89)) if m is not None]
+if known and len(rounds) < MAX_ROUNDS:
+    # 朝"合法候选中的峰"方向探索(若无合法者再退用原始U峰) —— 换模型时避免整段探测落在非法区
+    kvalid = [(a, m) for a, m in known if passes(m, base)]
+    ba, bm = max(kvalid if kvalid else known, key=lambda x: x[1]['U'])
+    if ba <= ANGLE_START + 1e-6:
+        nxt = (ANGLE_START + mid) / 2.0
+    elif ba >= ANGLE_LIMIT - 1e-6:
+        nxt = (mid + ANGLE_LIMIT) / 2.0
+    else:
+        lo_u = next((m['U'] for a, m in known if a <= ANGLE_START + 1e-6), -1.0)
+        hi_u = next((m['U'] for a, m in known if a >= ANGLE_LIMIT - 1e-6), -1.0)
+        nxt = (ANGLE_START + ba) / 2.0 if lo_u >= hi_u else (ba + ANGLE_LIMIT) / 2.0
+    if all(abs(nxt - a) > 0.5 for a, _ in known):
+        probe(5, nxt)
+P(f"搜索完成: 共{len(rounds)}轮 (预算{MAX_ROUNDS})")
 
-# ---- ④⑤ 选择 ----
-valid = [m for m in cands if (not m['waste']) and m['ok_density']]
+# ---------- 择优 ----------
+valid = [(r, m) for r, a, u, p, m in rounds if passes(m, base)]
 if valid:
-    pick = max(valid, key=lambda m: m['U'])
+    pick_rno, pick_m = max(valid, key=lambda x: x[1]['U'])
 else:
-    pick = max(cands, key=lambda m: m['U'])
-    P("⚠ 无候选同时满足废料/密度约束, 取利用率最高并告警")
+    pick_rno, pick_m = min([(r, m) for r, a, u, p, m in rounds],
+                           key=lambda x: (ratios(x[1], base)[0], -x[1]['U']))
+    P("⚠ 无候选同时满足三项约束 → 按(废料比最小→利用率最高)取最好一版, 管线继续")
+pick_cfg = next((a, u, p) for r, a, u, p, m in rounds if m is pick_m)
+P(f"候选排名(第{pick_rno}轮最优): {pick_cfg[0]:.1f}°{' +光顺+重打包' if pick_cfg[2] else '(自带打包)'}, U={pick_m['U']*100:.1f}%")
 
-# ---- ⑥ 用选定参数重跑(确定状态) ----
-do_unwrap(mesh, pick['angle'], uniformize=pick['uniform'], repack=pick['repo'])
-final = measure(mesh)
-P(f"选定: {pick['angle']:.0f}°{'+均匀化+CONCAVE重打包' if pick['repo'] else '(自带打包)'} → "
-  f"利用率={final['U']*100:.1f}% (基准{base['U']*100:.1f}%, +{(final['U']-base['U'])*100:.1f}pp) "
-  f"最大空方块={final['empty_side']:.3f}({final['empty_area']*100:.2f}%) 岛数={final['n']} CV={final['cv']:.3f}")
+# ---------- 定状态 + 复测(不过则退用次优) ----------
+order = sorted(rounds, key=lambda x: (0 if passes(x[4], base) else 1, ratios(x[4], base)[0], -x[4]['U']))
+final = None; final_cfg = None; final_rno = None
+for r, a, u, p, m in order:
+    do_unwrap(mesh, a, uniformize=u, repack=p)
+    fm = measure(mesh)
+    wr2, dr2, sr2 = ratios(fm, base)
+    okc = passes(fm, base)
+    P(f"定状态复测 第{r}轮({a:.1f}°{' +光顺+重打包' if p else ''}): U={fm['U']*100:.1f}% "
+      f"废料比={wr2:.2f} 密度比={dr2:.2f} 岛数比={sr2:.2f} {'✓通过' if okc else '✗不过, 退用次优'}")
+    if okc:
+        final, final_cfg, final_rno = fm, (a, u, p), r
+        break
+if final is None:
+    r, a, u, p, m = order[0]
+    do_unwrap(mesh, a, uniformize=u, repack=p)
+    final, final_cfg, final_rno = measure(mesh), (a, u, p), r
+    P("⚠ 复测均未通过(疑似运行波动): 保留最优一版并告警, 不阻断管线")
+
 uvl = mesh.data.uv_layers.active.data
 pts_f = np.empty(len(uvl) * 2); uvl.foreach_get("uv", pts_f); pts_f = pts_f.reshape(-1, 2)
+fw = ratios(final, base)
+P(f"选定: {final_cfg[0]:.1f}°{' +光顺+CONCAVE重打包' if final_cfg[2] else '(自带打包)'} → "
+  f"利用率={final['U']*100:.1f}% (基准{base['U']*100:.1f}%, {(final['U']-base['U'])*100:+.1f}pp) "
+  f"最大空方块={final['empty_side']:.3f}({final['empty_area']*100:.2f}%) 岛数={final['n']} CV={final['cv']:.3f}")
 P(f"UV范围: U[{pts_f[:,0].min():.3f}, {pts_f[:,0].max():.3f}] V[{pts_f[:,1].min():.3f}, {pts_f[:,1].max():.3f}]")
 draw_layout(mesh, os.path.join(OUT_03, "03_uv_layout_after.png"))
 
-# ---- 自查 ----
+# ---------- 自查 ----------
 assert mesh.data.attributes.get("bevel_weight_edge") is None, "bevel_weight_edge未清除!"
 assert not [m for m in mesh.modifiers if m.type == 'BEVEL'], "BEVEL修改器未清除!"
-assert final['U'] >= base['U'] - 1e-6, "最终利用率低于基准!"
-assert not (final['empty_area'] >= final['big_area']), "最终仍存在大面积浪费!"
-P(f"自查: 无倒角残留 PASS | 利用率不低于基准 PASS | 无大面积浪费 PASS | 用时{time.time()-t00:.0f}s")
+okf = (fw[0] < 1.0) and (fw[1] <= 1.0) and (fw[2] <= 1.0)
+P(f"自查: 无倒角残留 PASS | 最终 废料比={fw[0]:.2f}(<1) 密度比={fw[1]:.2f}(≤1) 岛数比={fw[2]:.2f}(≤1) "
+  f"{'PASS' if okf else 'WARN(已取最好一版, 不阻断)'} | 用时{time.time()-t00:.0f}s")
 
 out_blend = os.path.join(OUT_03, "03_auto_uv.blend")
 bpy.ops.wm.save_mainfile(filepath=out_blend)

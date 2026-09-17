@@ -22,15 +22,27 @@ biggest island. Measured: baseline 0.0566 vs island 0.0554 (flagged — and matc
 had independently complained about); every good candidate landed ≤0.10× the largest island. Clean
 separation.
 
-## The fix = bounded parameter search over the same islands
+## The fix = budgeted adaptive search over the same islands
 
 Smart UV Project's built-in packing leaves big gaps. `pack_islands(rotate=True, scale=True,
 margin_method='SCALED', shape_method='CONCAVE')` re-packs the SAME islands much tighter
 (measured 30.9% → 41–45% utilization) without touching island shapes (density CV unchanged).
 
-Ladder: baseline (e.g. 66°, the project's seam decision) as-is, then baseline/75/82/89° each +
-`average_islands_scale` + CONCAVE re-pack. Constraint: candidate density CV ≤ baseline CV; pick max
-utilization among survivors; **re-run the winner once** so the mesh is left in that state.
+Search design that survives swapped assets (no model-specific constants):
+
+- **Budget MAX_ROUNDS=5.** Round 1 = baseline (the project's seam angle, plain smart_project) — it
+also provides the denominators for the relative constraints. Then round 2 = baseline angle +
+`average_islands_scale` + re-pack; round 3 = the upper angle bound; round 4 = midpoint; round 5 =
+bisect AGAIN ON THE SIDE OF THE BEST **VALID** POINT — if the raw-utilization peak is invalid,
+steering toward it wastes the whole budget.
+- **Three relative constraints** (ratios vs the baseline run, all ≤1 to pass): waste-ratio
+(empty-square / largest-island < 1), density-ratio (candidate CV ≤ baseline CV), seam-ratio
+(candidate island count ≤ baseline count — merging islands is fine, new fragments are not).
+Pick max utilization among those that pass.
+- **Failure paths must never block the pipeline**: a failed round is skipped; if nothing passes,
+take the best by (waste-ratio, then utilization) and warn; after re-running the winner to leave the
+mesh in its final state, RE-MEASURE it and fall back to the next-best candidate when the numbers
+drifted (run-to-run variance).
 
 ## Pitfalls
 
