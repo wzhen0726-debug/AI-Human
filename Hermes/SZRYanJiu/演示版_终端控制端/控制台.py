@@ -304,11 +304,18 @@ def step_03():
     if not check("02QR拓扑/输出/02_qr_150k_socket.blend"):
         print(f"{R}✗ 缺少输入, 先运行 02{W}"); return False
     if not run_blender(os.path.join(BASE, "03自动UV", "scripts", "03_auto_uv.py"),
-                       "03_UV", "Smart UV Project"):
+                       "03_UV", "UV展开+浪费检测/参数寻优", done_mark="UV_DONE"):
         summary("环节 03", False, t0, []); return False
     out = os.path.join(BASE, "03自动UV", "输出", "03_auto_uv.blend")
     ok = deliver(out, os.path.join(BASE, "03自动UV", "输出"))
-    summary("环节 03 自动UV", ok, t0, [f"{D}UV范围{W} 少接缝无碎岛(66°角度限制)"])
+    pick = f"{D}UV{W} 浪费检测+参数寻优(判据自参照, 无写死阈值)"
+    try:
+        for ln in io.open(os.path.join(LOGS, "03_UV.txt"), encoding="utf-8", errors="ignore"):
+            if "选定:" in ln:
+                pick = f"{D}UV{W} " + ln.split("选定:")[1].strip(); break
+    except Exception:
+        pass
+    summary("环节 03 自动UV", ok, t0, [pick])
     return ok
 
 def step_04():
