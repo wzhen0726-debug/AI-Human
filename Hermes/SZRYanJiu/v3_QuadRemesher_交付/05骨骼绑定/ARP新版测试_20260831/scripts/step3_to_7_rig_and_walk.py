@@ -260,6 +260,17 @@ for o in eyes:
                 print(f"  {o.name}: ARMATURE修改器目标 {getattr(m.object,'name',None)} → {arm.name} 纠正")
                 m.object = arm
             m.use_deform_preserve_volume = True
+    # v86.3(2026-09-18, 用户实测"物体模式移动骨架1m眼珠不动"): 眼珠还必须【父级到骨架物体】!
+    #   根因: ARMATURE修改器只承载【骨骼形变】, 不含【骨架物体自身位移】; 身体跟随是因为它被父级到骨架.
+    #   实测: 移骨架+1m → 身体1000mm / 眼珠0.0mm. 补父级(保持世界位置: matrix_parent_inverse 抵消).
+    if o.parent is not arm:
+        _p0 = tuple(round(float(v), 4) for v in o.matrix_world.translation)
+        o.parent = arm
+        o.parent_type = 'OBJECT'
+        o.matrix_parent_inverse = arm.matrix_world.inverted()
+        bpy.context.view_layer.update()
+        _p1 = tuple(round(float(v), 4) for v in o.matrix_world.translation)
+        print(f"  {o.name}: 已父级到骨架(世界位置 {_p0} → {_p1}, 应不变)")
 if eyes:
     print(f"眼球蒙皮 {len(eyes)}个 (Head骨, 位置不变)")
     # 验证眼球世界位置

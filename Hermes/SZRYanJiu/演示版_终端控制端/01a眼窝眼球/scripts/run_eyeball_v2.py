@@ -37,18 +37,39 @@ def load_manual_finetune():
 
 def compute_eye_position(side, corneal_dist, finetune=(0.0, 0.0, 0.0)):
     """解剖参考点定位(v4):
-    x/z = 眼睑开口中心(用户手动标记, 与眼窝同基准)
-    y   = 眼睑开口平面y + 角膜顶点距 - 凸出量
+    x/z = 3DDFA 虹膜中心(iris_3ddfa.json, AI从原始贴图检测, 与手绘打点无关【稳定】, 左右对称化)
+    y   = 眼睑开口平面y + 角膜顶点距 - 凸出量   (开口平面仍取用户标记轮廓)
     z  += 高度偏移(规律2: 虹膜底贴下睑 → 002为+1.4mm)
-    + 手动微调偏移(GUI验收后由面板保存, 两眼同一偏移→同步)"""
+    + 手动微调偏移(GUI验收后由面板保存, 两眼同一偏移→同步)
+
+    v86.4(2026-09-18, 用户实测"眼珠中心跑歪了, 最早是对的"):
+      回归本源设计(本文件docstring: "位置基准不变: x/z=3DDFA")。此前 x/z 误用【手描轮廓中心】——
+      半自动打点每轮重画 → 轮廓中心横向漂移, 实测眼珠从 09-14 的 ±35.05mm 漂到 ±36.70mm(外移1.65mm/只)。
+      三个独立参照(3DDFA虹膜±34.2 / 原始扫描自带眼睛±34.5 / 09-14时期±35.05)一致指向内侧 →
+      改回 3DDFA 锚定并对称化(用户要求左右严格对称); 缺文件时回退旧行为并告警。"""
     import json
     with open(EYE_XZ_JSON, encoding="utf-8") as f:
         cont = json.load(f)
     c = cont[side]["center"]
     rim_y = c[1]                                # 眼睑开口平面y(用户标记)
     dx, dy, dz = finetune
-    cx = c[0] + dx / 1000.0
-    cz = c[2] + EYE_Z_OFFSET_MM / 1000.0 + dz / 1000.0
+    _cx, _cz = None, None
+    try:
+        _ip = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "3ddfa", "iris_3ddfa.json")
+        _ip = os.path.normpath(_ip)
+        with open(_ip, encoding="utf-8") as _f:
+            _ir = json.load(_f)
+        _cl = _ir["L"]["center_3d"]; _cr = _ir["R"]["center_3d"]
+        _cx = (abs(float(_cl[0])) + abs(float(_cr[0]))) / 2.0       # 对称化
+        _cz = (float(_cl[2]) + float(_cr[2])) / 2.0
+        if side == "L":
+            _cx = -_cx
+    except Exception as _e:
+        print(f"  警告: 3DDFA虹膜锚点读取失败({_e}), 回退手描轮廓中心(会随打点漂移)")
+    if _cx is None or _cz is None:
+        _cx, _cz = c[0], c[2]
+    cx = _cx + dx / 1000.0
+    cz = _cz + EYE_Z_OFFSET_MM / 1000.0 + dz / 1000.0
     cy = rim_y + corneal_dist - EYE_PROTRUSION_MM / 1000.0 + dy / 1000.0
     return np.array([cx, cy, cz], dtype=np.float32), rim_y
 
@@ -164,15 +185,21 @@ def main():
             bpy.ops.wm.open_mainfile(filepath=_sock)
             _has = [o.name for o in bpy.data.objects if o.name.startswith("Eye002")]
             if _has:
-                print(f"碗输出已含眼球, 跳过并入: {_has}")
-            else:
-                with bpy.data.libraries.load(OUT_BLEND) as (_src, _dst):
-                    _dst.objects = [n for n in _src.objects if n.startswith("Eye002")]
-                _eyes = [o for o in _dst.objects if o is not None]
-                for _o in _eyes:
-                    bpy.context.scene.collection.objects.link(_o)
-                bpy.ops.wm.save_as_mainfile(filepath=_sock)
-                print(f"眼球已并入碗输出: {[o.name for o in _eyes]} → {os.path.basename(_sock)}")
+                # v86.5(2026-09-18 用户实测): 重摆时必须【替换】旧眼球, 不能跳过——
+                #   实测案例: 01_2 已更新到新位置(±34.2), 但碗输出保留旧眼球(±36.70)且守卫跳过并入
+                #   → 下游03~06全程带着旧位置, 用户检查到的就是旧的. 现改为先删旧再并入新.
+                for _n in _has:
+                    _ob = bpy.data.objects.get(_n)
+                    if _ob is not None:
+                        bpy.data.objects.remove(_ob, do_unlink=True)
+                print(f"碗输出旧眼球已移除(替换模式): {_has}")
+            with bpy.data.libraries.load(OUT_BLEND) as (_src, _dst):
+                _dst.objects = [n for n in _src.objects if n.startswith("Eye002")]
+            _eyes = [o for o in _dst.objects if o is not None]
+            for _o in _eyes:
+                bpy.context.scene.collection.objects.link(_o)
+            bpy.ops.wm.save_as_mainfile(filepath=_sock)
+            print(f"眼球已并入碗输出: {[o.name for o in _eyes]} → {os.path.basename(_sock)}")
         else:
             print(f"碗输出不存在({os.path.basename(_sock)}), 仅产出 01_2 (独立运行模式)")
     except Exception as _e:
