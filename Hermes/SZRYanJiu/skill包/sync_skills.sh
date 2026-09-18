@@ -12,6 +12,7 @@ SKILLS=(
   "3d/blender-head-retopology"
   "3d/blender-uv-texture-baking"
   "3d/glb-inspect-and-report"
+  "3d/quadremesher-retopology"
   "software-development/error-first-root-cause"
 )
 

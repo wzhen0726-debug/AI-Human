@@ -155,8 +155,9 @@ with open(settingsFile, "w") as f:
     f.write('CurvatureAdaptivness=95\n')
     f.write('ExactQuadCount=0\n')
     f.write('UseVertexColorMap=0\n')
-    # 2026-09-08 用户方案(实测D组最优): 只用材质引导, 取消法向分割与角度检测硬边
-    f.write(('UseMaterialIds=%d\n' % (1 if os.environ.get('QR_USE_MATIDS') == '1' else 0)))       # ✓使用材质: 沿眼窝/皮肤材质边界(=rim)布线
+    # 2026-09-08 用户方案: 默认 UseMaterialIds=0(实测该组拓扑最优; 材料边界布线在眼窝处过硬).
+    # QR_USE_MATIDS=1 为A/B实验开关(沿材质边界布线), 仅实验用, 勿当默认.
+    f.write(('UseMaterialIds=%d\n' % (1 if os.environ.get('QR_USE_MATIDS') == '1' else 0)))
     f.write('UseIndexedNormals=0\n')    # ✗取消法向分割
     f.write('AutoDetectHardEdges=0\n')  # ✗取消角度检测硬边(实测抹平眼窝折角35.7°)
     # 不写SymAxis：模型纹理不对称，强制对称拓扑会导致纹理错位
