@@ -820,62 +820,49 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
         return
     vmap = {v.index: v for v in bm.verts}
     K = len(outer)
-    # ---- ③ 内圈 = 手描轮廓, 但【逐个外圈顶点对齐】: 每个外圈点求其在轮廓上的最近参数,
-    #         再沿外圈顺序"解绕"成单调 → 内圈与它一一对应, 绝不跨越洞口
-    spt_all = np.concatenate([[0.0], np.cumsum(np.linalg.norm(np.roll(CP, -1, axis=0) - CP, axis=1))])
-    total = spt_all[-1]
-    Px = np.append(CP[:, 0], CP[0, 0])
-    Pz = np.append(CP[:, 1], CP[0, 1])
-    Py = np.append(CY, CY[0])
-    raw = []
-    for v in outer:
-        d = (CP[:, 0] - v.co.x) ** 2 + (CP[:, 1] - v.co.z) ** 2
-        raw.append(float(spt_all[int(np.argmin(d))]))
-    uu = [raw[0]]
-    for _i in range(1, len(raw)):
-        d = raw[_i] - uu[-1]
-        while d < -total / 2.0:
-            d += total
-        while d > total / 2.0:
-            d -= total
-        uu.append(uu[-1] + d)
-    if len(uu) > 2 and (uu[-1] - uu[0]) < 0:
+    # ---- ③ 内圈 = 手描轮廓, 按【极角单调配对】(v87, 2026-09-18 焦点修复):
+    #   旧法(外圈点→轮廓点集"最近邻参数"→解绕→强制单调+minstep→取模)在杏仁形【角尖】处
+    #   最近邻会跳变: 相邻外圈点集体吸附到同一角尖 → 解绕后出现小回退 → 强制单调把序列推过头,
+    #   取模后内环【双覆盖】= 内环自交 → 用户实测的眼角"重叠乱面", 02QR 再放大成退化细长面。
+    #   新法: 以轮廓质心为极点, 外圈按环序解绕极角; 内圈点 = 轮廓上【同一极角】的插值点 ——
+    #   星形环"同角即同点": 配对天然单调、无交叉、无双覆盖; 仍只决定采样位置,
+    #   形状与深度严格取自手描轮廓(CP/CY), 不改轮廓本身。
+    _c2 = CP.mean(axis=0)
+    _tc = np.unwrap(np.arctan2(CP[:, 1] - _c2[1], CP[:, 0] - _c2[0]))
+    if np.any(np.diff(_tc) < 0):                      # 轮廓点序与角度序不一致(极少): 按角重排
+        _o = np.argsort(_tc)
+        CP = CP[_o]; CY = CY[_o]; _tc = np.sort(_tc)
+    _OXZ = np.array([[v.co.x, v.co.z] for v in outer])
+    _to = np.unwrap(np.arctan2(_OXZ[:, 1] - _c2[1], _OXZ[:, 0] - _c2[0]))
+    if len(_to) > 2 and (_to[-1] - _to[0]) < 0:       # 外圈绕向与轮廓相反 → 反转, 保证同向
         outer = outer[::-1]
-        raw = []
-        for v in outer:
-            d = (CP[:, 0] - v.co.x) ** 2 + (CP[:, 1] - v.co.z) ** 2
-            raw.append(float(spt_all[int(np.argmin(d))]))
-        uu = [raw[0]]
-        for _i in range(1, len(raw)):
-            d = raw[_i] - uu[-1]
-            while d < -total / 2.0:
-                d += total
-            while d > total / 2.0:
-                d -= total
-            uu.append(uu[-1] + d)
-    _minstep = total / max(1.0, K) * 0.5
-    _mono = [float(uu[0])]
-    for _t in range(1, len(uu)):
-        _mono.append(max(float(uu[_t]), _mono[-1] + _minstep))
-    # ---- v86: 内环参数【间距正则化】: 外环顶点疏密经"最近参数"被原样带进内圈 →
-    #   修内弧长不均 → 条带楔形/细长面(归因实测: band 小角面占比 7.2% vs 周围皮肤 0.9%)。
-    #   对环距序列做有界低通(限幅0.45~2.2×均距后重新归一), 保持单调、不跨越;
-    #   内环仍严格落在手描轮廓折线上(只改采样点位置, 不改形状/深度)。参数全部来自环自身统计。
-    _mono = np.array(_mono)
-    _d = np.diff(np.concatenate([_mono, [_mono[0] + total]]))     # K 段环距(含闭合段)
-    _mean = total / max(1, K)
-    for _it in range(40):
-        _ds = 0.5 * _d + 0.25 * (np.roll(_d, 1) + np.roll(_d, -1))
-        _ds = np.clip(_ds, 0.45 * _mean, 2.2 * _mean)
-        _ds = _ds * (total / max(_ds.sum(), 1e-12))
-        if np.max(np.abs(_ds - _d)) < 1e-12:
-            break
-        _d = _ds
-    _mono = _mono[0] + np.concatenate([[0.0], np.cumsum(_d[:-1])])
-    us = np.mod(_mono, total)
-    X = np.interp(us, spt_all, Px)
-    Z = np.interp(us, spt_all, Pz)
-    Y = np.interp(us, spt_all, Py)
+        _OXZ = _OXZ[::-1]
+        _to = np.unwrap(np.arctan2(_OXZ[:, 1] - _c2[1], _OXZ[:, 0] - _c2[0]))
+    _th0 = float(_tc[0])
+    _th_cl = np.append(_tc, _tc[0] + 2.0 * np.pi)
+    _px_cl = np.append(CP[:, 0], CP[0, 0]); _pz_cl = np.append(CP[:, 1], CP[0, 1])
+    _py_cl = np.append(CY, CY[0])
+    _tt = _th0 + np.mod(_to - _th0, 2.0 * np.pi)      # 目标角(相对轮廓首点, 落在 [θ0, θ0+2π))
+    X = np.interp(_tt, _th_cl, _px_cl)
+    Z = np.interp(_tt, _th_cl, _pz_cl)
+    Y = np.interp(_tt, _th_cl, _py_cl)
+    # 配对自检(独立判据): 内外环折线在 XZ 平面上的线段交叉数 —— 健康=0(历史缺陷的直读指标)
+    _ncr = 0
+    _IXZ = np.stack([X, Z], axis=1)
+    for _k in range(K):
+        a0 = _OXZ[_k]; a1 = _OXZ[(_k + 1) % K]
+        for _j in range(K):
+            b0 = _IXZ[_j]; b1 = _IXZ[(_j + 1) % K]
+            r = a1 - a0; s = b1 - b0
+            den = r[0] * s[1] - r[1] * s[0]
+            if abs(den) < 1e-14:
+                continue
+            qp = b0 - a0
+            t = (qp[0] * s[1] - qp[1] * s[0]) / den
+            u = (qp[0] * r[1] - qp[1] * r[0]) / den
+            if 1e-9 < t < 1 - 1e-9 and 1e-9 < u < 1 - 1e-9:
+                _ncr += 1
+    print(f"rebuild_rim_band {side}: 内环=极角配对 K={K} 交叉自检={_ncr} (应=0; >0=配对穿越=乱面前兆)")
     inner = []
     for t in range(K):
         inner.append(bm.verts.new(Vector((float(X[t]), float(Y[t]), float(Z[t])))))
@@ -2090,7 +2077,8 @@ def _rim_qa(obj, center, side, poly, w_mm):
     mesh = obj.data
     nf = len(mesh.polygons)
     if nf == 0:
-        return dict(band_bad=0.0, ref_bad=0.0, band_sliver=0.0, ref_sliver=0.0, band_n=0, ref_n=0)
+        return dict(band_bad=0.0, ref_bad=0.0, band_sliver=0.0, ref_sliver=0.0,
+                    band_needle=0.0, ref_needle=0.0, band_n=0, ref_n=0)
     C = np.empty(nf * 3); mesh.polygons.foreach_get("center", C); C = C.reshape(-1, 3)
     CP = np.array([[float(p[0]), float(p[1])] for p in poly], dtype=np.float64)
     c0 = np.array(center[:3], dtype=float)
@@ -2112,8 +2100,8 @@ def _rim_qa(obj, center, side, poly, w_mm):
     V = np.empty(nv * 3); mesh.vertices.foreach_get("co", V); V = V.reshape(-1, 3)
     def _stats(ids):
         if len(ids) == 0:
-            return 0, 0.0, 0.0
-        bad = 0; sliver = 0
+            return 0, 0.0, 0.0, 0.0
+        bad = 0; sliver = 0; needle = 0
         for fi in ids:
             vi = list(mesh.polygons[int(fi)].vertices)
             pts = V[np.array(vi)]
@@ -2129,10 +2117,13 @@ def _rim_qa(obj, center, side, poly, w_mm):
                 a = min(a, float(np.degrees(np.arccos(max(-1.0, min(1.0, cc))))))
             if a < 15.0:
                 bad += 1
-        return len(ids), bad / len(ids), sliver / len(ids)
-    nb, bb, sb = _stats(sel_band)
-    nr, br, sr = _stats(sel_ref)
-    return dict(band_bad=bb, ref_bad=br, band_sliver=sb, ref_sliver=sr, band_n=nb, ref_n=nr)
+            if a < 5.0:
+                needle += 1
+        return len(ids), bad / len(ids), sliver / len(ids), needle / len(ids)
+    nb, bb, sb, nbn = _stats(sel_band)
+    nr, br, sr, nrn = _stats(sel_ref)
+    return dict(band_bad=bb, ref_bad=br, band_sliver=sb, ref_sliver=sr,
+                band_needle=nbn, ref_needle=nrn, band_n=nb, ref_n=nr)
 
 
 def rebuild_rim_block_qa(obj, center, side, poly):
@@ -2173,20 +2164,22 @@ def rebuild_rim_block_qa(obj, center, side, poly):
             print(f"rim块 QA 第{i+1}轮(W={W:.2f}mm) 异常, 跳过: {e}")
             continue
         q = _rim_qa(obj, center, side, poly, base_w)   # 统一用名义带宽算窗口(各轮可比)
-        score = q["band_bad"] + q["band_sliver"]
+        # v87: 加入"针状(<5°)"项 —— 旧判据只有小角<15°/长条, 对眼角处的针状/重叠面钝感(用户实测盲区)
+        score = q["band_bad"] + q["band_sliver"] + q["band_needle"]
         print(f"rim块 QA 第{i+1}轮 W={W:.2f}mm [{_time.time()-t0:.0f}s]: "
-              f"band {q['band_n']}面 小角{q['band_bad']*100:.1f}%/长条{q['band_sliver']*100:.1f}% "
-              f"vs 参考 {q['ref_n']}面 {q['ref_bad']*100:.1f}%/{q['ref_sliver']*100:.1f}%")
+              f"band {q['band_n']}面 小角{q['band_bad']*100:.1f}%/长条{q['band_sliver']*100:.1f}%/针状{q['band_needle']*100:.1f}% "
+              f"vs 参考 {q['ref_n']}面 {q['ref_bad']*100:.1f}%/{q['ref_sliver']*100:.1f}%/{q['ref_needle']*100:.1f}%")
         if best is None or score < best[0]:
             best = (score, W, obj.data.copy(), q)
-        if q["band_bad"] <= 2.0 * max(q["ref_bad"], 1e-9) and q["band_sliver"] <= 2.0 * max(q["ref_sliver"], 1e-9):
+        if (q["band_bad"] <= 2.0 * max(q["ref_bad"], 1e-9) and q["band_sliver"] <= 2.0 * max(q["ref_sliver"], 1e-9)
+                and q["band_needle"] <= 2.0 * max(q["ref_needle"], 1e-9)):
             print("rim块 QA: 达标(不差于参考带2倍) → 早停")
             break
     if best is not None:
         obj.data = best[2]
         q = best[3]
-        print(f"rim块 QA 选定: W={best[1]:.2f}mm → band 小角{q['band_bad']*100:.1f}%/长条{q['band_sliver']*100:.1f}% "
-              f"(参考 {q['ref_bad']*100:.1f}%/{q['ref_sliver']*100:.1f}%, 判据自参照)")
+        print(f"rim块 QA 选定: W={best[1]:.2f}mm → band 小角{q['band_bad']*100:.1f}%/长条{q['band_sliver']*100:.1f}%/针状{q['band_needle']*100:.1f}% "
+              f"(参考 {q['ref_bad']*100:.1f}%/{q['ref_sliver']*100:.1f}%/{q['ref_needle']*100:.1f}%, 判据自参照)")
     try:
         for m in list(bpy.data.meshes):
             if m.users == 0 and m.name.startswith("_rimQA"):

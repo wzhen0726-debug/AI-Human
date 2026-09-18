@@ -38,9 +38,9 @@ steering toward it wastes the whole budget.
 - **Three relative constraints** (ratios vs the baseline run, all ≤1 to pass): waste-ratio
 (empty-square / largest-island < 1), density-ratio (candidate CV ≤ baseline CV), seam-ratio
 (candidate island count ≤ baseline count — merging islands is fine, new fragments are not).
-Pick max utilization among those that pass.
+Pick max utilization among those that pass — but give density-ratio and seam-ratio a **1% numerical tolerance** (`≤ 1.01`) and print ratios with 3 decimals: a ratio sitting exactly at 1.000 is knife-edge (measured 471/470 = 1.002 rejected a candidate whose other ratios were 0.010 / 0.912, and the fallback then picked a bad layout). Tolerance is for float/sampling jitter, not a quality relaxation.
 - **Failure paths must never block the pipeline**: a failed round is skipped; if nothing passes,
-take the best by (waste-ratio, then utilization) and warn; after re-running the winner to leave the
+take the best by **violation score** = Σ max(0, ratio − 1) over the three ratios, then waste-ratio, then utilization, and warn; after re-running the winner to leave the
 mesh in its final state, RE-MEASURE it and fall back to the next-best candidate when the numbers
 drifted (run-to-run variance).
 
@@ -48,7 +48,8 @@ drifted (run-to-run variance).
 
 - Fewer/bigger islands is NOT automatically better: 89° raised utilization but doubled density CV
   (rejected by the constraint), and 82° measured WORSE utilization than 75° (fragmentation without
-  benefit). Measure each candidate; never assume a direction.
+  benefit). Measure each candidate; never assume a direction. When the knife-edge gate rejects everything, the fallback must still keep density-violators out (see Failure paths).
+- **Downstream quality regression (dirty patches / stretch in the bake or render) → audit the UPSTREAM stage first**: diff its current metrics against the last known-good era with the same yardstick, and check whether the fallback fired and what its ranking key was. Measured: a whole bake-artifact hunt traced to the selection rules above — the bake code never changed, only the chosen layout did.
 - Blender's bundled Python has **no PIL**. Draw layout PNGs with numpy + a bpy image
   (`bpy.data.images.new` → set `pixels` → `filepath_raw` + `save()`); sample each edge at ~12
   points and set pixels — don't attempt per-pixel line drawing.
