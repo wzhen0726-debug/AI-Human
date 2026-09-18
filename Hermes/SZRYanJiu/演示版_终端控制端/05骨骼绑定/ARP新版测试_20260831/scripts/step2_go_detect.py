@@ -50,5 +50,21 @@ if hd:
 
 out2 = os.path.join(OUT, "02_go_detect骨架.blend")
 bpy.ops.wm.save_mainfile(filepath=out2)
-print(f"\n保存: {out2}")
+
+# v86.6(2026-09-18 用户要求: 角色网格在大纲里应位于骨架之下): 生成骨架后, 把产品网格(身体+眼球)
+#   父级到该骨架(保持世界位置) —— 此前本中间件里网格悬在Collection根下(红框), 用户体验上像"没绑进去".
+_org = [o for o in bpy.data.objects if o.type == 'MESH' and not o.name.startswith('cs_')]
+_body = max(_org, key=lambda m: len(m.data.vertices)) if _org else None
+for _o in _org:
+    if _o is not _body and not _o.name.startswith('Eye002'):
+        continue
+    if _o.parent is not rig:
+        _mw = _o.matrix_world.copy()
+        _o.parent = rig
+        _o.parent_type = 'OBJECT'
+        _o.matrix_parent_inverse = rig.matrix_world.inverted()
+        bpy.context.view_layer.update()
+        print(f"  {_o.name} 已父级到骨架(世界位置保持)")
+bpy.ops.wm.save_mainfile(filepath=out2)
+
 print("========== STEP2_DONE ==========")

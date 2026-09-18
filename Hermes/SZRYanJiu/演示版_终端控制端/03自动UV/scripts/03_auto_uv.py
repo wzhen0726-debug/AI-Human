@@ -136,8 +136,17 @@ def ratios(m, base):
             m['n'] / max(base['n'], 1))
 
 def passes(m, base):
+    # v2(2026-09-18): 数值容差1% —— 刀锋问题实测: 岛数比=471/470=1.002 曾把"三项全过"的好候选卡成不过,
+    #   逼出fallback并选中密度比1.81的坏UV(烘焙出现脏块/拉伸的直接来源). 容差为相对量, 与模型无关.
+    _TOL = 0.01
     wr, dr, sr = ratios(m, base)
-    return (wr < 1.0) and (dr <= 1.0) and (sr <= 1.0)
+    return (wr < 1.0) and (dr <= 1.0 + _TOL) and (sr <= 1.0 + _TOL)
+
+def viol(m, base):
+    """违约度 = 三项比值超出1的部分之和(0=无违约)。
+    v2: 全不过时按【违约度最小】择优 —— 此前只按(废料比, -利用率), 曾选中密度比1.81的最差候选。"""
+    wr, dr, sr = ratios(m, base)
+    return max(0.0, wr - 1.0) + max(0.0, dr - 1.0) + max(0.0, sr - 1.0)
 
 # ================= 展开/打包/绘图 =================
 def do_unwrap(mesh, angle_deg, uniformize, repack):
@@ -231,7 +240,7 @@ def probe(rno, ang):
     wr_, dr_, sr_ = ratios(m, base)
     ok = passes(m, base)
     P(f"  第{rno}轮 {ang:.1f}°+光顺+重打包: U={m['U']*100:.1f}% 空块={m['empty_side']:.3f}({m['empty_area']*100:.2f}%) "
-      f"岛数={m['n']} CV={m['cv']:.3f} | 废料比={wr_:.2f} 密度比={dr_:.2f} 岛数比={sr_:.2f} {'✓' if ok else '✗'} [{time.time()-t:.0f}s]")
+      f"岛数={m['n']} CV={m['cv']:.3f} | 废料比={wr_:.3f} 密度比={dr_:.3f} 岛数比={sr_:.3f} {'✓' if ok else '✗'} [{time.time()-t:.0f}s]")
     return m
 
 m66 = probe(2, ANGLE_START)
@@ -261,13 +270,13 @@ if valid:
     pick_rno, pick_m = max(valid, key=lambda x: x[1]['U'])
 else:
     pick_rno, pick_m = min([(r, m) for r, a, u, p, m in rounds],
-                           key=lambda x: (ratios(x[1], base)[0], -x[1]['U']))
-    P("⚠ 无候选同时满足三项约束 → 按(废料比最小→利用率最高)取最好一版, 管线继续")
+                           key=lambda x: (viol(x[1], base), ratios(x[1], base)[0], -x[1]['U']))
+    P("⚠ 无候选同时满足三项约束 → 按【违约度最小→废料比→利用率】取最好一版, 管线继续")
 pick_cfg = next((a, u, p) for r, a, u, p, m in rounds if m is pick_m)
 P(f"候选排名(第{pick_rno}轮最优): {pick_cfg[0]:.1f}°{' +光顺+重打包' if pick_cfg[2] else '(自带打包)'}, U={pick_m['U']*100:.1f}%")
 
 # ---------- 定状态 + 复测(不过则退用次优) ----------
-order = sorted(rounds, key=lambda x: (0 if passes(x[4], base) else 1, ratios(x[4], base)[0], -x[4]['U']))
+order = sorted(rounds, key=lambda x: (0 if passes(x[4], base) else 1, viol(x[4], base), ratios(x[4], base)[0], -x[4]['U']))
 final = None; final_cfg = None; final_rno = None
 for r, a, u, p, m in order:
     do_unwrap(mesh, a, uniformize=u, repack=p)
@@ -297,8 +306,8 @@ draw_layout(mesh, os.path.join(OUT_03, "03_uv_layout_after.png"))
 # ---------- 自查 ----------
 assert mesh.data.attributes.get("bevel_weight_edge") is None, "bevel_weight_edge未清除!"
 assert not [m for m in mesh.modifiers if m.type == 'BEVEL'], "BEVEL修改器未清除!"
-okf = (fw[0] < 1.0) and (fw[1] <= 1.0) and (fw[2] <= 1.0)
-P(f"自查: 无倒角残留 PASS | 最终 废料比={fw[0]:.2f}(<1) 密度比={fw[1]:.2f}(≤1) 岛数比={fw[2]:.2f}(≤1) "
+okf = (fw[0] < 1.0) and (fw[1] <= 1.01) and (fw[2] <= 1.01)   # 与 passes() 同口径(1%数值容差)
+P(f"自查: 无倒角残留 PASS | 最终 废料比={fw[0]:.3f}(<1) 密度比={fw[1]:.3f}(≤1) 岛数比={fw[2]:.3f}(≤1) "
   f"{'PASS' if okf else 'WARN(已取最好一版, 不阻断)'} | 用时{time.time()-t00:.0f}s")
 
 out_blend = os.path.join(OUT_03, "03_auto_uv.blend")

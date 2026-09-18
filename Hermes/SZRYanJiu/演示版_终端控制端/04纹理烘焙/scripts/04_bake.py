@@ -112,39 +112,67 @@ low_poly.select_set(True)
 bpy.context.view_layer.objects.active = low_poly
 nt.nodes.active = tex
 
-print(f'烘焙Diffuse中 (cage={bbox_max*0.011:.4f}, ray={bbox_max*0.056:.4f}, 按bbox比例)...')
-bpy.ops.object.bake(type='DIFFUSE')
-
+# ===== v2(2026-09-18 用户要求): 烘焙审核机制 —— 轮次(边距阶梯)→每轮[烘→存→贴图处理→测量]→字典序择优 =====
+#   参数全部由数据推导: 阶梯 = 既有基准×[1, 1.5, 0.6]; 择优 = (未填充, 脏块, 密度CV) 字典序最小; 双零早停.
+import sys as _sys
+_sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    from texture_fix import fix_diffuse_png, fix_diffuse_mesh_guided
+    _HAVE_FIX = True
+except Exception as _e:
+    _HAVE_FIX = False
+    print(f"⚠ 贴图处理模块缺失(不影响烘焙): {_e}")
+from bake_qa import measure as _qa_measure, better as _qa_better
+_M0 = int(bpy.context.scene.render.bake.margin)          # 既有基准(16px)
+_LADDER = [_M0, int(round(_M0 * 1.5)), int(round(_M0 * 0.6))]
+_rounds = []
+for _ri, _mg in enumerate(_LADDER):
+    bpy.context.scene.render.bake.margin = _mg
+    print(f'烘焙Diffuse中(第{_ri+1}轮 margin={_mg}px, cage={bbox_max*0.011:.4f}, ray={bbox_max*0.056:.4f}, 按bbox比例)...')
+    bpy.ops.object.bake(type='DIFFUSE')
+    _rp = os.path.join(OUT_04, f"_qa_r{_ri+1}_diffuse.png")
+    img.filepath_raw = _rp
+    img.file_format = 'PNG'
+    img.save()
+    if _HAVE_FIX:
+        try:
+            # reach 跟随本轮的烘焙margin(渗出带宽度=边距膨胀): margin越大, 渗带越宽, 清理半径必须同步
+            _tx = fix_diffuse_png(_rp, reach_px=_mg + 4)
+            print(f"  (第{_ri+1}轮)贴图溢出处理: {_tx.get('note', '')}")
+            for _p in (1, 2):
+                _ty = fix_diffuse_mesh_guided(_rp, [low_poly])
+                print(f"  (第{_ri+1}轮)异常斑清理{_p}: {_ty.get('note', '')}")
+                if _ty.get('clusters', 0) == 0:
+                    break
+        except Exception as _e:
+            print(f"  ⚠ (第{_ri+1}轮)贴图处理跳过: {_e}")
+    _q = _qa_measure(_rp, low_poly)
+    print(f"  第{_ri+1}轮 QA: 未填充={_q['unfilled']*100:.2f}% 脏块={_q['dirty']*100:.2f}% 密度CV={_q['cv']:.3f}")
+    _rounds.append((_q, _rp, _mg))
+    if _q['unfilled'] <= 0.0 and _q['dirty'] <= 0.0:
+        print(f"  第{_ri+1}轮 双零(无空洞无脏块) → 早停")
+        break
+_best = _rounds[0]
+for _r in _rounds[1:]:
+    if _qa_better(_r[0], _best[0]):
+        _best = _r
 tex_path = os.path.join(OUT_04, "04_diffuse_4k.png")
+import shutil as _sh
+_sh.copyfile(_best[1], tex_path)
+bpy.context.scene.render.bake.margin = _best[2]
 img.filepath_raw = tex_path
 img.file_format = 'PNG'
-img.save()
-
+img.reload()   # 读回选定轮的成品(勿再save: img内存里是"最后一轮"的内容, 会覆盖刚复制好的选定件)
+print(f"烘焙审核选定: margin={_best[2]}px (未填充={_best[0]['unfilled']*100:.2f}% 脏块={_best[0]['dirty']*100:.2f}% 密度CV={_best[0]['cv']:.3f}) | 候选: "
+      + " / ".join(f"m{r[2]}:{r[0]['unfilled']*100:.2f}%,{r[0]['dirty']*100:.2f}%,{r[0]['cv']:.3f}" for r in _rounds))
+try:  # 清理轮次临时件(数字已入日志; 选定件已复制为正式文件)
+    for _r in _rounds:
+        if os.path.exists(_r[1]):
+            os.remove(_r[1])
+except Exception:
+    pass
 pixels = np.array(img.pixels[:])
 print(f"Diffuse贴图: min={pixels.min():.3f}, max={pixels.max():.3f}, mean={pixels.mean():.3f}")
-
-# 2026-09-17 用户要求: 烘焙后【贴图溢出处理】— 暗色衣物渗出到皮肤的区域 → 就近替换为皮肤色 + 边缘过渡
-#   (判据: 亮度<95 且 紧贴衣物本体≤18px 且 非UV空白 且 不在衣物本体连通块内; 处理前自动备份)
-#   reload 让后续 pack/保存/FBX(embed) 全部携带处理后的像素
-try:
-    import sys as _sys
-    _sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from texture_fix import fix_diffuse_png, fix_diffuse_mesh_guided
-    _tx = fix_diffuse_png(tex_path)
-    print(f"贴图溢出处理: {_tx.get('note', '')}")
-    # v2: 网格引导的统计离群清理(皮肤上的孤立异常斑: 脚趾暗斑/手侧暗斑等; 阈值全部由模型自身推导)
-    #     迭代两遍: 第一遍清完后邻域变干净, 第二遍能吃到剩余的弱斑
-    for _p in (1, 2):
-        _ty = fix_diffuse_mesh_guided(tex_path, [low_poly])
-        print(f"贴图异常斑清理(第{_p}遍): {_ty.get('note', '')}")
-        if _p == 1:
-            for _ci in _ty.get('cluster_mm_facecol', [])[:8]:
-                print(f"    簇: 面={_ci[0]} 位置=({_ci[1][0]},{_ci[1][1]},{_ci[1][2]})mm 色={_ci[2]}")
-        if _ty.get('clusters', 0) == 0:
-            break
-    img.reload()
-except Exception as _e:
-    print(f"⚠ 贴图溢出处理跳过(不影响烘焙): {_e}")
 
 # Bake Normal (方案md要求)
 print('\\n烘焙Normal中 (4K)...')
