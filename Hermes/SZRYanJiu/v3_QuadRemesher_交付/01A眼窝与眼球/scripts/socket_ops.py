@@ -857,7 +857,22 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
     _mono = [float(uu[0])]
     for _t in range(1, len(uu)):
         _mono.append(max(float(uu[_t]), _mono[-1] + _minstep))
-    us = np.mod(np.array(_mono), total)
+    # ---- v86: 内环参数【间距正则化】: 外环顶点疏密经"最近参数"被原样带进内圈 →
+    #   修内弧长不均 → 条带楔形/细长面(归因实测: band 小角面占比 7.2% vs 周围皮肤 0.9%)。
+    #   对环距序列做有界低通(限幅0.45~2.2×均距后重新归一), 保持单调、不跨越;
+    #   内环仍严格落在手描轮廓折线上(只改采样点位置, 不改形状/深度)。参数全部来自环自身统计。
+    _mono = np.array(_mono)
+    _d = np.diff(np.concatenate([_mono, [_mono[0] + total]]))     # K 段环距(含闭合段)
+    _mean = total / max(1, K)
+    for _it in range(40):
+        _ds = 0.5 * _d + 0.25 * (np.roll(_d, 1) + np.roll(_d, -1))
+        _ds = np.clip(_ds, 0.45 * _mean, 2.2 * _mean)
+        _ds = _ds * (total / max(_ds.sum(), 1e-12))
+        if np.max(np.abs(_ds - _d)) < 1e-12:
+            break
+        _d = _ds
+    _mono = _mono[0] + np.concatenate([[0.0], np.cumsum(_d[:-1])])
+    us = np.mod(_mono, total)
     X = np.interp(us, spt_all, Px)
     Z = np.interp(us, spt_all, Pz)
     Y = np.interp(us, spt_all, Py)
@@ -2066,6 +2081,115 @@ def smooth_ring_depth(obj, center, side):
     print(f"smooth_ring_depth {side}: 环 {len(y)} 顶点, y 低通 {done}passes, 最大 |Δy| {_mv:.3f}mm (上限 {RIM_DEPTH_CAP_MM}mm), XZ未动")
 
 
+def _rim_qa(obj, center, side, poly):
+    """v86: rim 区质量【检测】(判据自参照, 无写死尺寸):
+    band区 = 面心到轮廓XZ距离 < 1.5mm; 参考带 = 3~8mm(同一网格上未被本次修改的表面)。
+    指标: 最小角<15° 占比 / 长宽比>4 占比 —— band 应与周围皮肤相当。"""
+    mesh = obj.data
+    nf = len(mesh.polygons)
+    if nf == 0:
+        return dict(band_bad=0.0, ref_bad=0.0, band_sliver=0.0, ref_sliver=0.0, band_n=0, ref_n=0)
+    C = np.empty(nf * 3); mesh.polygons.foreach_get("center", C); C = C.reshape(-1, 3)
+    CP = np.array([[float(p[0]), float(p[1])] for p in poly], dtype=np.float64)
+    c0 = np.array(center[:3], dtype=float)
+    xy = C[:, [0, 2]]
+    d = np.full(nf, 1e9)
+    for k in range(len(CP)):
+        a = CP[k]; b = CP[(k + 1) % len(CP)]
+        ab = b - a; L2 = float(np.dot(ab, ab))
+        t = np.clip(((xy - a) @ ab) / max(L2, 1e-12), 0.0, 1.0)
+        proj = a + t[:, None] * ab
+        d = np.minimum(d, np.linalg.norm(xy - proj, axis=1))
+    ineye = (np.linalg.norm(C - c0, axis=1) < 0.035) & (C[:, 1] < c0[1] + Y_FRONT_M)
+    sel_band = np.where(ineye & (d < 0.0015))[0]
+    sel_ref = np.where(ineye & (d > 0.003) & (d < 0.008))[0]
+    nv = len(mesh.vertices)
+    V = np.empty(nv * 3); mesh.vertices.foreach_get("co", V); V = V.reshape(-1, 3)
+    def _stats(ids):
+        if len(ids) == 0:
+            return 0, 0.0, 0.0
+        bad = 0; sliver = 0
+        for fi in ids:
+            vi = list(mesh.polygons[int(fi)].vertices)
+            pts = V[np.array(vi)]
+            m = len(vi)
+            el = np.array([np.linalg.norm(pts[(k + 1) % m] - pts[k]) for k in range(m)])
+            el = np.maximum(el, 1e-12)
+            if el.max() / el.min() > 4.0:
+                sliver += 1
+            a = 180.0
+            for k in range(m):
+                p0 = pts[(k - 1) % m] - pts[k]; p1 = pts[(k + 1) % m] - pts[k]
+                cc = np.dot(p0, p1) / (np.linalg.norm(p0) * np.linalg.norm(p1) + 1e-12)
+                a = min(a, float(np.degrees(np.arccos(max(-1.0, min(1.0, cc))))))
+            if a < 15.0:
+                bad += 1
+        return len(ids), bad / len(ids), sliver / len(ids)
+    nb, bb, sb = _stats(sel_band)
+    nr, br, sr = _stats(sel_ref)
+    return dict(band_bad=bb, ref_bad=br, band_sliver=sb, ref_sliver=sr, band_n=nb, ref_n=nr)
+
+
+def rebuild_rim_block_qa(obj, center, side, poly):
+    """v86: rim 处理块(带重建→折返清理→松弛→环重建)的【检测→调参重跑→择优】。
+    阶梯: 带宽 W = [默认, ×1.45, ×0.70](带越宽, 内圈采样越从容; 内环=手描轮廓, 不变)。
+    每轮测 band 与参考带的小角/长条占比, 按(小角+长条)择优保留;
+    达"band 不差于参考带2倍"早停; 轮内异常跳过; 全部失败保留原样 —— 不阻断管线。
+    (与 03UV 同设计: 判据自参照、预算有限、跑不好挑最好一版。)"""
+    import time as _time
+    try:
+        snap = obj.data.copy()
+        snap.name = "_rimQA_snap"
+    except Exception as _e:
+        print(f"rim块 QA: 快照失败({_e}) → 单轮直接重建")
+        rebuild_rim_band(obj, center, side, poly)
+        remove_ring_folds(obj, center, side)
+        relax_surface_at_spikes(obj, center, side)
+        relax_ring_spikes(obj, center, side)
+        rebuild_ring_arc_length(obj, center, side)
+        smooth_ring_depth(obj, center, side)
+        return
+    base_w = RIM_BAND_W_MM
+    tries = [base_w, base_w * 1.45, base_w * 0.70]
+    best = None
+    for i, W in enumerate(tries):
+        if i > 0:
+            obj.data = snap.copy()
+            obj.data.name = f"_rimQA_try{i+1}"
+        t0 = _time.time()
+        try:
+            rebuild_rim_band(obj, center, side, poly, W_mm=W)
+            remove_ring_folds(obj, center, side)
+            relax_surface_at_spikes(obj, center, side)
+            relax_ring_spikes(obj, center, side)
+            rebuild_ring_arc_length(obj, center, side)
+            smooth_ring_depth(obj, center, side)
+        except Exception as e:
+            print(f"rim块 QA 第{i+1}轮(W={W:.2f}mm) 异常, 跳过: {e}")
+            continue
+        q = _rim_qa(obj, center, side, poly)
+        score = q["band_bad"] + q["band_sliver"]
+        print(f"rim块 QA 第{i+1}轮 W={W:.2f}mm [{_time.time()-t0:.0f}s]: "
+              f"band {q['band_n']}面 小角{q['band_bad']*100:.1f}%/长条{q['band_sliver']*100:.1f}% "
+              f"vs 参考 {q['ref_n']}面 {q['ref_bad']*100:.1f}%/{q['ref_sliver']*100:.1f}%")
+        if best is None or score < best[0]:
+            best = (score, W, obj.data.copy(), q)
+        if q["band_bad"] <= 2.0 * max(q["ref_bad"], 1e-9) and q["band_sliver"] <= 2.0 * max(q["ref_sliver"], 1e-9):
+            print("rim块 QA: 达标(不差于参考带2倍) → 早停")
+            break
+    if best is not None:
+        obj.data = best[2]
+        q = best[3]
+        print(f"rim块 QA 选定: W={best[1]:.2f}mm → band 小角{q['band_bad']*100:.1f}%/长条{q['band_sliver']*100:.1f}% "
+              f"(参考 {q['ref_bad']*100:.1f}%/{q['ref_sliver']*100:.1f}%, 判据自参照)")
+    try:
+        for m in list(bpy.data.meshes):
+            if m.users == 0 and m.name.startswith("_rimQA"):
+                bpy.data.meshes.remove(m)
+    except Exception:
+        pass
+
+
 def make_eye_socket(obj, center, side):
     """开孔: 沿手描眼睑轮廓切出眼洞.
     v62(2026-09-14): 洪泛删面 → 棱柱 boolean EXACT 切割.
@@ -2179,12 +2303,9 @@ def make_eye_socket(obj, center, side):
             if "SOCKET_CUT_TMP" in _mnames:
                 mesh.materials.pop(index=_mnames.index("SOCKET_CUT_TMP"))
             # 环去刺: ① 先对尖点处【表面】做局部去噪(根因: 表面在那儿有褶/噪点) ② 再对环上残余尖点做环内松弛
-            rebuild_rim_band(obj, center, side, poly)   # v85 D2: 整圈 rim 皮肤带重建(替代局部补片)
-            remove_ring_folds(obj, center, side)
-            relax_surface_at_spikes(obj, center, side)
-            relax_ring_spikes(obj, center, side)
-            rebuild_ring_arc_length(obj, center, side)
-            smooth_ring_depth(obj, center, side)
+            # v86: rim块(带重建→折返清理→松弛→环重建) 外套【检测→调参(W阶梯)→择优, 不阻断】
+            rebuild_rim_block_qa(obj, center, side, poly)
+            mesh = obj.data   # v86: QA 可能整体替换 mesh 数据块(择优保留), 重新绑定
             bpy.ops.object.mode_set(mode='EDIT')
             bm = bmesh.from_edit_mesh(mesh)
             bm.edges.ensure_lookup_table()
