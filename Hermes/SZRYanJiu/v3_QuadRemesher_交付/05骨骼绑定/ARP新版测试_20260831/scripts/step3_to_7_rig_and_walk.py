@@ -236,13 +236,30 @@ else:
 # 蒙皮(两种情况都要做, 2026-09-16修正: 原缩进导致已有眼球分支漏蒙皮)
 # 眼球蒙皮到Head骨: 顶点组全部指向Head(权重1.0) + Armature修改器
 # 这样眼球保持世界位置, 跟随Head骨动(不动顶点, 只加修改器); 3B标准化时随网格一起重摆
+# v86.2(2026-09-18): 顶点组名跟随【骨架实际Head骨名】—— 此前硬编码'mixamorig:Head', 而本步骨架
+#   骨名无前缀(Head) → 名不对骨 → 03/03B里动骨骼眼球不跟随(实测位移0.00mm); 直到retarget统一
+#   加前缀才碰巧对上. 现在按实际骨名取, 前后两个阶段都对.
+_hb = next((b.name for b in arm.data.bones if b.name.split(':')[-1].lower() == 'head'), None)
 for o in eyes:
-    vg = o.vertex_groups.get('mixamorig:Head') or o.vertex_groups.new(name='mixamorig:Head')
+    if _hb is None:
+        print(f"  警告: 骨架无 Head 骨, {o.name} 蒙皮跳过")
+        continue
+    vg = o.vertex_groups.get(_hb) or o.vertex_groups.new(name=_hb)
+    for g in list(o.vertex_groups):          # 清掉与骨名不符的历史遗留组(如 mixamorig:Head)
+        if g.name != _hb:
+            o.vertex_groups.remove(g)
     vg.add(list(range(len(o.data.vertices))), 1.0, 'REPLACE')
-    if not any(m.type == 'ARMATURE' for m in o.modifiers):
+    _mods = [m for m in o.modifiers if m.type == 'ARMATURE']
+    if not _mods:
         mod = o.modifiers.new('Armature', 'ARMATURE')
         mod.object = arm
         mod.use_deform_preserve_volume = True
+    else:                                    # 已有修改器但目标不对也要纠正
+        for m in _mods:
+            if m.object is not arm:
+                print(f"  {o.name}: ARMATURE修改器目标 {getattr(m.object,'name',None)} → {arm.name} 纠正")
+                m.object = arm
+            m.use_deform_preserve_volume = True
 if eyes:
     print(f"眼球蒙皮 {len(eyes)}个 (Head骨, 位置不变)")
     # 验证眼球世界位置

@@ -577,6 +577,23 @@ if not ALL:
     print("03B_DONE_FAIL")
     raise SystemExit(1)
 
+# ---------------- 9.9 v86.2: 顶点组名 ↔ 骨名 同步(修"动骨骼眼珠不跟随") ----------------
+#   本步骨架骨名无前缀(Head/Neck...); 若蒙皮网格仍带 mixamorig: 前缀组, Armature修改器按名
+#   匹配失败 → 该网格在 Blender 里动骨骼不跟随(实测眼球位移 0.00mm). LBS 已按"容忍前缀"的映射
+#   算过几何, 这里把【名字】也对齐; 后续 retarget 统一加前缀时会再次同步(防御式, 见 retarget).
+_boneset = set(arm.data.bones.keys())
+_vgfix = 0
+for o in skinned:
+    for g in o.vertex_groups:
+        if g.name in _boneset:
+            continue
+        bare = g.name.split(':')[-1]
+        cand = next((bn for bn in _boneset if bn.split(':')[-1] == bare), None)
+        if cand:
+            g.name = cand
+            _vgfix += 1
+print(f"\n顶点组名同步(⇄实际骨名): {_vgfix} 个组改名")
+
 # ---------------- 10. 保存 ----------------
 bpy.ops.wm.save_as_mainfile(filepath=OUT)
 print(f"\n已保存: {OUT}")
