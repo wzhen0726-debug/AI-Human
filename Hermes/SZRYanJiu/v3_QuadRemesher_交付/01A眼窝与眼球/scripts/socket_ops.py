@@ -2081,10 +2081,12 @@ def smooth_ring_depth(obj, center, side):
     print(f"smooth_ring_depth {side}: 环 {len(y)} 顶点, y 低通 {done}passes, 最大 |Δy| {_mv:.3f}mm (上限 {RIM_DEPTH_CAP_MM}mm), XZ未动")
 
 
-def _rim_qa(obj, center, side, poly):
-    """v86: rim 区质量【检测】(判据自参照, 无写死尺寸):
-    band区 = 面心到轮廓XZ距离 < 1.5mm; 参考带 = 3~8mm(同一网格上未被本次修改的表面)。
-    指标: 最小角<15° 占比 / 长宽比>4 占比 —— band 应与周围皮肤相当。"""
+def _rim_qa(obj, center, side, poly, w_mm):
+    """v86: rim 区质量【检测】(判据自参照, 尺寸全部由模型推导):
+    band区 = 面心到轮廓XZ距离 < 1.16×名义带宽; 参考带 = 2.3~6.2×名义带宽
+    (同一网格上未被本次修改的表面); 眼区半径 = EYE_AREA_R(=0.86×实测眼宽, 模块推导值)。
+    指标: 最小角<15° 占比 / 长宽比>4 占比 —— 二者为无量纲面形判据(与模型大小无关)。
+    注意: 三档扫描统一用【名义带宽 base】算窗口, 保证各轮量的是同一物理区域、分数可比。"""
     mesh = obj.data
     nf = len(mesh.polygons)
     if nf == 0:
@@ -2100,9 +2102,12 @@ def _rim_qa(obj, center, side, poly):
         t = np.clip(((xy - a) @ ab) / max(L2, 1e-12), 0.0, 1.0)
         proj = a + t[:, None] * ab
         d = np.minimum(d, np.linalg.norm(xy - proj, axis=1))
-    ineye = (np.linalg.norm(C - c0, axis=1) < 0.035) & (C[:, 1] < c0[1] + Y_FRONT_M)
-    sel_band = np.where(ineye & (d < 0.0015))[0]
-    sel_ref = np.where(ineye & (d > 0.003) & (d < 0.008))[0]
+    _band_r = 1.16 * float(w_mm) / 1000.0          # 名义带宽的倍数(无量纲)
+    _ref_lo = 2.30 * float(w_mm) / 1000.0
+    _ref_hi = 6.20 * float(w_mm) / 1000.0
+    ineye = (np.linalg.norm(C - c0, axis=1) < EYE_AREA_R) & (C[:, 1] < c0[1] + Y_FRONT_M)
+    sel_band = np.where(ineye & (d < _band_r))[0]
+    sel_ref = np.where(ineye & (d > _ref_lo) & (d < _ref_hi))[0]
     nv = len(mesh.vertices)
     V = np.empty(nv * 3); mesh.vertices.foreach_get("co", V); V = V.reshape(-1, 3)
     def _stats(ids):
@@ -2167,7 +2172,7 @@ def rebuild_rim_block_qa(obj, center, side, poly):
         except Exception as e:
             print(f"rim块 QA 第{i+1}轮(W={W:.2f}mm) 异常, 跳过: {e}")
             continue
-        q = _rim_qa(obj, center, side, poly)
+        q = _rim_qa(obj, center, side, poly, base_w)   # 统一用名义带宽算窗口(各轮可比)
         score = q["band_bad"] + q["band_sliver"]
         print(f"rim块 QA 第{i+1}轮 W={W:.2f}mm [{_time.time()-t0:.0f}s]: "
               f"band {q['band_n']}面 小角{q['band_bad']*100:.1f}%/长条{q['band_sliver']*100:.1f}% "
