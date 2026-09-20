@@ -1,4 +1,4 @@
-"""03 自动UV: Smart UV Project + 大面积浪费检测 + 自适应参数搜索 (2026-09-17 v3)
+"""03 自动UV: Smart UV Project + 大面积浪费检测 + 自适应参数搜索 + 折叠检测修复 (2026-09-18 v4)
 
 输入: 02_qr_150k_socket.blend (QR低模)
 输出: 03_auto_uv.blend + 03_uv_layout_before/after.png
@@ -13,6 +13,7 @@
   最大空方块 = 布局栅格化+膨胀封孔+最大空方块DP(归一化边长/面积)
   岛统计 = UV连通分量(共享边且两端UV相等) → 岛数/最大岛面积/中位岛边长
   纹素密度CV = 逐面(UV面积/3D面积)的变异系数
+  折叠面数 = uv.select_overlap 原检测的重叠面数(岛内自折叠; 烘焙时重叠texel被少数面写走颜色 → 渲染脏线)
 
 判据(自参照, 三项比值 ≤1 即通过; 比值即"控制住的阈值边距"):
   废料比 = 最大空方块面积 / 最大岛面积   (<1: 空块装不下最大的岛 = 无大面积浪费)
@@ -29,6 +30,7 @@
 本脚本主动剥离bevel/crease残留属性。"""
 import bpy, os, math, time
 import numpy as np
+import bmesh
 
 ROOT = r"E:/WangZhen_Project/AI/ShuZiRen/Hermes/SZRYanJiu/演示版_终端控制端"
 QR_BLEND = os.path.join(ROOT, "02QR拓扑", "输出", "02_qr_150k_socket.blend")
@@ -121,13 +123,143 @@ def density_cv(me, uva):
     rat = np.array([uva[i] / p.area for i, p in enumerate(me.polygons) if uva[i] > 1e-12 and p.area > 1e-12])
     return float(np.std(rat) / max(np.median(rat), 1e-12))
 
+# ================= 折叠(UV重叠)检测与修复 (v4, 2026-09-18晚间) =================
+# 背景: 仅查三角形面积均匀度的旧判据对"岛内自折叠"完全盲 —— 投影式 smart_project 对环状/长条
+#   区域必然产生岛内自重叠(实测最终选中版有 437 个重叠面), 烘焙时重叠texel被少数区域写走颜色,
+#   渲染上表现为皮肤上突兀的深色短线/斑(用户指出, 已用"射线→UV"定位铁证)。打包器改动无效(非岛间
+#   重叠), 全网格 unwrap 会整体崩塌 —— 唯一有效做法=把折叠局部切出来单独重展(等价"在折痕处切缝")。
+def fold_faces_native(mesh):
+    """原生重叠检测(uv.select_overlap) → 重叠面索引集合。全数据推导, 无阈值。"""
+    bpy.ops.object.select_all(action='DESELECT')
+    mesh.select_set(True); bpy.context.view_layer.objects.active = mesh
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.select_all(action='SELECT')
+    ids = set()
+    try:
+        if hasattr(bpy.ops.uv, 'select_overlap'):
+            bpy.ops.uv.select_overlap(extend=False)
+            bm = bmesh.from_edit_mesh(mesh.data)
+            ids = set(f.index for f in bm.faces if f.select)
+    except Exception as e:
+        P(f"    [折叠检测] select_overlap 失败: {e}")
+    bpy.ops.object.mode_set(mode='OBJECT')
+    return ids
+
+def _fold_clusters(mesh, ids):
+    """重叠面按网格连通性聚簇"""
+    bpy.ops.object.mode_set(mode='EDIT')
+    bm = bmesh.from_edit_mesh(mesh.data)
+    bm.faces.ensure_lookup_table()
+    seen = set(); out = []
+    for i in ids:
+        if i in seen:
+            continue
+        stack = [i]; comp = []
+        seen.add(i)
+        while stack:
+            j = stack.pop(); comp.append(j)
+            for e in bm.faces[j].edges:
+                for f2 in e.link_faces:
+                    if f2.index in ids and f2.index not in seen:
+                        seen.add(f2.index); stack.append(f2.index)
+        out.append(comp)
+    bpy.ops.object.mode_set(mode='OBJECT')
+    out.sort(key=len, reverse=True)
+    return out
+
+def _select_region(mesh, ids, ring=2):
+    bpy.ops.object.mode_set(mode='EDIT')
+    bm = bmesh.from_edit_mesh(mesh.data)
+    bm.faces.ensure_lookup_table()
+    cur = set(ids)
+    for _ in range(ring):
+        nxt = set()
+        for i in cur:
+            for e in bm.faces[i].edges:
+                for f2 in e.link_faces:
+                    nxt.add(f2.index)
+        cur |= nxt
+    for f in bm.faces:
+        f.select = False
+    for i in cur:
+        f = bm.faces[i]
+        f.select = True
+        for e in f.edges:
+            e.select = True
+        for v in f.verts:
+            v.select = True
+    bmesh.update_edit_mesh(mesh.data)
+    return len(cur)
+
+def repair_local_folds(mesh, max_rounds=8):
+    """折叠修复: 每轮把全部折叠面+2环邻域作为一个选区(各连通分量独立求解) SLIM重展 + 重打包,
+    迭代至清零或预算用尽。等价于"在每条折痕处切缝再展平", 不动其余布局。
+    返回 (修复前折叠面数, 修复后折叠面数)。全部用标准算子, 无模型相关常量。"""
+    f0 = len(fold_faces_native(mesh))
+    if f0 == 0:
+        return 0, 0
+    for it in range(max_rounds):
+        ids = fold_faces_native(mesh)
+        if not ids:
+            break
+        try:
+            bpy.ops.object.mode_set(mode='EDIT')
+            nsel = _select_region(mesh, sorted(ids), ring=2)
+            for m in ("MINIMUM_STRETCH", "ANGLE_BASED"):
+                try:
+                    bpy.ops.uv.unwrap(method=m, margin=MARGIN)
+                    break
+                except Exception:
+                    continue
+            bpy.ops.mesh.select_all(action='SELECT')
+            bpy.ops.uv.average_islands_scale()   # 修复区的纹素密度必须与全布局归一(否则CV爆表)
+            props = {p.identifier for p in bpy.ops.uv.pack_islands.get_rna_type().properties}
+            kw = dict(rotate=True, scale=True, margin_method='SCALED', margin=MARGIN,
+                      shape_method='CONCAVE', pin=False, merge_overlap=False)
+            bpy.ops.uv.pack_islands(**{k: v for k, v in kw.items() if k in props})
+            bpy.ops.object.mode_set(mode='OBJECT')
+        except Exception as e:
+            try: bpy.ops.object.mode_set(mode='OBJECT')
+            except Exception: pass
+            P(f"    [折叠修复] 第{it+1}轮失败(跳过): {e}")
+        f_now = len(fold_faces_native(mesh))
+        P(f"    [折叠修复] 第{it+1}轮: 选区{nsel}面 → 残留重叠 {f_now} 面")
+        if f_now == 0:
+            break
+    # 顽固小残留: 加大上下文(ring=3)再试一轮 —— 微折叠常因局部约束过紧反复重生
+    ids = fold_faces_native(mesh)
+    if 0 < len(ids) <= 24:
+        try:
+            bpy.ops.object.mode_set(mode='EDIT')
+            nsel = _select_region(mesh, sorted(ids), ring=3)
+            for m in ("MINIMUM_STRETCH", "ANGLE_BASED"):
+                try:
+                    bpy.ops.uv.unwrap(method=m, margin=MARGIN)
+                    break
+                except Exception:
+                    continue
+            bpy.ops.mesh.select_all(action='SELECT')
+            bpy.ops.uv.average_islands_scale()
+            props = {p.identifier for p in bpy.ops.uv.pack_islands.get_rna_type().properties}
+            kw = dict(rotate=True, scale=True, margin_method='SCALED', margin=MARGIN,
+                      shape_method='CONCAVE', pin=False, merge_overlap=False)
+            bpy.ops.uv.pack_islands(**{k: v for k, v in kw.items() if k in props})
+            bpy.ops.object.mode_set(mode='OBJECT')
+        except Exception as e:
+            try: bpy.ops.object.mode_set(mode='OBJECT')
+            except Exception: pass
+            P(f"    [折叠修复] 顽固重试失败: {e}")
+        P(f"    [折叠修复] 顽固残留 ring=3 重试: 选区{nsel}面 → 残留 {len(fold_faces_native(mesh))} 面")
+    return f0, len(fold_faces_native(mesh))
+
 def measure(mesh):
     pts, areas = uv_arrays(mesh)
     U = float(areas.sum())
     isl = uv_islands(mesh, pts, areas)
     e_side, e_area = empty_square(pts)
     return dict(U=U, n=len(isl), big_area=isl[0][1], big_side=isl[0][2],
-                empty_area=e_area, empty_side=e_side, cv=density_cv(mesh.data, areas))
+                empty_area=e_area, empty_side=e_side, cv=density_cv(mesh.data, areas),
+                fold=len(fold_faces_native(mesh)))
 
 def ratios(m, base):
     """三项比值(≤1通过): 废料比 / 密度比 / 岛数比"""
@@ -224,7 +356,7 @@ base = measure(mesh)
 rounds.append((1, ANGLE_START, False, False, base))
 wr, dr, sr = ratios(base, base)
 P(f"第1轮 基准 {ANGLE_START:.0f}°(自带打包): U={base['U']*100:.1f}% 岛数={base['n']} "
-  f"最大空方块={base['empty_side']:.3f}({base['empty_area']*100:.2f}%) 最大岛={base['big_area']*100:.2f}% CV={base['cv']:.3f} [{time.time()-t0:.0f}s]")
+  f"最大空方块={base['empty_side']:.3f}({base['empty_area']*100:.2f}%) 最大岛={base['big_area']*100:.2f}% CV={base['cv']:.3f} 折叠={base['fold']} [{time.time()-t0:.0f}s]")
 P(f"      基准废料比={wr:.2f} → {'⚠ 大面积浪费(空块≥最大岛), 调整参数重跑' if wr >= 1 else '无大面积浪费, 仍寻优'}")
 draw_layout(mesh, os.path.join(OUT_03, "03_uv_layout_before.png"))
 
@@ -240,7 +372,7 @@ def probe(rno, ang):
     wr_, dr_, sr_ = ratios(m, base)
     ok = passes(m, base)
     P(f"  第{rno}轮 {ang:.1f}°+光顺+重打包: U={m['U']*100:.1f}% 空块={m['empty_side']:.3f}({m['empty_area']*100:.2f}%) "
-      f"岛数={m['n']} CV={m['cv']:.3f} | 废料比={wr_:.3f} 密度比={dr_:.3f} 岛数比={sr_:.3f} {'✓' if ok else '✗'} [{time.time()-t:.0f}s]")
+      f"岛数={m['n']} CV={m['cv']:.3f} 折叠={m['fold']} | 废料比={wr_:.3f} 密度比={dr_:.3f} 岛数比={sr_:.3f} {'✓' if ok else '✗'} [{time.time()-t:.0f}s]")
     return m
 
 m66 = probe(2, ANGLE_START)
@@ -265,18 +397,20 @@ if known and len(rounds) < MAX_ROUNDS:
 P(f"搜索完成: 共{len(rounds)}轮 (预算{MAX_ROUNDS})")
 
 # ---------- 择优 ----------
-valid = [(r, m) for r, a, u, p, m in rounds if passes(m, base)]
+valid = [(r, m) for r, a, u, p, m in rounds if passes(m, base) and m['fold'] == 0]
 if valid:
     pick_rno, pick_m = max(valid, key=lambda x: x[1]['U'])
 else:
     pick_rno, pick_m = min([(r, m) for r, a, u, p, m in rounds],
-                           key=lambda x: (viol(x[1], base), ratios(x[1], base)[0], -x[1]['U']))
-    P("⚠ 无候选同时满足三项约束 → 按【违约度最小→废料比→利用率】取最好一版, 管线继续")
+                           key=lambda x: (0 if x[1]['fold'] == 0 else 1, viol(x[1], base),
+                                          ratios(x[1], base)[0], -x[1]['U']))
+    P("⚠ 无候选同时满足三项约束+零折叠 → 按【零折叠优先→违约度最小→废料比→利用率】取最好一版, 管线继续")
 pick_cfg = next((a, u, p) for r, a, u, p, m in rounds if m is pick_m)
 P(f"候选排名(第{pick_rno}轮最优): {pick_cfg[0]:.1f}°{' +光顺+重打包' if pick_cfg[2] else '(自带打包)'}, U={pick_m['U']*100:.1f}%")
 
 # ---------- 定状态 + 复测(不过则退用次优) ----------
-order = sorted(rounds, key=lambda x: (0 if passes(x[4], base) else 1, viol(x[4], base), ratios(x[4], base)[0], -x[4]['U']))
+order = sorted(rounds, key=lambda x: (0 if (passes(x[4], base) and x[4]['fold'] == 0) else 1,
+                                      viol(x[4], base), ratios(x[4], base)[0], -x[4]['U']))
 final = None; final_cfg = None; final_rno = None
 for r, a, u, p, m in order:
     do_unwrap(mesh, a, uniformize=u, repack=p)
@@ -294,6 +428,12 @@ if final is None:
     final, final_cfg, final_rno = measure(mesh), (a, u, p), r
     P("⚠ 复测均未通过(疑似运行波动): 保留最优一版并告警, 不阻断管线")
 
+# ---------- 折叠修复(仅对最终选定版执行一次, 迭代至清零) ----------
+f_before, f_after = repair_local_folds(mesh)
+if f_before > 0:
+    final = measure(mesh)
+    P(f"折叠修复: {f_before} → {f_after} 个重叠面 ({'✓ 已清零' if f_after == 0 else '⚠ 仍有残留(不阻断, 下游烘焙+margins) '})")
+
 uvl = mesh.data.uv_layers.active.data
 pts_f = np.empty(len(uvl) * 2); uvl.foreach_get("uv", pts_f); pts_f = pts_f.reshape(-1, 2)
 fw = ratios(final, base)
@@ -308,7 +448,7 @@ assert mesh.data.attributes.get("bevel_weight_edge") is None, "bevel_weight_edge
 assert not [m for m in mesh.modifiers if m.type == 'BEVEL'], "BEVEL修改器未清除!"
 okf = (fw[0] < 1.0) and (fw[1] <= 1.01) and (fw[2] <= 1.01)   # 与 passes() 同口径(1%数值容差)
 P(f"自查: 无倒角残留 PASS | 最终 废料比={fw[0]:.3f}(<1) 密度比={fw[1]:.3f}(≤1) 岛数比={fw[2]:.3f}(≤1) "
-  f"{'PASS' if okf else 'WARN(已取最好一版, 不阻断)'} | 用时{time.time()-t00:.0f}s")
+  f"折叠={final['fold']} {'PASS' if (okf and final['fold'] == 0) else 'WARN(已取最好一版, 不阻断)'} | 用时{time.time()-t00:.0f}s")
 
 out_blend = os.path.join(OUT_03, "03_auto_uv.blend")
 bpy.ops.wm.save_mainfile(filepath=out_blend)

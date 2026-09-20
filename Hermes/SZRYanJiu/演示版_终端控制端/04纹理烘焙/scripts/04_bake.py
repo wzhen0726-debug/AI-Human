@@ -102,9 +102,12 @@ bpy.context.scene.render.bake.use_pass_color = True
 bpy.context.scene.render.bake.margin = 16
 bpy.context.scene.render.bake.use_selected_to_active = True
 # cage挤出/射线距离: 按模型bbox尺寸比例, 不写死绝对值(跨体型自适应)
-# 参考: 当前模型bbox_max≈1.8m时 cage=0.02, ray=0.1 → 比例 0.011/0.056
-bpy.context.scene.render.bake.cage_extrusion = bbox_max * 0.011   # 避免黑色斑块
-bpy.context.scene.render.bake.max_ray_distance = bbox_max * 0.056  # 捕捉rim折角
+# v5(2026-09-18 晚): S2A语义 = 射线从"低模表面+法线×cage"出发、方向向内, 总长=max_ray_distance。
+#   实测低↔高最大偏差仅 1.97mm(≈bbox的0.11%), 而旧参数 ray=bbox×0.056≈101mm = 20mm笼+81mm乱跑:
+#   在衣物/肩带覆盖处笼点(20mm)高于衣物 → 射线下降先打到衣物 → 皮肤纹素被染衣物深色(渲染脏线, 已实测定位)。
+#   修正: cage 取"皮肤到衣物间距"量级(≈6mm, 停在覆盖物下方), ray = cage + 8mm搜索(≥4×实测最大偏差)。
+bpy.context.scene.render.bake.cage_extrusion = bbox_max * 0.0033    # 起点停在皮肤与衣物之间
+bpy.context.scene.render.bake.max_ray_distance = bbox_max * 0.0077  # 笼(0.0033) + 搜索(0.0044)
 
 bpy.ops.object.select_all(action='DESELECT')
 high_poly.select_set(True)
@@ -128,7 +131,7 @@ _LADDER = [_M0, int(round(_M0 * 1.5)), int(round(_M0 * 0.6))]
 _rounds = []
 for _ri, _mg in enumerate(_LADDER):
     bpy.context.scene.render.bake.margin = _mg
-    print(f'烘焙Diffuse中(第{_ri+1}轮 margin={_mg}px, cage={bbox_max*0.011:.4f}, ray={bbox_max*0.056:.4f}, 按bbox比例)...')
+    print(f'烘焙Diffuse中(第{_ri+1}轮 margin={_mg}px, cage={bbox_max*0.0033:.4f}, ray={bbox_max*0.0077:.4f}, 按bbox比例)...')
     bpy.ops.object.bake(type='DIFFUSE')
     _rp = os.path.join(OUT_04, f"_qa_r{_ri+1}_diffuse.png")
     img.filepath_raw = _rp
