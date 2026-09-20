@@ -139,8 +139,20 @@ for _ri, _mg in enumerate(_LADDER):
             # reach 跟随本轮的烘焙margin(渗出带宽度=边距膨胀): margin越大, 渗带越宽, 清理半径必须同步
             _tx = fix_diffuse_png(_rp, reach_px=_mg + 4)
             print(f"  (第{_ri+1}轮)贴图溢出处理: {_tx.get('note', '')}")
+            # v4 第二遍: 亮度阈值放宽到112 —— 实测残留暗线亮度≈97 高于旧阈值95, 旧法从未清到(用户反馈的残留源)
+            _tx2 = fix_diffuse_png(_rp, reach_px=_mg + 4, lum_th=112)
+            print(f"  (第{_ri+1}轮)贴图溢出处理(弱渗二遍): {_tx2.get('note', '')}")
+            # v4: 五官保护球(由场景眼球对象实测推导) —— 替代旧的"身高80%截断"
+            #     (旧截断把 z>1.457m 的上胸/领口/肩颈全划入保护区, 用户反馈区因此从未被 v2 清理)
+            _eyes = [o for o in bpy.data.objects if "Eye002" in o.name]
+            _fc = _fr = None
+            if len(_eyes) == 2:
+                _a0 = _eyes[0].matrix_world.translation; _a1 = _eyes[1].matrix_world.translation
+                _fc = (float((_a0.x + _a1.x) / 2), float((_a0.y + _a1.y) / 2), float((_a0.z + _a1.z) / 2))
+                _fr = 1.6 * float((_a0 - _a1).length)
+                print(f"  (第{_ri+1}轮)五官保护球: 心=({_fc[0]*1000:.0f},{_fc[1]*1000:.0f},{_fc[2]*1000:.0f})mm R={_fr*1000:.0f}mm")
             for _p in (1, 2):
-                _ty = fix_diffuse_mesh_guided(_rp, [low_poly])
+                _ty = fix_diffuse_mesh_guided(_rp, [low_poly], face_center=_fc, face_R=_fr)
                 print(f"  (第{_ri+1}轮)异常斑清理{_p}: {_ty.get('note', '')}")
                 if _ty.get('clusters', 0) == 0:
                     break

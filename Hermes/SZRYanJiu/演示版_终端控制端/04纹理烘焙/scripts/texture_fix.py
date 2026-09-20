@@ -131,8 +131,12 @@ def fix_diffuse_png(path, win=25, skin_frac_th=0.50, reach_px=18, lum_th=95,
 #   替换: 异常面 UV 三角形内像素 <- 其 3D 邻域(非异常面)颜色中位 + 2px 过渡.
 # ============================================================================
 def fix_diffuse_mesh_guided(png_path, mesh_objects, k_sigma=4.0, cluster_frac=0.0015,
-                            head_ratio=0.80, backup=True, dry=False, crop_dir=None):
-    """网格引导清理; 返回统计 dict. 全部判据相对模型数据, 不含固定坐标/阈值."""
+                            head_ratio=0.80, face_center=None, face_R=None, backup=True, dry=False, crop_dir=None):
+    """网格引导清理; 返回统计 dict. 全部判据相对模型数据, 不含固定坐标/阈值.
+    v4(2026-09-18): 头部保护由"身高80%"改为【五官球】—— 旧法把 z>80%身高 全部排除,
+      实测把 上胸/领口/肩颈(用户反馈区) 全划进保护区导致这些位置的暗斑从未被清理;
+      新法: 以双眼中心为球心, R=1.6×双眼间距(由场景眼球对象实测推导), 球外全部可清理。
+    """
     from scipy.spatial import cKDTree
     # --- 收集面数据 ---
     F = []          # 面: (矩阵变换后中心 xyz, 采样色, uv 三角形 list)
@@ -161,10 +165,14 @@ def fix_diffuse_mesh_guided(png_path, mesh_objects, k_sigma=4.0, cluster_frac=0.
     col = a0[y, x].astype(np.float64)
     lum = 0.30 * col[:, 0] + 0.59 * col[:, 1] + 0.11 * col[:, 2]
     empty = (col[:, 0] <= 2) & (col[:, 1] <= 2) & (col[:, 2] <= 2)
-    # --- 高度过滤(保护头部; 按 bbox 比例) ---
+    # --- 五官保护: v4 球体(双眼中心+R) / 兼容旧的身高截断 ---
     zmin, zmax = cen[:, 2].min(), cen[:, 2].max()
-    head_cut = zmin + head_ratio * (zmax - zmin)
-    body = cen[:, 2] <= head_cut
+    if face_center is not None and face_R is not None:
+        _dfc = np.linalg.norm(cen - np.asarray(face_center, dtype=float), axis=1)
+        body = _dfc > float(face_R)
+    else:
+        head_cut = zmin + head_ratio * (zmax - zmin)
+        body = cen[:, 2] <= head_cut
     # --- 自动半径: 最近邻中位距 x4 ---
     t = cKDTree(cen)
     dnn, _ = t.query(cen, k=2)
@@ -304,7 +312,8 @@ def fix_diffuse_mesh_guided(png_path, mesh_objects, k_sigma=4.0, cluster_frac=0.
             shutil.copy2(png_path, os.path.join(bdir, os.path.basename(png_path)))
         Image.fromarray(fixed).save(png_path)
     return dict(clusters=ncl, faces=int(keep.sum()), texels=npx, r_mm=round(r * 1000, 1),
-                thr=round(float(thr), 1), cap=cap, ext_cap_mm=round(ext_cap * 1000, 1), head_cut_mm=round(float(head_cut) * 1000, 1),
+                thr=round(float(thr), 1), cap=cap, ext_cap_mm=round(ext_cap * 1000, 1),
+                head_cut_mm=(round(float(head_cut) * 1000, 1) if face_center is None else None),
                 cluster_mm_facecol=cluster_info,
                 note=f"v2: {ncl}簇/{int(keep.sum())}面/{npx}像素 已就近皮肤色替换" + (" [dry]" if dry else ""))
 
