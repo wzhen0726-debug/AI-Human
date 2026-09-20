@@ -53,7 +53,9 @@ def fix_diffuse_png(path, win=25, skin_frac_th=0.50, reach_px=18, lum_th=95,
     #    只清保护环之外的渗出带; 残余的 ≤2px 暗环与衣物边缘自然相接, 视觉上即衣物边.
     dist_big = ndimage.distance_transform_edt(~big)
     # 衣物本体(近黑连通块)整块排除 → 只动它外圈的深色渗出(亮度在 本体内<48 与 阈值95 之间者)
-    cand = (lum < lum_th) & (~empty) & (~big) & (dist_big <= reach_px) & (dist_big > 2.0)
+    # v4.1 禁吃衣物边缘抗锯齿环: 候选像素的7px局部窗口若≥50%是深色, 它是衣物边缘自身(不是皮肤侧渗出), 不替换
+    _darkfrac = ndimage.uniform_filter(((lum < 48) & (~empty)).astype(np.float32), 7)
+    cand = (lum < lum_th) & (~empty) & (~big) & (dist_big <= reach_px) & (dist_big > 2.0) & (_darkfrac < 0.5)
     spill = cand
     before = int(spill.sum())
     if before == 0:
@@ -248,6 +250,13 @@ def fix_diffuse_mesh_guided(png_path, mesh_objects, k_sigma=4.0, cluster_frac=0.
             if len(nbr) < 4:
                 continue
             ccol = np.median(col[comp], axis=0)
+            # v4.1 禁吃衣物(实测: 浅色毛边93%来自本步): 簇自身属"衣物级深色"(lum<55), 或其邻域里
+            #   深色(lum<48)面占比≥25% → 该簇是衣物边缘的一部分(不是皮肤上的渗入斑), 替换它=把衣物啃成肤色。
+            _cl = 0.30 * ccol[0] + 0.59 * ccol[1] + 0.11 * ccol[2]
+            if _cl < 55.0:
+                continue
+            if len(nbr) > 0 and sum(1 for kk in nbr if lum[kk] < 48.0) / len(nbr) >= 0.25:
+                continue
             # 替换色 = 邻域中"皮肤样"面的颜色中位(斑点多长在趾缝/衣边旁, 邻域可含暗面;
             # 只要邻域里有足量皮肤样面即可, 用它们的颜色就近替换)
             nbr_skin = [kk for kk in nbr if skin_like(col[kk])]

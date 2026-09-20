@@ -134,6 +134,8 @@ for _ri, _mg in enumerate(_LADDER):
     img.filepath_raw = _rp
     img.file_format = 'PNG'
     img.save()
+    import shutil as _sh0
+    _sh0.copyfile(_rp, _rp.replace(".png", "_raw.png"))   # v5: 留存"纯烘焙未调整"对照件
     if _HAVE_FIX:
         try:
             # reach 跟随本轮的烘焙margin(渗出带宽度=边距膨胀): margin越大, 渗带越宽, 清理半径必须同步
@@ -169,8 +171,11 @@ for _r in _rounds[1:]:
     if _qa_better(_r[0], _best[0]):
         _best = _r
 tex_path = os.path.join(OUT_04, "04_diffuse_4k.png")
+tex_raw_path = os.path.join(OUT_04, "04_diffuse_4k_未调整.png")
 import shutil as _sh
 _sh.copyfile(_best[1], tex_path)
+_sh.copyfile(_best[1].replace(".png", "_raw.png"), tex_raw_path)   # v5: 未调整版贴图
+print(f"已输出两份贴图: {os.path.basename(tex_raw_path)}(未调整) / {os.path.basename(tex_path)}(已调整)")
 bpy.context.scene.render.bake.margin = _best[2]
 img.filepath_raw = tex_path
 img.file_format = 'PNG'
@@ -179,8 +184,9 @@ print(f"烘焙审核选定: margin={_best[2]}px (未填充={_best[0]['unfilled']
       + " / ".join(f"m{r[2]}:{r[0]['unfilled']*100:.2f}%,{r[0]['dirty']*100:.2f}%,{r[0]['cv']:.3f}" for r in _rounds))
 try:  # 清理轮次临时件(数字已入日志; 选定件已复制为正式文件)
     for _r in _rounds:
-        if os.path.exists(_r[1]):
-            os.remove(_r[1])
+        for _f2 in (_r[1], _r[1].replace(".png", "_raw.png")):
+            if os.path.exists(_f2):
+                os.remove(_f2)
 except Exception:
     pass
 pixels = np.array(img.pixels[:])
@@ -232,9 +238,24 @@ bpy.ops.export_scene.fbx(
     add_leaf_bones=False, bake_anim=False, path_mode='COPY', embed_textures=True
 )
 
-# 保存blend
+# 保存blend —— v5 起输出两份(用户要求, 便于对照检查是哪一步的问题):
+#   04_bake_未调整.blend = 纯烘焙(不做纹理调整)
+#   04_bake.blend        = 烘焙+纹理调整(管线默认沿用)
 out_blend = os.path.join(OUT_04, "04_bake.blend")
+out_blend_raw = os.path.join(OUT_04, "04_bake_未调整.blend")
+img.filepath = tex_raw_path
+try:
+    img.reload()
+except Exception:
+    pass
+bpy.ops.wm.save_as_mainfile(filepath=out_blend_raw, copy=True)   # copy=True: 不改变当前会话文件路径
+img.filepath = tex_path
+try:
+    img.reload()
+except Exception:
+    pass
 bpy.ops.wm.save_as_mainfile(filepath=out_blend)
+print(f"两份blend: {os.path.basename(out_blend_raw)}(未调整) / {os.path.basename(out_blend)}(已调整)")
 
 print(f"\n=== 完成 ===")
 print(f"贴图(4K): {tex_path}")
