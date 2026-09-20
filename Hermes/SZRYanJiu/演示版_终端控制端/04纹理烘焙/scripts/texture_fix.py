@@ -22,6 +22,38 @@ DEFAULT_PNG = os.path.join(ROOT, "04纹理烘焙", "输出", "04_diffuse_4k.png"
 BACKUP_ROOT = os.path.join(ROOT, "_备份")
 
 
+def fix_socket_zone_png(path, mask, sigma=2.0):
+    """眼窝区皮肤化(2026-09-20): 掩膜内(低模眼窝内壁+接缝区)texel → 用最近亮皮肤色填充。
+    原因: 01a重建的socket内壁低模面法线平化, 烘焙射线在该复杂区散打, 会采到睫毛/眼睑的深色像素,
+          渲染上表现为眼窝内壁/眼珠边缘的硬边黑块(眼珠挡住时看不出, 边缘暴露)。此区属"被遮挡内部",
+          统一按皮肤处理即可。掩膜由 04_bake.py 按场景真实眼球对象推导, 全数据驱动。
+    返回统计 dict。"""
+    im = Image.open(path).convert("RGB")
+    a = np.array(im).astype(np.float32)
+    H, W = a.shape[:2]
+    if mask.shape != (H, W):
+        return {"note": "掩膜尺寸不符, 跳过", "changed": 0}
+    r, g, b = a[:, :, 0], a[:, :, 1], a[:, :, 2]
+    empty = (r <= 2) & (g <= 2) & (b <= 2)
+    lum = 0.30 * r + 0.59 * g + 0.11 * b
+    src_mask = (~mask) & (lum > 100) & (~empty)
+    if src_mask.sum() < 16:
+        return {"note": "掩膜外无足够皮肤源, 跳过", "changed": 0}
+    ind = ndimage.distance_transform_edt(~src_mask, return_distances=False, return_indices=True)
+    before = float(lum[mask].mean()) if mask.any() else 0.0
+    filled = a.copy()
+    fill_rgb = a[ind[0], ind[1]]
+    filled[mask] = fill_rgb[mask]
+    if sigma and sigma > 0:
+        sm = ndimage.gaussian_filter(filled, sigma=(sigma, sigma, 0))
+        filled[mask] = sm[mask]
+    out = np.clip(filled, 0, 255).astype(np.uint8)
+    n_changed = int((np.abs(filled - a).max(axis=2)[mask] > 6).sum())
+    Image.fromarray(out).save(path)
+    after = float((0.30 * filled[:, :, 0] + 0.59 * filled[:, :, 1] + 0.11 * filled[:, :, 2])[mask].mean())
+    return {"note": f"眼窝区{int(mask.sum())}px 亮度{before:.0f}→{after:.0f}, 改动{n_changed}px", "changed": n_changed}
+
+
 def fix_diffuse_png(path, win=25, skin_frac_th=0.50, reach_px=18, lum_th=95,
                     max_frac=0.015, backup=True, dry=False, crop_dir=None):
     """就地处理 diffuse PNG; 返回统计 dict.

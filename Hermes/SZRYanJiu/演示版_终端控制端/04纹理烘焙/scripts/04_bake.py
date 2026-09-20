@@ -120,7 +120,7 @@ nt.nodes.active = tex
 import sys as _sys
 _sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 try:
-    from texture_fix import fix_diffuse_png, fix_diffuse_mesh_guided
+    from texture_fix import fix_diffuse_png, fix_diffuse_mesh_guided, fix_socket_zone_png
     _HAVE_FIX = True
 except Exception as _e:
     _HAVE_FIX = False
@@ -128,6 +128,76 @@ except Exception as _e:
 from bake_qa import measure as _qa_measure, better as _qa_better
 _M0 = int(bpy.context.scene.render.bake.margin)          # 既有基准(16px)
 _LADDER = [_M0, int(round(_M0 * 1.5)), int(round(_M0 * 0.6))]
+
+# ===== v6(2026-09-20): 眼窝区掩膜(低模眼窝内壁 + 接缝带) =====
+# 病根: 01a重建的socket内壁在低模上法线平化, 烘焙射线散打, 会采到睫毛/眼睑深色 → 眼窝内/眼珠边缘黑块。
+# 掩膜全数据推导: 场景真实眼球对象(位置/尺寸) + 低模上面向眼窝中心的内壁面 → 光栅化其UV。
+def _build_socket_mask(_low, _res=4096, _r_gate=2.0, _f_gate=0.25):
+    import numpy as _np
+    _eyes = [o for o in bpy.data.objects if ("Eye002" in o.name) and o.type == 'MESH']
+    if len(_eyes) < 2:
+        return None
+    _cents = []
+    for _e in _eyes:
+        _Mb = _np.array(_e.matrix_world)
+        _vs = _np.empty((len(_e.data.vertices), 3)); _e.data.vertices.foreach_get("co", _vs.ravel())
+        _vw = _vs @ _Mb[:3, :3].T + _Mb[:3, 3]
+        _c = _vw.mean(axis=0); _r = float(_np.linalg.norm(_vw - _c, axis=1).max())
+        _cents.append((_c, _r))
+    _me = _low.data; _M = _np.array(_low.matrix_world)
+    _n = len(_me.polygons)
+    _ctr = _np.empty((_n, 3)); _me.polygons.foreach_get("center", _ctr.ravel())
+    _nrm = _np.empty((_n, 3)); _me.polygons.foreach_get("normal", _nrm.ravel())
+    _ctr_w = _ctr @ _M[:3, :3].T + _M[:3, 3]; _nrm_w = _nrm @ _M[:3, :3].T
+    _sel = _np.zeros(_n, bool)
+    for _c, _r in _cents:
+        _d = _ctr_w - _c; _dist = _np.linalg.norm(_d, axis=1)
+        _fac = _np.einsum('ij,ij->i', _nrm_w, _d) / _np.maximum(_dist, 1e-9)
+        _sel |= (_dist < _r * _r_gate) & (_fac > _f_gate)
+    if _sel.sum() == 0:
+        return None
+    _uv = _np.empty((len(_me.loops), 2)); _me.uv_layers.active.data.foreach_get("uv", _uv.ravel())
+    _ls = _np.empty(_n, _np.int32); _me.polygons.foreach_get("loop_start", _ls)
+    _lt = _np.empty(_n, _np.int32); _me.polygons.foreach_get("loop_total", _lt)
+    _mask = _np.zeros((_res, _res), bool)
+    for _fi in _np.where(_sel)[0]:
+        _s0, _l0 = int(_ls[_fi]), int(_lt[_fi])
+        _pts = _uv[_s0:_s0 + _l0]
+        for _k in range(1, _l0 - 1):
+            _tri = _np.array([_pts[0], _pts[_k], _pts[_k + 1]])
+            _x0, _y0 = int(_tri[:, 0].min() * _res), int(_tri[:, 1].min() * _res)
+            _x1, _y1 = int(_np.ceil(_tri[:, 0].max() * _res)), int(_np.ceil(_tri[:, 1].max() * _res))
+            if _x1 <= _x0 or _y1 <= _y0:
+                continue
+            _xs = _np.arange(_x0, min(_x1 + 1, _res)); _ys = _np.arange(_y0, min(_y1 + 1, _res))
+            if len(_xs) == 0 or len(_ys) == 0:
+                continue
+            _gx, _gy = _np.meshgrid(_xs + 0.5, _ys + 0.5)
+            _px, _py = _gx / _res, _gy / _res
+            _ax, _ay = _tri[0]; _bx, _by = _tri[1]; _cx, _cy = _tri[2]
+            _dd = (_by - _cy) * (_ax - _cx) + (_cx - _bx) * (_ay - _cy)
+            if abs(_dd) < 1e-12:
+                continue
+            _w1 = ((_by - _cy) * (_px - _cx) + (_cx - _bx) * (_py - _cy)) / _dd
+            _w2 = ((_cy - _ay) * (_px - _cx) + (_ax - _cx) * (_py - _cy)) / _dd
+            _w3 = 1 - _w1 - _w2
+            _in = (_w1 >= -0.001) & (_w2 >= -0.001) & (_w3 >= -0.001)
+            _mask[_ys[0]:_ys[-1] + 1, _xs[0]:_xs[-1] + 1] |= _in
+    for _ in range(2):
+        _md = _mask.copy()
+        _md[1:, :] |= _mask[:-1, :]; _md[:-1, :] |= _mask[1:, :]
+        _md[:, 1:] |= _mask[:, :-1]; _md[:, :-1] |= _mask[:, 1:]
+        _mask = _md
+    print(f"眼窝区掩膜: {int(_mask.sum())} texel ({100.0*_mask.mean():.2f}%), 内壁面={int(_sel.sum())}")
+    return _mask
+
+_SOCKET_MASK = None
+if _HAVE_FIX:
+    try:
+        _SOCKET_MASK = _build_socket_mask(low_poly)
+    except Exception as _e:
+        print(f"⚠ 眼窝掩膜构建失败(跳过此步): {_e}")
+
 _rounds = []
 for _ri, _mg in enumerate(_LADDER):
     bpy.context.scene.render.bake.margin = _mg
@@ -138,7 +208,13 @@ for _ri, _mg in enumerate(_LADDER):
     img.file_format = 'PNG'
     img.save()
     import shutil as _sh0
-    _sh0.copyfile(_rp, _rp.replace(".png", "_raw.png"))   # v5: 留存"纯烘焙未调整"对照件
+    if _SOCKET_MASK is not None:
+        try:
+            _sz = fix_socket_zone_png(_rp, _SOCKET_MASK)
+            print(f"  (第{_ri+1}轮)眼窝区皮肤化: {_sz.get('note', '')}")
+        except Exception as _e:
+            print(f"  ⚠ (第{_ri+1}轮)眼窝区皮肤化跳过: {_e}")
+    _sh0.copyfile(_rp, _rp.replace(".png", "_raw.png"))   # v5: 留存"纯烘焙未调整"对照件(v6起含眼窝区皮肤化)
     if _HAVE_FIX:
         try:
             # reach 跟随本轮的烘焙margin(渗出带宽度=边距膨胀): margin越大, 渗带越宽, 清理半径必须同步

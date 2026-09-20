@@ -188,6 +188,13 @@ below.
   - UV island fragmentation — complex meshes produce many small islands
   - No symmetry guarantee — left/right UV layouts may differ
   - Visible distortion at high-curvature regions
+  - **Island self-fold (UV overlap)** — projection-based unwrap folds ring/strip
+    regions (arm loops, straps, long edges) onto themselves; the shared texels
+    make the bake steal one side's color (renders as dark streaks on skin).
+    Area-uniformity / island-count metrics are completely blind to it. Detect
+    with `bpy.ops.uv.select_overlap`; repair by locally re-unwrapping the fold
+    region (SLIM) + `average_islands_scale()` + repack — recipe, convergence
+    numbers and texel-ownership verification in `references/uv-fold-repair.md`.
 
 ### Recommended production workflow
 
@@ -674,6 +681,7 @@ where needed. Use Average Island Scale to balance UV island sizes.
 - `templates/rizomuv-unfold.lua` — Verified working RizomUV headless LUA script: ZomLoad→ZomUnfold→ZomOptimize→ZomSave→ZomQuit. Replace `<FBX_IN>`/`<FBX_OUT>` with absolute paths. Run from RizomUV install dir.
 - `templates/rizomuv-border-unfold.lua` — **BEST** RizomUV headless LUA script (7.0/10): ZomLoad→ZomSelect(Border=true)→ZomCut→ZomIslandGroups(CreateFromCuts)→ZomUnfold→ZomOptimize(20)→ZomSave→ZomQuit. Uses UV border approach to pass Blender seams. See `references/rizomuv-cli-lua-failure.md` for details.
 - `references/external-uv-tools-test-results.md` — pymeshlab (LSCM/Voronoi timeout on 180K triangles), open3d (install fails), xatlas (3/10 quality, subprocess integration fails). All external Python UV tools are not viable for the QR pipeline.
+- `references/uv-fold-repair.md` — Island self-fold (岛内自折叠) detection via `uv.select_overlap`, the local re-unwrap (SLIM) + `average_islands_scale()` + repack repair recipe (437 fold faces → 0), why no angle threshold or packer setting clears it, and the ray→UV→texel-ownership verification chain.
 - `references/ai-texture-color-bleed-fix.md` — AI texture color bleed, BOTH directions: skin→clothing (pre-bake mask fix) and dark clothing→skin (fixed on the BAKED diffuse right after the bake + `img.reload()`). Carry the judge (luminance + distance-to-garment, whole-garment exclusion), the three mask traps, render-diff verification, and the mesh-space residue scan (`scripts/mesh_space_texture_residue_scan.py`).
   technique for improving utilization on QR meshes. Includes `seams_from_islands()`
   workflow, bmesh island detection in edit mode, row-first layout algorithm,
