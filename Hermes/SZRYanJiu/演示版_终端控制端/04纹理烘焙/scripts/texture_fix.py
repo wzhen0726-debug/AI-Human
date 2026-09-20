@@ -48,22 +48,39 @@ def fix_diffuse_png(path, win=25, skin_frac_th=0.50, reach_px=18, lum_th=95,
         return dict(before=0, after=0, note="未找到衣物类大色块, 跳过")
     # ② 候选渗出: 偏暗(深褐/暗红, 亮度<lum_th) + 紧贴衣物边界(距本体≤reach_px) + 不在衣物本体核心内
     #    渗出贴合衣物边缘(窗口会被暗侧占半) → 不能用"皮肤占比高"判据; 距离+亮度即可.
-    #    代价: 衣物本体边缘最外 ~5px 可能被轻微削平(4K 下 ≈0.5mm, 属"稍微处理"允差).
+    #    v3(2026-09-18): 加 2px 保护环 —— 距本体≤2px 的像素是【衣物自己的抗锯齿边】,
+    #    旧版把它们一并替换 → 渲染里衣物边缘被啃出米色锯齿缺口(A/B实锤). 保护环让边缘原样保留,
+    #    只清保护环之外的渗出带; 残余的 ≤2px 暗环与衣物边缘自然相接, 视觉上即衣物边.
     dist_big = ndimage.distance_transform_edt(~big)
     # 衣物本体(近黑连通块)整块排除 → 只动它外圈的深色渗出(亮度在 本体内<48 与 阈值95 之间者)
-    cand = (lum < lum_th) & (~empty) & (~big) & (dist_big <= reach_px)
+    cand = (lum < lum_th) & (~empty) & (~big) & (dist_big <= reach_px) & (dist_big > 2.0)
     spill = cand
     before = int(spill.sum())
     if before == 0:
         return dict(before=0, after=0, note="无溢出像素")
     if before > max_frac * H * W:
         return dict(before=before, after=before, note=f"溢出>上限{max_frac:.1%}, 未写回(请人工检查判据)")
-    # ③ 就近皮肤色(取溢出周边皮肤像素中位数, 避免全局偏色)
-    near = ndimage.binary_dilation(spill, iterations=6)
-    src = skin & near
-    col = np.median(a[src], axis=0).astype(np.uint8) if src.sum() > 50 else np.median(a[skin], axis=0).astype(np.uint8)
+    # ③ 逐像素"最近皮肤色"填充(v2 2026-09-18 源头修复):
+    #    旧法=整片填【全局中位皮肤色】—— 实测在4K图上留下 33 处平涂斑块(内部std≈0/邻域强边,
+    #    最大748px, 与周边色差101), 因皮肤明暗沿边界连续变化, 单一颜色必然与环境不符 = 用户可见斑块。
+    #    新法: 每个渗出像素取【离它最近的未修改皮肤像素的真实颜色】(EDT return_indices) ——
+    #    保留边界方向的明暗渐变, 不引入任何全局色; 距离>3×reach 的孤点跳过(异常保护)。
+    valid = skin & (~spill)
+    if valid.sum() < 50:
+        valid = (~spill) & (~empty)
+    _dist, (_iy, _ix) = ndimage.distance_transform_edt(~valid, return_indices=True)
     fixed = a.copy()
-    fixed[spill] = col
+    _ys, _xs = np.where(spill)
+    _ok = _dist[_ys, _xs] <= 3.0 * reach_px
+    fixed[_ys[_ok], _xs[_ok]] = a[_iy[_ys[_ok], _xs[_ok]], _ix[_ys[_ok], _xs[_ok]]]
+    col = np.median(a[valid], axis=0).astype(np.uint8)   # 仅用于报告
+    # ③b 掩膜内扩散(消"最近邻拼贴"面片化): NN 初值 → 4邻域 Jacobi 迭代;
+    #     边界像素固定不动(不把掩膜外像素拉进来), 掩膜内收敛为边界连续的平滑填充。
+    _f = fixed.astype(np.float32)
+    for _it in range(40):
+        _avg = 0.25 * (np.roll(_f, 1, 0) + np.roll(_f, -1, 0) + np.roll(_f, 1, 1) + np.roll(_f, -1, 1))
+        _f[spill] = _avg[spill]
+    fixed = np.clip(_f, 0, 255).astype(np.uint8)
     # ④ 边缘过渡(2px 带内做高斯混合, 消除硬界)
     trans = ndimage.binary_dilation(spill, iterations=2) & (~spill)
     for c in range(3):
@@ -81,7 +98,7 @@ def fix_diffuse_png(path, win=25, skin_frac_th=0.50, reach_px=18, lum_th=95,
         thr2 = max(sz2.max() * 0.15, np.sum(lum2 < 48) * 0.005)
         for i2 in np.where(sz2 > thr2)[0]:
             big2 |= (lab2 == i2 + 1)
-    after = int(((lum2 < lum_th) & (~em2) & (~big2) & (dist_big <= reach_px)).sum())
+    after = int(((lum2 < lum_th) & (~em2) & (~big2) & (dist_big <= reach_px) & (dist_big > 2.0)).sum())
     # 预览裁图(供人工核对, 只读输出)
     if crop_dir:
         try:
