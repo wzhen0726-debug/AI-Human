@@ -9,3 +9,9 @@
 3. **打包交付**：阶段性收口时重新打包到 `skill包/数字人项目skill包_<日期>.zip`（648KB/208文件规模），解压到目标机器 `%LocalAppData%\hermes\skills\` 即可。包内保留 `mlops/`、`3d/`、`software-development/` 分类目录。
 4. **打包范围**：主管线 + `blender-body-wrap`(失败档案) + `blender-head-retopology` + `blender-uv-texture-baking` + `glb-inspect-and-report` + `error-first-root-cause`。
 5. 打包用 Python `shutil.make_archive`，stage 目录用后删除。
+
+## ⚠️ SKILL.md 体积上限（2026-09-20 实测）
+
+主 SKILL.md 已达 ~100,095 字符，**触顶平台 100,000 上限** —— 任何“增加文字”的 patch 都会报 `SKILL.md content is 100,095 characters (limit: 100,000)` 并**整批回滚**（write_file 也会被连坐）。
+- 新内容一律写进 `references/`，指针挂在**已有且必读的 reference**上（如 `bake-qa.md`；主文件的“成对交付”规则暂时无法执行）；
+- 需要直接编辑主文件时，先用“净化式 patch”（删旧+增新、净体积下降）把总量压到 9.8 万以下；后续做一次瘦身拆分（把长段移入 references/）。

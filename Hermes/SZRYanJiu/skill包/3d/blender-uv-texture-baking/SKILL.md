@@ -356,6 +356,8 @@ Do NOT use `nt.links.remove(node1.outputs['X'], node2.inputs['Y'])` — that API
 
 **⚠️ Blender 5.1: `colorspace_settings.name` clears baked pixel data**: Setting `tex_node.image.colorspace_settings.name = 'Non-Color'` on a Normal map image that ALREADY has baked pixel data DESTROYS the data — the image becomes all zeros. Set colorspace BEFORE `bpy.ops.object.bake(type='NORMAL')`, never after. In `connect_textures()`, only create node connections; do NOT modify image properties.
 
+**⚠️ Reconnect the bake-target node before saving the .blend (export-time temporary disconnects)**: The normal bake requires a TexImage→NormalMap→BSDF chain wired; scripts commonly wire it, bake, then disconnect it "so the FBX export isn't affected" — and never reconnect. The saved blend then ships BaseColor-only: the normal map file exists on disk, but every render/viewport (including the user's) shows a flat, detail-less surface. Rule: any node disconnected for an export must be reconnected after the export call and before `save_as_mainfile`; verify by programmatically dumping the BSDF's Base Color / Normal / Roughness link status on the SAVED file. Measure the visible impact with a single-variable A/B (disconnect/reconnect in one session) before attributing any visual defect to it — the effect can be small, so reconnect for correctness, not as a headline fix.
+
 **⚠️ Blender 5.1: `pass_filter` does NOT accept 'NORMAL'**: `bake(type='NORMAL', pass_filter={'NORMAL'})` raises `TypeError`. Valid values: 'NONE', 'EMIT', 'DIRECT', 'INDIRECT', 'COLOR', 'DIFFUSE', 'GLOSSY', 'TRANSMISSION'. Use `bake(type='NORMAL')` without pass_filter.
 
 **⚠️ Adaptive bake distance**: Fixed small distance causes black patches on large models. Compute: `max(0.1, model_max_bbox * 0.15)`.
