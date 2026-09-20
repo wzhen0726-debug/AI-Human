@@ -335,6 +335,16 @@ bpy.ops.export_scene.fbx(
     add_leaf_bones=False, bake_anim=False, path_mode='COPY', embed_textures=True
 )
 
+# v7(2026-09-20): FBX导出后【重新接回法线】—— 此前断开后再未接回, 保存的blend里没有法线,
+#   用户所见毛孔/皱纹/五官细节全糊(实测确认)。blend保存必须在重接之后; 节点仍指向本次烘焙的normal_img。
+try:
+    nt.links.new(normal_tex.outputs['Color'], normal_map.inputs['Color'])
+    nt.links.new(normal_map.outputs['Normal'], bsdf.inputs['Normal'])
+    nt.nodes.active = tex
+    print("法线贴图已重新接入(供blend与后续环节使用)")
+except Exception as _e:
+    print(f"⚠ 法线重接失败(不阻断): {_e}")
+
 # 保存blend —— v5 起输出两份(用户要求, 便于对照检查是哪一步的问题):
 #   04_bake_未调整.blend = 纯烘焙(不做纹理调整)
 #   04_bake.blend        = 烘焙+纹理调整(管线默认沿用)
