@@ -129,11 +129,15 @@ from bake_qa import measure as _qa_measure, better as _qa_better
 _M0 = int(bpy.context.scene.render.bake.margin)          # 既有基准(16px)
 _LADDER = [_M0, int(round(_M0 * 1.5)), int(round(_M0 * 0.6))]
 
-# ===== v6(2026-09-20): 眼窝区掩膜(低模眼窝内壁 + 接缝带) =====
+# ===== v6(2026-09-20): 眼窝区掩膜(低模眼窝内壁) =====
 # 病根: 01a重建的socket内壁在低模上法线平化, 烘焙射线散打, 会采到睫毛/眼睑深色 → 眼窝内/眼珠边缘黑块。
-# 掩膜全数据推导: 场景真实眼球对象(位置/尺寸) + 低模上面向眼窝中心的内壁面 → 光栅化其UV。
-def _build_socket_mask(_low, _res=4096, _r_gate=2.0, _f_gate=0.25):
+# 做法(全数据推导): 眼眶前方正交网格打射线 → 命中的低模面(=从正面透过眼裂可见的表面) →
+#   再按"面中心距眼心 ≤ 1.35×眼球半径"筛出【内壁】(睫毛/眼睑边在外, 不受影响) → 光栅化其UV为掩膜。
+def _build_socket_mask(_low, _res=4096, _r_gate=1.35, _grid=200):
     import numpy as _np
+    from mathutils import Vector as _V
+    from mathutils.bvhtree import BVHTree as _BVH
+    import bmesh as _bm
     _eyes = [o for o in bpy.data.objects if ("Eye002" in o.name) and o.type == 'MESH']
     if len(_eyes) < 2:
         return None
@@ -145,15 +149,29 @@ def _build_socket_mask(_low, _res=4096, _r_gate=2.0, _f_gate=0.25):
         _c = _vw.mean(axis=0); _r = float(_np.linalg.norm(_vw - _c, axis=1).max())
         _cents.append((_c, _r))
     _me = _low.data; _M = _np.array(_low.matrix_world)
+    _bmh = _bm.new(); _bmh.from_mesh(_me); _bvh = _BVH.FromBMesh(_bmh); _bmh.free()
+    _Minv = _low.matrix_world.inverted()
+    _diry = (_Minv.to_3x3() @ _V((0, 1, 0))).normalized()
     _n = len(_me.polygons)
     _ctr = _np.empty((_n, 3)); _me.polygons.foreach_get("center", _ctr.ravel())
-    _nrm = _np.empty((_n, 3)); _me.polygons.foreach_get("normal", _nrm.ravel())
-    _ctr_w = _ctr @ _M[:3, :3].T + _M[:3, 3]; _nrm_w = _nrm @ _M[:3, :3].T
-    _sel = _np.zeros(_n, bool)
+    _ctrw = _ctr @ _M[:3, :3].T + _M[:3, 3]
+    _hits = set()
     for _c, _r in _cents:
-        _d = _ctr_w - _c; _dist = _np.linalg.norm(_d, axis=1)
-        _fac = _np.einsum('ij,ij->i', _nrm_w, _d) / _np.maximum(_dist, 1e-9)
-        _sel |= (_dist < _r * _r_gate) & (_fac > _f_gate)
+        _R = _r * 2.2
+        for _i in range(_grid):
+            for _j in range(_grid):
+                _x = _c[0] - _R + 2 * _R * _i / (_grid - 1)
+                _z = _c[2] - _R + 2 * _R * _j / (_grid - 1)
+                _o = _V((float(_x), -0.5, float(_z)))
+                _l2, _no, _fi, _dd = _bvh.ray_cast(_Minv @ _o, _diry, 10.0)
+                if _l2 is not None:
+                    _hits.add(_fi)
+    # 内壁筛选: 距眼心 ≤ 1.35r
+    _sel = _np.zeros(_n, bool)
+    _hi = _np.array(sorted(_hits), np.int64) if _hits else _np.array([], np.int64)
+    for _c, _r in _cents:
+        _d = _ctrw[_hi] - _c; _dist = _np.linalg.norm(_d, axis=1)
+        _sel[_hi[_dist < _r * _r_gate]] = True
     if _sel.sum() == 0:
         return None
     _uv = _np.empty((len(_me.loops), 2)); _me.uv_layers.active.data.foreach_get("uv", _uv.ravel())
@@ -188,7 +206,7 @@ def _build_socket_mask(_low, _res=4096, _r_gate=2.0, _f_gate=0.25):
         _md[1:, :] |= _mask[:-1, :]; _md[:-1, :] |= _mask[1:, :]
         _md[:, 1:] |= _mask[:, :-1]; _md[:, :-1] |= _mask[:, 1:]
         _mask = _md
-    print(f"眼窝区掩膜: {int(_mask.sum())} texel ({100.0*_mask.mean():.2f}%), 内壁面={int(_sel.sum())}")
+    print(f"眼窝区掩膜: {int(_mask.sum())} texel ({100.0*_mask.mean():.2f}%), 射线命中面={len(_hits)}, 内壁面={int(_sel.sum())}")
     return _mask
 
 _SOCKET_MASK = None

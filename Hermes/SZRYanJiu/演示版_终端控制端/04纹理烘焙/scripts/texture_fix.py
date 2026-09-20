@@ -31,12 +31,15 @@ def fix_socket_zone_png(path, mask, sigma=2.0):
     im = Image.open(path).convert("RGB")
     a = np.array(im).astype(np.float32)
     H, W = a.shape[:2]
+    # ★ 行序修正(2026-09-20): 掩膜按UV空间生成(row= v*res, v=0在下); PIL数组 row0=图像顶部(1-v)。
+    #   不翻转会把修复填到上下镜像的错位置(真正的眼窝texel漏掉, 实测）。
+    mask = mask[::-1, :].copy()
     if mask.shape != (H, W):
         return {"note": "掩膜尺寸不符, 跳过", "changed": 0}
     r, g, b = a[:, :, 0], a[:, :, 1], a[:, :, 2]
     empty = (r <= 2) & (g <= 2) & (b <= 2)
     lum = 0.30 * r + 0.59 * g + 0.11 * b
-    src_mask = (~mask) & (lum > 100) & (~empty)
+    src_mask = (~mask) & (lum > 105) & (~empty)
     if src_mask.sum() < 16:
         return {"note": "掩膜外无足够皮肤源, 跳过", "changed": 0}
     ind = ndimage.distance_transform_edt(~src_mask, return_distances=False, return_indices=True)
