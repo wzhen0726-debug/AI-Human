@@ -243,12 +243,15 @@ for _ri, _mg in enumerate(_LADDER):
             print(f"  (第{_ri+1}轮)贴图溢出处理(弱渗二遍): {_tx2.get('note', '')}")
             # v4: 五官保护球(由场景眼球对象实测推导) —— 替代旧的"身高80%截断"
             #     (旧截断把 z>1.457m 的上胸/领口/肩颈全划入保护区, 用户反馈区因此从未被 v2 清理)
+            # v7审计(2026-09-20): 半径 1.6×瞳距≈109mm 覆盖不到下巴/下颌(距眼心~115-130mm) →
+            #     这些"五官系统的一部分"暴露在 v2 的"非肤色异常即替换"判据下(嘴唇缝/胡青/下巴阴影有被抹风险)。
+            #     改 2.2×瞳距(≈150mm): 完整覆盖头面部(至下巴), 仍远小于到锁骨/上胸的距离(≥250mm), 不回转旧问题。
             _eyes = [o for o in bpy.data.objects if "Eye002" in o.name]
             _fc = _fr = None
             if len(_eyes) == 2:
                 _a0 = _eyes[0].matrix_world.translation; _a1 = _eyes[1].matrix_world.translation
                 _fc = (float((_a0.x + _a1.x) / 2), float((_a0.y + _a1.y) / 2), float((_a0.z + _a1.z) / 2))
-                _fr = 1.6 * float((_a0 - _a1).length)
+                _fr = 2.2 * float((_a0 - _a1).length)
                 print(f"  (第{_ri+1}轮)五官保护球: 心=({_fc[0]*1000:.0f},{_fc[1]*1000:.0f},{_fc[2]*1000:.0f})mm R={_fr*1000:.0f}mm")
             for _p in (1, 2):
                 _ty = fix_diffuse_mesh_guided(_rp, [low_poly], face_center=_fc, face_R=_fr)
