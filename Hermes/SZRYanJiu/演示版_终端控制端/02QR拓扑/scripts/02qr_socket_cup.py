@@ -15,7 +15,7 @@
 
 输出: 02QR拓扑/输出/02_qr_150k_socket.blend
 """
-import bpy, os, json, math, numpy as np, bmesh
+import bpy, os, sys, json, math, numpy as np, bmesh
 import functools
 print = functools.partial(print, flush=True)   # 日志实时可见(定位卡点)
 from mathutils import Vector
@@ -252,6 +252,20 @@ for p in me.polygons:
     p.use_smooth = True
 # 2026-09-17 流程变更(用户): 眼球摆入挪到【碗之后】(碗=纯rim几何, 不看眼球);
 # 眼球并入改由 run_eyeball_v2 在摆入完成后进行 → 本脚本不再接触眼球。
+
+# 自交穿插清理 (2026-09-22 新增)
+#   用户报"右侧 rim 环出现破面"。归属实测(局部自交对): 高模=8 → QR原始=0 → 建碗后=1,
+#   位置 (0.051,-0.105,1.674) = 右眼外眦, 即碗面在最深环与 rim 之间的环带在此处对折。
+#   QR 重拓扑本身是干净的(0对), 是建碗在这一步产生的 → 就在这一步清掉。
+try:
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from selfint_clean import clean_self_intersections
+    _rp = clean_self_intersections(obj)
+    print("自交清理:", json.dumps(_rp, ensure_ascii=False))
+except Exception as _e:
+    import traceback as _tb
+    _tb.print_exc()
+    print(f"⚠ 自交清理失败(不阻塞): {_e}")
 
 bpy.ops.wm.save_as_mainfile(filepath=OUT)
 print("SAVED:", OUT)

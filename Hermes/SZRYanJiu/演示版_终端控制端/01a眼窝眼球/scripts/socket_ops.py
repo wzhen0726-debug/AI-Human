@@ -716,7 +716,7 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
     if nv0 > RIM_BAND_MAX_FACES:
         bm.free()
         print(f"rebuild_rim_band {side}: 带内 {nv0} 面 > 上限{RIM_BAND_MAX_FACES}, 放弃")
-        return
+        return False
     bmesh.ops.delete(bm, geom=victims, context='FACES')
     bm.verts.ensure_lookup_table()
     bm.edges.ensure_lookup_table()
@@ -795,7 +795,7 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
         if not bad:
             bm.free()
             print(f"rebuild_rim_band {side}: 边界异常且定位不到问题顶点, 回退")
-            return
+            return False
         bad_xy = [(v.co.x, v.co.z) for v in bad]
         v2 = []
         for f in bm.faces:
@@ -808,7 +808,7 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
         if not v2:
             bm.free()
             print(f"rebuild_rim_band {side}: 边界异常(死端 {len(bad)} 个)且无可删面, 回退")
-            return
+            return False
         print(f"rebuild_rim_band {side}: 第{_try+1}轮边界不闭环(走{len(ring)}/{len(st)}), "
               f"删问题顶点周围 {len(v2)} 面后重试")
         bmesh.ops.delete(bm, geom=v2, context='FACES')
@@ -817,7 +817,7 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
     if outer is None:
         bm.free()
         print(f"rebuild_rim_band {side}: 6 轮仍无法得到单一闭环边界, 放弃")
-        return
+        return False
     vmap = {v.index: v for v in bm.verts}
     K = len(outer)
     # ---- ③ 内圈 = 手描轮廓, 按【极角单调配对】(v87, 2026-09-18 焦点修复):
@@ -1468,6 +1468,8 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
     if failed_k:
         _fk = failed_k[:6]
         print("   未闭合格位置: " + "; ".join(f"dx{(inner[i].co.x-cv.x)*1000:+.2f} dz{(inner[i].co.z-cv.z)*1000:+.2f}" for i in _fk))
+    # 2026-09-22: 返回成功/失败供【按眼门控选 K】使用(True=得到单一闭环且带内无未闭合格)
+    return (not failed_k)
 
 
 def rebuild_rim_patch(obj, center, side, poly, R_out_mm=3.5, inner_tol_mm=0.35):
@@ -2148,13 +2150,16 @@ def rebuild_rim_block_qa(obj, center, side, poly):
     base_w = RIM_BAND_W_MM
     tries = [base_w, base_w * 1.45, base_w * 0.70]
     best = None
+    best_ok = None          # 2026-09-22 门控: 该轮 rim 带重建是否成功(单一闭环+带内无未闭合格)
     for i, W in enumerate(tries):
         if i > 0:
             obj.data = snap.copy()
             obj.data.name = f"_rimQA_try{i+1}"
         t0 = _time.time()
         try:
-            rebuild_rim_band(obj, center, side, poly, W_mm=W)
+            _band_ok = rebuild_rim_band(obj, center, side, poly, W_mm=W)
+            if _band_ok is None:
+                _band_ok = True     # 带未启用等"不适用" → 不做门控
             remove_ring_folds(obj, center, side)
             relax_surface_at_spikes(obj, center, side)
             relax_ring_spikes(obj, center, side)
@@ -2169,16 +2174,18 @@ def rebuild_rim_block_qa(obj, center, side, poly):
         print(f"rim块 QA 第{i+1}轮 W={W:.2f}mm [{_time.time()-t0:.0f}s]: "
               f"band {q['band_n']}面 小角{q['band_bad']*100:.1f}%/长条{q['band_sliver']*100:.1f}%/针状{q['band_needle']*100:.1f}% "
               f"vs 参考 {q['ref_n']}面 {q['ref_bad']*100:.1f}%/{q['ref_sliver']*100:.1f}%/{q['ref_needle']*100:.1f}%")
-        if best is None or score < best[0]:
+        # 择优: 成功轮优先于失败轮; 同为成功/失败时比分数
+        if best is None or (best_ok is False and _band_ok is True) or (best_ok == _band_ok and score < best[0]):
             best = (score, W, obj.data.copy(), q)
-        if (q["band_bad"] <= 2.0 * max(q["ref_bad"], 1e-9) and q["band_sliver"] <= 2.0 * max(q["ref_sliver"], 1e-9)
+            best_ok = _band_ok
+        if _band_ok and (q["band_bad"] <= 2.0 * max(q["ref_bad"], 1e-9) and q["band_sliver"] <= 2.0 * max(q["ref_sliver"], 1e-9)
                 and q["band_needle"] <= 2.0 * max(q["ref_needle"], 1e-9)):
             print("rim块 QA: 达标(不差于参考带2倍) → 早停")
             break
     if best is not None:
         obj.data = best[2]
         q = best[3]
-        print(f"rim块 QA 选定: W={best[1]:.2f}mm → band 小角{q['band_bad']*100:.1f}%/长条{q['band_sliver']*100:.1f}%/针状{q['band_needle']*100:.1f}% "
+        print(f"rim块 QA 选定: W={best[1]:.2f}mm 带重建={'成功' if best_ok else '失败'} → band 小角{q['band_bad']*100:.1f}%/长条{q['band_sliver']*100:.1f}%/针状{q['band_needle']*100:.1f}% "
               f"(参考 {q['ref_bad']*100:.1f}%/{q['ref_sliver']*100:.1f}%/{q['ref_needle']*100:.1f}%, 判据自参照)")
     try:
         for m in list(bpy.data.meshes):
@@ -2186,9 +2193,10 @@ def rebuild_rim_block_qa(obj, center, side, poly):
                 bpy.data.meshes.remove(m)
     except Exception:
         pass
+    return best_ok      # 2026-09-22 门控用: True/False; None=未知(无有效轮)
 
 
-def make_eye_socket(obj, center, side):
+def make_eye_socket(obj, center, side, k_override=None):
     """开孔: 沿手描眼睑轮廓切出眼洞.
     v62(2026-09-14): 洪泛删面 → 棱柱 boolean EXACT 切割.
       根因: 洪泛删面的洞边界只能落在网格边环上 → 到手描轮廓偏差最大~1mm(网格量化),
@@ -2219,7 +2227,15 @@ def make_eye_socket(obj, center, side):
         #   走"全带重建"的源头, 不动 strip → 不会引入 fold/穿插。
         _Rt_c = 0.07 * float(CUR.get('eye_w', 0.035))
         _k_try = int(RIM_CONTOUR_HARMONICS)
-        _k_floor = max(2, int(RIM_CONTOUR_HARMONICS) - 10)  # 2026-09-16 用户拍板K=2(可见的眼睑边缘锯齿是验收面; 碗内部隐藏面比值稍涨可接受): 角半径1.60→2.68mm达标
+        _k_floor = max(2, int(globals().get('RIM_CONTOUR_K_FLOOR', 2)))  # 2026-09-22 用户拍板: 下限改为配置项(当前4)
+        #   原实现下限=max(2,K-10)=2, 从12一路降到2 —— 2026-09-16 拍板K=2(可见的眼睑边缘锯齿是验收面): 角半径1.60→2.68mm达标。
+        #   2026-09-22 用户改为收紧区间[4,6]: 让 rim 更贴手描轮廓(实测K=2时与手描偏差2.96mm/洞口周长+8.6%), 代价=眼角曲率半径变小。
+        # 2026-09-22 门控(用户方案A): 由调用方(run_eye_socket)按眼循环 K, 这里只负责按指定 K 光滑化;
+        #   是否采用该 K 由"rim 带重建是否得到单一闭环"决定(不合理就回滚换更小的 K)。
+        if k_override is not None:
+            _k_try = max(_k_floor, min(int(k_override), int(RIM_CONTOUR_HARMONICS)))
+            _k_floor = _k_try          # 只跑一轮 = 强制用该 K
+            print(f"make_eye_socket {side}: [门控] 指定谐波 K={_k_try}(区间下限{max(2, int(globals().get('RIM_CONTOUR_K_FLOOR', 2)))}，不启用自动搜索)")
         _best = None
         while _k_try >= _k_floor:
             _p2, _dev2 = smooth_contour(poly, harm=_k_try)
@@ -2302,7 +2318,7 @@ def make_eye_socket(obj, center, side):
                 mesh.materials.pop(index=_mnames.index("SOCKET_CUT_TMP"))
             # 环去刺: ① 先对尖点处【表面】做局部去噪(根因: 表面在那儿有褶/噪点) ② 再对环上残余尖点做环内松弛
             # v86: rim块(带重建→折返清理→松弛→环重建) 外套【检测→调参(W阶梯)→择优, 不阻断】
-            rebuild_rim_block_qa(obj, center, side, poly)
+            _band_ok = rebuild_rim_block_qa(obj, center, side, poly)   # 2026-09-22: 返回 True/False/None 供门控
             mesh = obj.data   # v86: QA 可能整体替换 mesh 数据块(择优保留), 重新绑定
             bpy.ops.object.mode_set(mode='EDIT')
             bm = bmesh.from_edit_mesh(mesh)
@@ -2314,7 +2330,7 @@ def make_eye_socket(obj, center, side):
             print(f"make_eye_socket {side}: boolean掏空环内完成, 删坑面 {len(_cutf)}, "
                   f"rim环顶点 {_n0}→{len(_oe)}")
             bpy.ops.object.mode_set(mode='EDIT')
-            return
+            return _band_ok      # 2026-09-22 门控: 把"rim带重建是否得到单一闭环"上抛给调用方
         # ③b v63: 保留 boolean 切出的眼窝 pit(竖直壁+平底), 按材质槽【精确】识别这些新面 → 打 tag=2.
         #    不再删壁面重建碗: 删壁面后环走不通(实测L环间距45mm/R侧M=5), 且pit的开口边界本来就精确贴轮廓.
         bpy.ops.object.mode_set(mode='EDIT')

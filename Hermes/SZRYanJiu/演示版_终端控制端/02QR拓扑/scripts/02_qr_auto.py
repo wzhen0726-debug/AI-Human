@@ -1,4 +1,4 @@
-import bpy, os, sys, subprocess, tempfile, time, math
+import bpy, os, sys, subprocess, tempfile, time, math, json
 
 ROOT = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端"
 # 2026-09-09 用户明确: 测试阶段产物权威位置是 02QR拓扑/输出/(GUI核验处). 2026-09-17 归位: 交付/ 已删.
@@ -391,6 +391,22 @@ if _nmat > 1:
     assert len(_chk) == 1, f"材质合并失败! 仍有多槽={_chk}"
 else:
     print(f"   材质槽={_nmat}(QR未保留分区, 无需合并)")
+
+# 8.8 自交穿插清理 (2026-09-22 新增)
+#   用户报"右侧正面+侧面腿部衣服与身体交界略上1cm 两处破面"。归属实测:
+#   该处高模局部自交=0, 而 QR 重拓扑输出=34 对 → 是 QR 把"衣服壳/身体壳"在衣摆交界处
+#   重拓扑成单层封闭面时产生的双层近共面微折 + 绕向不一致面(渲染成尖角/台阶/暗面)。
+#   清理只做: 缺陷处顶点级微焊接(距离自动搜最小档) + 删同顶点集重复面 + 绕向修复;
+#   硬约束: 不得让 非流形边/退化面 变多, 不得在别处新生缺陷簇, 否则该档回退。
+try:
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from selfint_clean import clean_self_intersections
+    _rp = clean_self_intersections(qr_obj)
+    print("[8.8] 自交清理:", json.dumps(_rp, ensure_ascii=False))
+except Exception as _e:
+    import traceback as _tb
+    _tb.print_exc()
+    print(f"[8.8] ⚠ 自交清理失败(不阻塞主流程): {_e}")
 
 # 9. 保存主产物(单材质, 供下游03/04)
 output_blend = os.path.join(W_02, "_中间", "02_qr_150k.blend")

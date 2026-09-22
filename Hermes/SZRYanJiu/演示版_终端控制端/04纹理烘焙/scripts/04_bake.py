@@ -4,7 +4,10 @@ import numpy as np
 ROOT = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端"
 PROJECT_ROOT = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端"
 UV_BLEND = os.path.join(ROOT, "03自动UV", "输出", "03_auto_uv.blend")
-HIGH_POLY = os.path.join(ROOT, "01a眼窝眼球", "输出", "01_1_eye_socket.blend")
+# 2026-09-22 用户定案: 烘焙源用01修复高模(眼睑闭合), 不用01a眼窝版.
+# 原因: 01a的眼窝碗是新切几何, 其UV在8K贴图上无有效texel → 碗内烘出暗青黑块;
+# 01眼睑闭合, 眼窝区烘到眼睑皮肤色, 眼球遮挡后整体自然(用户验收标准).
+HIGH_POLY = os.path.join(ROOT, "01高模修复", "输出", "01_highpoly_repair.blend")
 FIXED_TEX = os.path.join(ROOT, "01高模修复", "输出", "01_original_tex_fixed.png")
 OUT_04 = os.path.join(ROOT, "04纹理烘焙", "输出")
 os.makedirs(OUT_04, exist_ok=True)
@@ -13,8 +16,14 @@ print("=== Step 4: Bake 4K (修复贴图) ===")
 
 # 加载低模(UV已展开)
 bpy.ops.wm.open_mainfile(filepath=UV_BLEND)
-# 2026-09-16: 文件里现在含眼球(02起全程连贯), 不能取[0]; 低模=最大网格
-low_poly = max([o for o in bpy.data.objects if o.type == 'MESH'], key=lambda o: len(o.data.vertices))
+# 明确选带_QR后缀的低模(避免选到高模残留)
+low_poly = None
+for o in bpy.data.objects:
+    if o.type == 'MESH' and '_QR' in o.name:
+        low_poly = o
+        break
+if low_poly is None:
+    low_poly = min([o for o in bpy.data.objects if o.type == 'MESH'], key=lambda o: len(o.data.vertices))
 print(f"低模: {low_poly.name}, {len(low_poly.data.polygons)}面")
 
 # 导入高模
@@ -101,13 +110,13 @@ bpy.context.scene.render.bake.use_pass_indirect = False
 bpy.context.scene.render.bake.use_pass_color = True
 bpy.context.scene.render.bake.margin = 16
 bpy.context.scene.render.bake.use_selected_to_active = True
-# cage挤出/射线距离: 按模型bbox尺寸比例, 不写死绝对值(跨体型自适应)
-# v5(2026-09-18 晚): S2A语义 = 射线从"低模表面+法线×cage"出发、方向向内, 总长=max_ray_distance。
-#   实测低↔高最大偏差仅 1.97mm(≈bbox的0.11%), 而旧参数 ray=bbox×0.056≈101mm = 20mm笼+81mm乱跑:
-#   在衣物/肩带覆盖处笼点(20mm)高于衣物 → 射线下降先打到衣物 → 皮肤纹素被染衣物深色(渲染脏线, 已实测定位)。
-#   修正: cage 取"皮肤到衣物间距"量级(≈6mm, 停在覆盖物下方), ray = cage + 8mm搜索(≥4×实测最大偏差)。
-bpy.context.scene.render.bake.cage_extrusion = bbox_max * 0.0033    # 起点停在皮肤与衣物之间
-bpy.context.scene.render.bake.max_ray_distance = bbox_max * 0.0077  # 笼(0.0033) + 搜索(0.0044)
+# cage挤出/射线距离 (2026-09-22 用户实测+BVH几何调研定案): **区域自适应cage, 2次烘焙texel合成**
+#   数据: 眼窝碗区 cage=0.10 正面命中400/427(0.02时仅60/427) → 眼窝需要大cage;
+#         但全局0.10使肩带薄区ray起点10cm外首中肩皮肤 → 肩带皮肤色涡斑(实测回归) → 身体需要小cage.
+#   解: passA cage=0.02(身体主体) + passB cage=0.10(眼窝碗), 碗区UV三角形mask内取B, 其余取A.
+#   ray = 0(无限): 穿透由首命中决定与ray无关, 有限ray只造成眼窝miss黑块(用户实测0更好).
+CAGE_BODY = bbox_max * 0.011
+CAGE_EYE = bbox_max * 0.055
 
 bpy.ops.object.select_all(action='DESELECT')
 high_poly.select_set(True)
@@ -115,182 +124,130 @@ low_poly.select_set(True)
 bpy.context.view_layer.objects.active = low_poly
 nt.nodes.active = tex
 
-# ===== v2(2026-09-18 用户要求): 烘焙审核机制 —— 轮次(边距阶梯)→每轮[烘→存→贴图处理→测量]→字典序择优 =====
-#   参数全部由数据推导: 阶梯 = 既有基准×[1, 1.5, 0.6]; 择优 = (未填充, 脏块, 密度CV) 字典序最小; 双零早停.
-import sys as _sys
-_sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-try:
-    from texture_fix import fix_diffuse_png, fix_diffuse_mesh_guided, fix_socket_zone_png
-    _HAVE_FIX = True
-except Exception as _e:
-    _HAVE_FIX = False
-    print(f"⚠ 贴图处理模块缺失(不影响烘焙): {_e}")
-from bake_qa import measure as _qa_measure, better as _qa_better
-_M0 = int(bpy.context.scene.render.bake.margin)          # 既有基准(16px)
-_LADDER = [_M0, int(round(_M0 * 1.5)), int(round(_M0 * 0.6))]
+print(f'烘焙Diffuse passA (cage={CAGE_BODY:.4f} 身体主体)...')
+bpy.context.scene.render.bake.cage_extrusion = CAGE_BODY
+bpy.context.scene.render.bake.max_ray_distance = 0.0
+bpy.ops.object.bake(type='DIFFUSE')
+pA = np.array(img.pixels[:]).reshape(4096, 4096, 4).copy()
 
-# ===== v6(2026-09-20): 眼窝区掩膜(低模眼窝内壁) =====
-# 病根: 01a重建的socket内壁在低模上法线平化, 烘焙射线散打, 会采到睫毛/眼睑深色 → 眼窝内/眼珠边缘黑块。
-# 做法(全数据推导): 眼眶前方正交网格打射线 → 命中的低模面(=从正面透过眼裂可见的表面) →
-#   再按"面中心距眼心 ≤ 1.35×眼球半径"筛出【内壁】(睫毛/眼睑边在外, 不受影响) → 光栅化其UV为掩膜。
-def _build_socket_mask(_low, _res=4096, _r_gate=1.35, _grid=200):
-    import numpy as _np
-    from mathutils import Vector as _V
-    from mathutils.bvhtree import BVHTree as _BVH
-    import bmesh as _bm
-    _eyes = [o for o in bpy.data.objects if ("Eye002" in o.name) and o.type == 'MESH']
-    if len(_eyes) < 2:
-        return None
-    _cents = []
-    for _e in _eyes:
-        _Mb = _np.array(_e.matrix_world)
-        _vs = _np.empty((len(_e.data.vertices), 3)); _e.data.vertices.foreach_get("co", _vs.ravel())
-        _vw = _vs @ _Mb[:3, :3].T + _Mb[:3, 3]
-        _c = _vw.mean(axis=0); _r = float(_np.linalg.norm(_vw - _c, axis=1).max())
-        _cents.append((_c, _r))
-    _me = _low.data; _M = _np.array(_low.matrix_world)
-    _bmh = _bm.new(); _bmh.from_mesh(_me); _bvh = _BVH.FromBMesh(_bmh); _bmh.free()
-    _Minv = _low.matrix_world.inverted()
-    _diry = (_Minv.to_3x3() @ _V((0, 1, 0))).normalized()
-    _n = len(_me.polygons)
-    _ctr = _np.empty((_n, 3)); _me.polygons.foreach_get("center", _ctr.ravel())
-    _ctrw = _ctr @ _M[:3, :3].T + _M[:3, 3]
-    _hits = set()
-    for _c, _r in _cents:
-        _R = _r * 2.2
-        for _i in range(_grid):
-            for _j in range(_grid):
-                _x = _c[0] - _R + 2 * _R * _i / (_grid - 1)
-                _z = _c[2] - _R + 2 * _R * _j / (_grid - 1)
-                _o = _V((float(_x), -0.5, float(_z)))
-                _l2, _no, _fi, _dd = _bvh.ray_cast(_Minv @ _o, _diry, 10.0)
-                if _l2 is not None:
-                    _hits.add(_fi)
-    # 内壁筛选: 距眼心 ≤ 1.35r
-    _sel = _np.zeros(_n, bool)
-    _hi = _np.array(sorted(_hits), np.int64) if _hits else _np.array([], np.int64)
-    for _c, _r in _cents:
-        _d = _ctrw[_hi] - _c; _dist = _np.linalg.norm(_d, axis=1)
-        _sel[_hi[_dist < _r * _r_gate]] = True
-    if _sel.sum() == 0:
-        return None
-    _uv = _np.empty((len(_me.loops), 2)); _me.uv_layers.active.data.foreach_get("uv", _uv.ravel())
-    _ls = _np.empty(_n, _np.int32); _me.polygons.foreach_get("loop_start", _ls)
-    _lt = _np.empty(_n, _np.int32); _me.polygons.foreach_get("loop_total", _lt)
-    _mask = _np.zeros((_res, _res), bool)
-    for _fi in _np.where(_sel)[0]:
-        _s0, _l0 = int(_ls[_fi]), int(_lt[_fi])
-        _pts = _uv[_s0:_s0 + _l0]
-        for _k in range(1, _l0 - 1):
-            _tri = _np.array([_pts[0], _pts[_k], _pts[_k + 1]])
-            _x0, _y0 = int(_tri[:, 0].min() * _res), int(_tri[:, 1].min() * _res)
-            _x1, _y1 = int(_np.ceil(_tri[:, 0].max() * _res)), int(_np.ceil(_tri[:, 1].max() * _res))
-            if _x1 <= _x0 or _y1 <= _y0:
-                continue
-            _xs = _np.arange(_x0, min(_x1 + 1, _res)); _ys = _np.arange(_y0, min(_y1 + 1, _res))
-            if len(_xs) == 0 or len(_ys) == 0:
-                continue
-            _gx, _gy = _np.meshgrid(_xs + 0.5, _ys + 0.5)
-            _px, _py = _gx / _res, _gy / _res
-            _ax, _ay = _tri[0]; _bx, _by = _tri[1]; _cx, _cy = _tri[2]
-            _dd = (_by - _cy) * (_ax - _cx) + (_cx - _bx) * (_ay - _cy)
-            if abs(_dd) < 1e-12:
-                continue
-            _w1 = ((_by - _cy) * (_px - _cx) + (_cx - _bx) * (_py - _cy)) / _dd
-            _w2 = ((_cy - _ay) * (_px - _cx) + (_ax - _cx) * (_py - _cy)) / _dd
-            _w3 = 1 - _w1 - _w2
-            _in = (_w1 >= -0.001) & (_w2 >= -0.001) & (_w3 >= -0.001)
-            _mask[_ys[0]:_ys[-1] + 1, _xs[0]:_xs[-1] + 1] |= _in
-    for _ in range(2):
-        _md = _mask.copy()
-        _md[1:, :] |= _mask[:-1, :]; _md[:-1, :] |= _mask[1:, :]
-        _md[:, 1:] |= _mask[:, :-1]; _md[:, :-1] |= _mask[:, 1:]
-        _mask = _md
-    print(f"眼窝区掩膜: {int(_mask.sum())} texel ({100.0*_mask.mean():.2f}%), 射线命中面={len(_hits)}, 内壁面={int(_sel.sum())}")
-    return _mask
+# 眼窝碗区mask: 眼球球心0.95r内的低模面 → UV三角形光栅(+2px膨胀盖缝)
+eye_objs = [o for o in bpy.data.objects if o.type == 'MESH' and 'Eye' in o.name]
+bowl_mask = np.zeros((4096, 4096), bool)
+if eye_objs:
+    from scipy import ndimage as _ndi
+    _lme = low_poly.data
+    _luv = np.empty(len(_lme.loops) * 2); _lme.uv_layers.active.data.foreach_get("uv", _luv); _luv = _luv.reshape(-1, 2)
+    _lme.calc_loop_triangles()
+    _lti = np.empty(len(_lme.loop_triangles) * 3, np.int32); _lme.loop_triangles.foreach_get("loops", _lti); _lti = _lti.reshape(-1, 3)
+    _tp = np.empty(len(_lme.loop_triangles), np.int32); _lme.loop_triangles.foreach_get("polygon_index", _tp)
+    _ctr = np.empty(len(_lme.polygons) * 3); _lme.polygons.foreach_get("center", _ctr)
+    _Ml = np.array(low_poly.matrix_world)
+    _CEN = _ctr.reshape(-1, 3) @ _Ml[:3, :3].T + _Ml[:3, 3]
+    _bowl = np.zeros(len(_lme.polygons), bool)
+    for eo in eye_objs:
+        _cs = np.empty(len(eo.data.vertices) * 3); eo.data.vertices.foreach_get("co", _cs)
+        _Mw = np.array(eo.matrix_world); _cs = _cs.reshape(-1, 3) @ _Mw[:3, :3].T + _Mw[:3, 3]
+        _c = _cs.mean(axis=0); _r = float(np.abs(_cs - _c).max())
+        _bowl |= (np.linalg.norm(_CEN - _c, axis=1) < 0.95 * _r)
+    _bt = set(np.where(_bowl)[0].tolist())
+    G = 4096
+    for t in range(len(_lme.loop_triangles)):
+        if int(_tp[t]) not in _bt:
+            continue
+        tri = _luv[_lti[t]]
+        xs = np.clip((tri[:, 0] * G).astype(int), 0, G - 1); ys = np.clip((tri[:, 1] * G).astype(int), 0, G - 1)
+        x0, x1 = xs.min(), xs.max(); y0, y1 = ys.min(), ys.max()
+        gy, gx = np.mgrid[y0:y1 + 1, x0:x1 + 1]
+        v0, v1, v2 = tri
+        d = (v1[0] - v0[0]) * (v2[1] - v0[1]) - (v2[0] - v0[0]) * (v1[1] - v0[1])
+        if abs(d) < 1e-12:
+            continue
+        w1 = ((gx / G - v0[0]) * (v2[1] - v0[1]) - (gy / G - v0[1]) * (v2[0] - v0[0])) / d
+        w2 = ((gy / G - v0[1]) * (v1[0] - v0[0]) - (gx / G - v0[0]) * (v1[1] - v0[1])) / d
+        bowl_mask[y0:y1 + 1, x0:x1 + 1] |= (w1 >= -0.02) & (w2 >= -0.02) & (w1 + w2 <= 1.02)
+    bowl_mask = _ndi.binary_dilation(bowl_mask, iterations=2)
+    print(f'眼窝碗区mask: {int(_bowl.sum())}面/{int(bowl_mask.sum())}texel')
 
-_SOCKET_MASK = None
-if _HAVE_FIX:
-    try:
-        _SOCKET_MASK = _build_socket_mask(low_poly)
-    except Exception as _e:
-        print(f"⚠ 眼窝掩膜构建失败(跳过此步): {_e}")
+print(f'烘焙Diffuse passB (cage={CAGE_EYE:.4f} 眼窝碗区)...')
+imgB = bpy.data.images.new('MVP_Diffuse_4K_eye', width=4096, height=4096, alpha=False)
+tex.image = imgB
+bpy.context.scene.render.bake.cage_extrusion = CAGE_EYE
+bpy.ops.object.bake(type='DIFFUSE')
+pB = np.array(imgB.pixels[:]).reshape(4096, 4096, 4).copy()
+tex.image = img
+comp = np.where(bowl_mask[:, :, None], pB, pA)
+img.pixels.foreach_set(comp.ravel().astype(np.float32))
+img.update()
+bpy.data.images.remove(imgB)
+print('区域自适应cage合成完成: 碗区取passB, 身体取passA')
 
-_rounds = []
-for _ri, _mg in enumerate(_LADDER):
-    bpy.context.scene.render.bake.margin = _mg
-    print(f'烘焙Diffuse中(第{_ri+1}轮 margin={_mg}px, cage={bbox_max*0.0033:.4f}, ray={bbox_max*0.0077:.4f}, 按bbox比例)...')
-    bpy.ops.object.bake(type='DIFFUSE')
-    _rp = os.path.join(OUT_04, f"_qa_r{_ri+1}_diffuse.png")
-    img.filepath_raw = _rp
-    img.file_format = 'PNG'
-    img.save()
-    import shutil as _sh0
-    if _SOCKET_MASK is not None:
-        try:
-            _sz = fix_socket_zone_png(_rp, _SOCKET_MASK)
-            print(f"  (第{_ri+1}轮)眼窝区皮肤化: {_sz.get('note', '')}")
-        except Exception as _e:
-            print(f"  ⚠ (第{_ri+1}轮)眼窝区皮肤化跳过: {_e}")
-    _sh0.copyfile(_rp, _rp.replace(".png", "_raw.png"))   # v5: 留存"纯烘焙未调整"对照件(v6起含眼窝区皮肤化)
-    if _HAVE_FIX:
-        try:
-            # reach 跟随本轮的烘焙margin(渗出带宽度=边距膨胀): margin越大, 渗带越宽, 清理半径必须同步
-            _tx = fix_diffuse_png(_rp, reach_px=_mg + 4)
-            print(f"  (第{_ri+1}轮)贴图溢出处理: {_tx.get('note', '')}")
-            # v4 第二遍: 亮度阈值放宽到112 —— 实测残留暗线亮度≈97 高于旧阈值95, 旧法从未清到(用户反馈的残留源)
-            _tx2 = fix_diffuse_png(_rp, reach_px=_mg + 4, lum_th=112)
-            print(f"  (第{_ri+1}轮)贴图溢出处理(弱渗二遍): {_tx2.get('note', '')}")
-            # v4: 五官保护球(由场景眼球对象实测推导) —— 替代旧的"身高80%截断"
-            #     (旧截断把 z>1.457m 的上胸/领口/肩颈全划入保护区, 用户反馈区因此从未被 v2 清理)
-            # v7审计(2026-09-20): 半径 1.6×瞳距≈109mm 覆盖不到下巴/下颌(距眼心~115-130mm) →
-            #     这些"五官系统的一部分"暴露在 v2 的"非肤色异常即替换"判据下(嘴唇缝/胡青/下巴阴影有被抹风险)。
-            #     改 2.2×瞳距(≈150mm): 完整覆盖头面部(至下巴), 仍远小于到锁骨/上胸的距离(≥250mm), 不回转旧问题。
-            _eyes = [o for o in bpy.data.objects if "Eye002" in o.name]
-            _fc = _fr = None
-            if len(_eyes) == 2:
-                _a0 = _eyes[0].matrix_world.translation; _a1 = _eyes[1].matrix_world.translation
-                _fc = (float((_a0.x + _a1.x) / 2), float((_a0.y + _a1.y) / 2), float((_a0.z + _a1.z) / 2))
-                _fr = 2.2 * float((_a0 - _a1).length)
-                print(f"  (第{_ri+1}轮)五官保护球: 心=({_fc[0]*1000:.0f},{_fc[1]*1000:.0f},{_fc[2]*1000:.0f})mm R={_fr*1000:.0f}mm")
-            for _p in (1, 2):
-                _ty = fix_diffuse_mesh_guided(_rp, [low_poly], face_center=_fc, face_R=_fr)
-                print(f"  (第{_ri+1}轮)异常斑清理{_p}: {_ty.get('note', '')}")
-                if _ty.get('clusters', 0) == 0:
-                    break
-        except Exception as _e:
-            print(f"  ⚠ (第{_ri+1}轮)贴图处理跳过: {_e}")
-    _q = _qa_measure(_rp, low_poly)
-    print(f"  第{_ri+1}轮 QA: 未填充={_q['unfilled']*100:.2f}% 脏块={_q['dirty']*100:.2f}% 密度CV={_q['cv']:.3f}")
-    _rounds.append((_q, _rp, _mg))
-    if _q['unfilled'] <= 0.0 and _q['dirty'] <= 0.0:
-        print(f"  第{_ri+1}轮 双零(无空洞无脏块) → 早停")
-        break
-_best = _rounds[0]
-for _r in _rounds[1:]:
-    if _qa_better(_r[0], _best[0]):
-        _best = _r
 tex_path = os.path.join(OUT_04, "04_diffuse_4k.png")
-tex_raw_path = os.path.join(OUT_04, "04_diffuse_4k_未调整.png")
-import shutil as _sh
-_sh.copyfile(_best[1], tex_path)
-_sh.copyfile(_best[1].replace(".png", "_raw.png"), tex_raw_path)   # v5: 未调整版贴图
-print(f"已输出两份贴图: {os.path.basename(tex_raw_path)}(未调整) / {os.path.basename(tex_path)}(已调整)")
-bpy.context.scene.render.bake.margin = _best[2]
 img.filepath_raw = tex_path
 img.file_format = 'PNG'
-img.reload()   # 读回选定轮的成品(勿再save: img内存里是"最后一轮"的内容, 会覆盖刚复制好的选定件)
-print(f"烘焙审核选定: margin={_best[2]}px (未填充={_best[0]['unfilled']*100:.2f}% 脏块={_best[0]['dirty']*100:.2f}% 密度CV={_best[0]['cv']:.3f}) | 候选: "
-      + " / ".join(f"m{r[2]}:{r[0]['unfilled']*100:.2f}%,{r[0]['dirty']*100:.2f}%,{r[0]['cv']:.3f}" for r in _rounds))
-try:  # 清理轮次临时件(数字已入日志; 选定件已复制为正式文件)
-    for _r in _rounds:
-        for _f2 in (_r[1], _r[1].replace(".png", "_raw.png")):
-            if os.path.exists(_f2):
-                os.remove(_f2)
-except Exception:
-    pass
+img.save()
+
+# 2026-09-22 用户要求: 保存【纯烘焙态】blend(未做texture_fix), 便于定位问题在烘焙还是后处理
+# ⚠ 纯烘焙贴图必须另存+打包: 指向正式路径会被后处理覆盖(raw blend变假对照, 实测踩过)
+raw_tex = os.path.join(OUT_04, "04_diffuse_4k_raw.png")
+img.filepath_raw = raw_tex
+img.save()
+img.pack()
+raw_blend = os.path.join(OUT_04, "04_bake_raw.blend")
+bpy.ops.wm.save_as_mainfile(filepath=raw_blend)
+img.unpack(method='WRITE_ORIGINAL')
+img.filepath_raw = tex_path
+print(f"纯烘焙态已存: {raw_blend} (贴图 {raw_tex} 已打包)")
+
 pixels = np.array(img.pixels[:])
 print(f"Diffuse贴图: min={pixels.min():.3f}, max={pixels.max():.3f}, mean={pixels.mean():.3f}")
+
+# 2026-09-17 用户要求: 烘焙后【贴图溢出处理】— 暗色衣物渗出到皮肤的区域 → 就近替换为皮肤色 + 边缘过渡
+#   (判据: 亮度<95 且 紧贴衣物本体≤18px 且 非UV空白 且 不在衣物本体连通块内; 处理前自动备份)
+#   reload 让后续 pack/保存/FBX(embed) 全部携带处理后的像素
+try:
+    import sys as _sys
+    _sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from texture_fix import fix_diffuse_png, fix_diffuse_mesh_guided, fix_diffuse_dark_streaks, fix_diffuse_cloth_specks, fix_diffuse_cloth_faces, fix_diffuse_edge_specks, fix_diffuse_socket_interior
+    _tx = fix_diffuse_png(tex_path)
+    print(f"贴图溢出处理: {_tx.get('note', '')}")
+    # v2: 网格引导的统计离群清理(皮肤上的孤立异常斑: 脚趾暗斑/手侧暗斑等; 阈值全部由模型自身推导)
+    #     迭代两遍: 第一遍清完后邻域变干净, 第二遍能吃到剩余的弱斑
+    for _p in (1, 2):
+        _ty = fix_diffuse_mesh_guided(tex_path, [low_poly])
+        print(f"贴图异常斑清理(第{_p}遍): {_ty.get('note', '')}")
+        if _p == 1:
+            for _ci in _ty.get('cluster_mm_facecol', [])[:8]:
+                print(f"    簇: 面={_ci[0]} 位置=({_ci[1][0]},{_ci[1][1]},{_ci[1][2]})mm 色={_ci[2]}")
+        if _ty.get('clusters', 0) == 0:
+            break
+    # v3 (2026-09-21): 皮肤区深色条纹/黑面(含肩/头, 五官柱排除) — 用户红圈肩部黑条纹由此处理
+    _tz = fix_diffuse_dark_streaks(tex_path, [low_poly],
+                                   crop_dir=os.path.join(OUT_04, "_v3核对"))
+    print(f"皮肤深色条纹清理: {_tz.get('note', '')}")
+    for _ci in _tz.get('cluster_mm_facecol', [])[:8]:
+        print(f"    簇: 面={_ci[0]} 位置=({_ci[1][0]},{_ci[1][1]},{_ci[1][2]})mm 色={_ci[2]}")
+    # v4 (2026-09-21): 衣物岛内皮肤色碎点/碎线(领口/袖口骑跨面混色texel) → 周围衣物色
+    _tw = fix_diffuse_cloth_specks(tex_path, crop_dir=os.path.join(OUT_04, "_v4核对"))
+    print(f"衣物内皮肤碎点清理: {_tw.get('note', '')}")
+    # v5 (2026-09-21): 烘焙骑跨误采样(高模真值=衣物色/低模采样=皮肤色) → 按高模真值色替换
+    _tv = fix_diffuse_cloth_faces(tex_path, [low_poly], high_poly,
+                                  crop_dir=os.path.join(OUT_04, "_v5核对"))
+    print(f"衣边骑跨面清理: {_tv.get('note', '')}")
+    for _ci in _tv.get('cluster_mm_facecol', [])[:8]:
+        print(f"    簇: 面={_ci[0]} 位置=({_ci[1][0]},{_ci[1][1]},{_ci[1][2]})mm 色={_ci[2]}")
+    # v6 (2026-09-21): 衣缘像素级骑跨碎线(源贴图缺陷/过渡带, 与皮肤岛粘连v4查不到) → 邻域衣物色
+    _t6 = fix_diffuse_edge_specks(tex_path, crop_dir=os.path.join(OUT_04, "_v6核对"))
+    print(f"衣缘碎线清理: {_t6.get('note', '')}")
+    # v7 (2026-09-22): 眼窝碗心暗块(01闭眼源副作用: 碗底射线打到眼睑内表面) → 眼窝缘皮肤色
+    _eyes = [o for o in bpy.data.objects if o.type == 'MESH' and 'Eye' in o.name]
+    _t7 = fix_diffuse_socket_interior(tex_path, [low_poly], _eyes,
+                                      crop_dir=os.path.join(OUT_04, "_v7核对"))
+    print(f"眼窝碗心清理: {_t7.get('note', '')}")
+    img.reload()
+except Exception as _e:
+    import traceback as _tb
+    _tb.print_exc()      # 2026-09-22: 原实现只打印一行, 修复崩了也"静默通过"(踩过) → 必须留完整栈
+    print(f"⚠ 贴图溢出处理跳过(不影响烘焙): {_e}")
 
 # Bake Normal (方案md要求)
 print('\\n烘焙Normal中 (4K)...')
@@ -304,7 +261,43 @@ nt.links.new(normal_tex.outputs['Color'], normal_map.inputs['Color'])
 nt.links.new(normal_map.outputs['Normal'], bsdf.inputs['Normal'])
 nt.nodes.active = normal_tex
 
+# 2026-09-22 阶段B修正: Normal 改为与 Diffuse 相同的【区域自适应cage 两趟合成】。
+#   原实现是单趟 cage=CAGE_BODY(20mm), 认为"碗区法线由 v7 涂漫反射色覆盖即可" —— 实测该判断失效:
+#     cage=20mm 时碗区射线 53.5% 命中背面(射线从碗面往回打进颅腔, 起点在眼球之后),
+#     烘出的碗区法线与低模法线夹角 mean 83.9° / p95 150.8° / >30° 占 72.4%
+#     (身体对照区 mean 3.07° / >30° 1.5%, 同法测量) —— 而 v7 只改漫反射, 改不了法线。
+#   证据: logs/_eye_cage_sweep.py(cage扫描) + 04纹理烘焙/scripts/bake_truth.py(真值层, 与真实烘焙 r=0.997)。
+_bm = globals().get('bowl_mask')
+bpy.context.scene.render.bake.cage_extrusion = CAGE_BODY
+print(f'烘焙Normal passA (cage={CAGE_BODY:.4f} 身体主体)...')
 bpy.ops.object.bake(type='NORMAL')
+_nA = np.array(normal_img.pixels[:]).reshape(4096, 4096, 4).copy()
+if _bm is not None and bool(_bm.any()):
+    nimgB = bpy.data.images.new('MVP_Normal_4K_eye', width=4096, height=4096, alpha=False)
+    normal_tex.image = nimgB
+    bpy.context.scene.render.bake.cage_extrusion = CAGE_EYE
+    print(f'烘焙Normal passB (cage={CAGE_EYE:.4f} 眼窝碗区)...')
+    bpy.ops.object.bake(type='NORMAL')
+    _nB = np.array(nimgB.pixels[:]).reshape(4096, 4096, 4).copy()
+    normal_tex.image = normal_img
+    normal_img.pixels.foreach_set(np.where(_bm[:, :, None], _nB, _nA).ravel().astype(np.float32))
+    normal_img.update()
+    bpy.data.images.remove(nimgB)
+    print('Normal 区域自适应cage合成完成: 碗区取passB, 身体取passA')
+    # 当场自报碗区法线质量(验收口径: 与低模法线(切线空间即(0,0,1))的夹角)
+    import math as _mth
+    _nb = _nB[_bm] if _nB is not None else None
+    if _nb is not None and len(_nb):
+        _d = _nb[:, :3].astype(np.float64) * 2.0 - 1.0
+        _ln = np.linalg.norm(_d, axis=1); _ok = _ln > 1e-6
+        _c = np.zeros(len(_d)); _c[_ok] = _d[_ok, 2] / _ln[_ok]
+        _ang = np.degrees(np.arccos(np.clip(_c, -1, 1)))
+        _black = float((np.abs(_nb[:, :3]).max(axis=1) < 0.02).mean() * 100)
+        print(f'碗区法线自检: n={int(len(_d))} 夹角 mean={_ang.mean():.2f}° '
+              f'p95={np.percentile(_ang, 95):.2f}° >30°={100*(_ang > 30).mean():.2f}% 全黑比例={_black:.2f}%')
+else:
+    normal_img.pixels.foreach_set(_nA.ravel().astype(np.float32)); normal_img.update()
+    print('⚠ 未找到眼窝碗区mask, Normal 仅用身体cage(异常, 请检查眼球对象是否存在)')
 
 normal_path = os.path.join(OUT_04, "04_normal_4k.png")
 normal_img.filepath_raw = normal_path
@@ -312,21 +305,42 @@ normal_img.file_format = 'PNG'
 normal_img.save()
 print(f"Normal贴图已保存")
 
-# 断开Normal连接（避免影响FBX导出）
-# Blender 5.1: links.remove() 只接受1个link参数，且遍历前需拷贝列表
-for link in list(nt.links):
-    if link.to_node == bsdf and link.to_socket.name == 'Normal':
-        nt.links.remove(link)
-for link in list(nt.links):
-    if link.from_node == normal_tex:
-        nt.links.remove(link)
+# ⚠ 2026-09-22 根因修正(实测): 原代码在这里【断开】两处连线, 但只恢复了其中一处,
+#   导致 image→NormalMap 那条线永久丢失 → 法线图成为孤立节点:
+#     node 'Image Texture.001' (MVP_Normal_4K) 无任何输出连线
+#     node 'Normal Map' 只有 OUT Normal -> Principled BSDF.Normal 被恢复
+#   → 保存的 blend 里法线不生效, 导出的 FBX 里干脆没有法线贴图(实测内嵌 PNG 只有 1 个)。
+#   而同一 FBX 里眼球材质是带法线的(Eye_N.tga 正常内嵌) → 导出器本身支持法线, 断连毫无必要。
+#   故: 不再断连。法线链 image → NormalMap → BSDF.Normal 全程保持完整。
 
-# 删除高模
+# 删除高模(保留眼球: 09-16定案 04产物含眼球, 05绑定需要)
 bpy.data.objects.remove(high_poly, do_unlink=True)
+for o in list(bpy.data.objects):
+    if o.type == 'MESH' and o != low_poly and 'Eye' not in o.name:
+        bpy.data.objects.remove(o, do_unlink=True)
+print(f"清理: 删除高模, 保留 {low_poly.name} + 眼球")
 
-# 导出FBX
+# 法线链自检 + 缺则补连(2026-09-22 根因)
+#   历史: 原代码"断开Normal→导出FBX→重新连接→存blend", 且只恢复了一条线(image→NormalMap 永久丢失),
+#   结果 blend 与 FBX 里法线都不生效(实测 FBX 内嵌 PNG 只有 1 个)。现已取消断连, 这里再加自检兜底。
+#   完整链需要【两条】连线: image.Color -> NormalMap.Color 和 NormalMap.Normal -> BSDF.Normal
+def _has_link(_nt, _fo, _ti):
+    return any(l.from_socket == _fo and l.to_socket == _ti for l in _nt.links)
+if normal_map and bsdf and normal_tex:
+    if 'Normal' in bsdf.inputs and not _has_link(nt, normal_map.outputs['Normal'], bsdf.inputs['Normal']):
+        nt.links.new(normal_map.outputs['Normal'], bsdf.inputs['Normal'])
+        print("补连: NormalMap.Normal -> BSDF.Normal")
+    if 'Color' in normal_map.inputs and not _has_link(nt, normal_tex.outputs['Color'], normal_map.inputs['Color']):
+        nt.links.new(normal_tex.outputs['Color'], normal_map.inputs['Color'])
+        print("补连: Image(Color) -> NormalMap.Color")
+    _ok1 = _has_link(nt, normal_tex.outputs['Color'], normal_map.inputs['Color'])
+    _ok2 = _has_link(nt, normal_map.outputs['Normal'], bsdf.inputs['Normal'])
+    print(f"法线链自检: image→NormalMap={_ok1}  NormalMap→BSDF={_ok2}"
+          + ("" if (_ok1 and _ok2) else "   ⚠ 法线链不完整, FBX/blend 里法线将不生效!"))
+
+# 导出FBX (⚠ 必须在 Normal Map 已连接之后)
 fbx_path = os.path.join(OUT_04, "05_for_mixamo.fbx")
-# 2026-09-16: 导出含眼球(全场景剩余网格: 低模+眼球; 高模已删)
+# 导出含眼球(全场景剩余网格: 低模+眼球; 高模已删)
 bpy.ops.object.select_all(action='DESELECT')
 for o in bpy.data.objects:
     if o.type == 'MESH':
@@ -337,35 +351,21 @@ bpy.ops.export_scene.fbx(
     mesh_smooth_type='FACE', use_tspace=True, use_custom_props=False,
     add_leaf_bones=False, bake_anim=False, path_mode='COPY', embed_textures=True
 )
-
-# v7(2026-09-20): FBX导出后【重新接回法线】—— 此前断开后再未接回, 保存的blend里没有法线,
-#   用户所见毛孔/皱纹/五官细节全糊(实测确认)。blend保存必须在重接之后; 节点仍指向本次烘焙的normal_img。
+# 导出后当场自检: FBX 内嵌 PNG 数(应为 2: diffuse + normal)
 try:
-    nt.links.new(normal_tex.outputs['Color'], normal_map.inputs['Color'])
-    nt.links.new(normal_map.outputs['Normal'], bsdf.inputs['Normal'])
-    nt.nodes.active = tex
-    print("法线贴图已重新接入(供blend与后续环节使用)")
+    with open(fbx_path, 'rb') as _f:
+        _fbx = _f.read()
+    _PNG_SIG = bytes.fromhex("89504e470d0a1a0a")   # 用十六进制构造, 避免源码里出现控制字符
+    _npng = _fbx.count(_PNG_SIG)
+    print(f"FBX 自检: 内嵌 PNG blob = {_npng} (期望 2 = diffuse + normal)"
+          + ("" if _npng >= 2 else "  ⚠ 法线贴图未进入 FBX!"))
+    del _fbx
 except Exception as _e:
-    print(f"⚠ 法线重接失败(不阻断): {_e}")
+    print(f"FBX 自检跳过: {_e}")
 
-# 保存blend —— v5 起输出两份(用户要求, 便于对照检查是哪一步的问题):
-#   04_bake_未调整.blend = 纯烘焙(不做纹理调整)
-#   04_bake.blend        = 烘焙+纹理调整(管线默认沿用)
+# 保存blend
 out_blend = os.path.join(OUT_04, "04_bake.blend")
-out_blend_raw = os.path.join(OUT_04, "04_bake_未调整.blend")
-img.filepath = tex_raw_path
-try:
-    img.reload()
-except Exception:
-    pass
-bpy.ops.wm.save_as_mainfile(filepath=out_blend_raw, copy=True)   # copy=True: 不改变当前会话文件路径
-img.filepath = tex_path
-try:
-    img.reload()
-except Exception:
-    pass
 bpy.ops.wm.save_as_mainfile(filepath=out_blend)
-print(f"两份blend: {os.path.basename(out_blend_raw)}(未调整) / {os.path.basename(out_blend)}(已调整)")
 
 print(f"\n=== 完成 ===")
 print(f"贴图(4K): {tex_path}")

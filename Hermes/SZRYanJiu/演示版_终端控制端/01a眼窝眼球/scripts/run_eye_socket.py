@@ -115,12 +115,50 @@ def main():
     else:
         _finish = finish_socket_boolean if SOCKET_CUT_MODE == "boolean" else make_eye_cup
         print(f"开孔模式: {SOCKET_CUT_MODE} (收尾={_finish.__name__})")
+    # 2026-09-22 (用户方案A): 按眼【门控】选谐波 K —— 从高到低逐档试，只有 rim 带重建得到单一闭环才采用该 K；
+    #   失败则回滚到该眼操作前的网格快照，换更小的 K。收益: 每只眼拿到"它能承受的最大 K"(最贴手描轮廓)，
+    #   且不会像直接收紧区间那样把某只眼的 rim 带重建搞崩(实测 R 眼在 K=4 时连续 6 轮拿不到单一闭环)。
+    _gate_sel = {}
+    def _gated_eye(c, side):
+        if not globals().get('RIM_CONTOUR_K_GATE', False):
+            make_eye_socket(obj, c, side)
+            return None
+        snap = obj.data.copy()
+        snap.name = f"_gate_snap_{side}"
+        hi = int(RIM_CONTOUR_K_GATE_HI)
+        lo = max(2, int(RIM_CONTOUR_K_FLOOR))
+        chosen = None
+        for K in range(hi, lo - 1, -1):
+            if K != hi:
+                obj.data = snap.copy()
+                obj.data.name = f"_gate_try_{side}_K{K}"
+            ok = make_eye_socket(obj, c, side, k_override=K)
+            print(f"[门控] {side}: K={K} → rim带重建 {'通过' if (ok is True or ok is None) else '失败(回滚换小K)'}")
+            if ok is True or ok is None:
+                chosen = K
+                break
+        if chosen is None:
+            print(f"[门控] {side}: K={lo}..{hi} 全部失败 → 保留 K={lo} 的结果(⚠ 需人工看图确认)")
+            chosen = lo
+        _gate_sel[side] = chosen
+        print(f"[门控] {side}: 采用谐波 K={chosen}")
+        return chosen
+
     # 左眼
-    make_eye_socket(obj, cL, "L")
+    _gated_eye(cL, "L")
     if _finish: _finish(obj, cL, "L")
     # 右眼
-    make_eye_socket(obj, cR, "R")
+    _gated_eye(cR, "R")
     if _finish: _finish(obj, cR, "R")
+    if _gate_sel:
+        print(f"[门控] 最终选择: {_gate_sel}")
+    # 清掉门控/QA 遗留的孤立 mesh 数据块
+    try:
+        for _m in list(bpy.data.meshes):
+            if _m.users == 0 and (_m.name.startswith("_gate") or _m.name.startswith("_rimQA")):
+                bpy.data.meshes.remove(_m)
+    except Exception:
+        pass
     
     # v31: 删custom_normal属性 + 眼窝区局部recalc(皮肤参考). 绝不全局recalc/质心翻转.
     unify_normals_global(obj, cL, cR)
