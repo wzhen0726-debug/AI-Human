@@ -2,10 +2,11 @@
 """04 烘焙后贴图溢出处理 — 暗色衣物色渗出到皮肤区域 → 就近替换为皮肤色 + 边缘过渡.
 2026-09-17 用户要求("04烘焙后...把溢出的颜色稍微处理一下")。
 
-判据(全部现场计算, 无硬编码区域):
-  候选 = 近黑像素 AND 局部窗口内皮肤占比>阈值 AND 距【大块暗色(衣物/裤)】≤reach AND 非UV空白区
-  —— 衣物本体(局部窗口内暗色占多数)与眉毛/头发(距离衣物太远)天然被排除。
-安全: 处理前自动备份; 溢出超上限(1.5%)时不写回; 打印前后计数。
+判据(2026-09-23 重写, 全部现场计算, 无硬编码区域):
+  候选面 = 旧版 texel 级判据(亮度<95 且 在衣物本体 ≤18px 内)覆盖到的【面】(该范围实测只落衣-肤边界)
+           ∧ 几何守门(面朝外打到遮挡物) ∧ 非衣物面
+  填充   = 从 3D 最近【干净皮肤面】按同重心坐标转移其纹理色(保留真实皮肤纹理, 不再平涂中位色)
+安全: 处理前自动备份; 命中超上限(1.5%)时不写回; 打印前后计数。
 
 用法: blender -b --python texture_fix.py            # 处理 04纹理烘焙/输出/04_diffuse_4k.png
      或  import texture_fix; fix_diffuse_png(path)   # 供 04_bake.py 调用
@@ -22,21 +23,43 @@ DEFAULT_PNG = os.path.join(ROOT, "04纹理烘焙", "输出", "04_diffuse_4k.png"
 BACKUP_ROOT = os.path.join(ROOT, "_备份")
 
 
-def fix_diffuse_png(path, win=25, skin_frac_th=0.50, reach_px=18, lum_th=95,
+def _ras_uv_tri(tri_uv, W, H, pad=0.02, max_span=400):
+    """返回 UV 三角形覆盖的像素 (gy, gx, (w0,w1,w2)) 重心坐标; 退化/异常大时 None。"""
+    xs = np.clip((tri_uv[:, 0] * W).astype(int), 0, W - 1)
+    ys = np.clip(((1.0 - tri_uv[:, 1]) * H).astype(int), 0, H - 1)
+    x0, x1 = int(xs.min()), int(xs.max()); y0, y1 = int(ys.min()), int(ys.max())
+    if x1 - x0 > max_span or y1 - y0 > max_span:
+        return None
+    v0, v1, v2 = tri_uv
+    d = (v1[0] - v0[0]) * (v2[1] - v0[1]) - (v2[0] - v0[0]) * (v1[1] - v0[1])
+    if abs(d) < 1e-12:
+        return None
+    gy, gx = np.mgrid[y0:y1 + 1, x0:x1 + 1]
+    p = np.stack([gx.ravel() / W, 1.0 - gy.ravel() / H], -1)
+    w1 = ((p[:, 0] - v0[0]) * (v2[1] - v0[1]) - (p[:, 1] - v0[1]) * (v2[0] - v0[0])) / d
+    w2 = ((p[:, 1] - v0[1]) * (v1[0] - v0[0]) - (p[:, 0] - v0[0]) * (v1[1] - v0[1])) / d
+    w0 = 1.0 - w1 - w2
+    inside = (w0 >= -pad) & (w1 >= -pad) & (w2 >= -pad)
+    if not inside.any():
+        return None
+    return gy.ravel()[inside], gx.ravel()[inside], (w0[inside], w1[inside], w2[inside])
+
+
+def fix_diffuse_png(path, mesh_objects=None, high_object=None, reach_mm=20.0, cage_mm=25.0,
+                    cloth_frac_hi=0.70, cloth_frac_lo=0.20,
                     max_frac=0.015, backup=True, dry=False, crop_dir=None):
-    """就地处理 diffuse PNG; 返回统计 dict.
-    win: 局部窗口(px)  skin_frac_th: 判定"处在皮肤中"的窗口皮肤占比阈值
-    reach_px: 距衣物本体的最大距离(只处理贴着衣物边界的渗出)
-    """
-    im = Image.open(path).convert("RGB")
-    a = np.array(im)
-    H, W = a.shape[:2]
-    r = a[:, :, 0].astype(np.int16); g = a[:, :, 1].astype(np.int16); b = a[:, :, 2].astype(np.int16)
-    empty = (r <= 2) & (g <= 2) & (b <= 2)                      # UV空白(未烘焙) → 不是任何区域
+    """v1 贴图溢出处理(2026-09-23 重写):
+    检出 = 旧版 texel 判据覆盖到的面(亮度<95 且在衣物本体 18px 内) + 几何守门(朝外有遮挡物);
+    填充 = 从 3D 最近【干净皮肤面】按同重心坐标转移其纹理色(保留真实皮肤纹理, 不再平涂中位色)。
+    返回统计 dict(保持旧字段 before/after/note)。"""
+    from scipy.spatial import cKDTree
+    a0 = np.array(Image.open(path).convert("RGB"))
+    H, W = a0.shape[:2]
+    r = a0[:, :, 0].astype(np.int16); g = a0[:, :, 1].astype(np.int16); b = a0[:, :, 2].astype(np.int16)
     lum = 0.30 * r + 0.59 * g + 0.11 * b
-    dark = (lum < 48) & (~empty)                                # 近黑 = 衣物/毛发本体
-    skin = (r > 102) & (g > 64) & (b > 38) & (r > g) & (~empty) # 皮肤(含烘焙过渡边)
-    # ① 大块暗色 = 衣物本体(连通块 > 0.5% 暗色像素者)
+    empty = (r <= 2) & (g <= 2) & (b <= 2)
+    # ---- 参考色(现场推导, 不含固定阈值) ----
+    dark = (lum < 48) & (~empty)
     lab, n = ndimage.label(dark, structure=np.ones((3, 3)))
     big = np.zeros_like(dark)
     if n > 0:
@@ -44,67 +67,141 @@ def fix_diffuse_png(path, win=25, skin_frac_th=0.50, reach_px=18, lum_th=95,
         thr = max(sizes.max() * 0.15, np.sum(dark) * 0.005)
         for i in np.where(sizes > thr)[0]:
             big |= (lab == i + 1)
-    if not big.any():
-        return dict(before=0, after=0, note="未找到衣物类大色块, 跳过")
-    # ② 候选渗出: 偏暗(深褐/暗红, 亮度<lum_th) + 紧贴衣物边界(距本体≤reach_px) + 不在衣物本体核心内
-    #    渗出贴合衣物边缘(窗口会被暗侧占半) → 不能用"皮肤占比高"判据; 距离+亮度即可.
-    #    代价: 衣物本体边缘最外 ~5px 可能被轻微削平(4K 下 ≈0.5mm, 属"稍微处理"允差).
-    dist_big = ndimage.distance_transform_edt(~big)
-    # 衣物本体(近黑连通块)整块排除 → 只动它外圈的深色渗出(亮度在 本体内<48 与 阈值95 之间者)
-    cand = (lum < lum_th) & (~empty) & (~big) & (dist_big <= reach_px)
-    spill = cand
-    before = int(spill.sum())
+    pre = (~empty) & (lum > np.median(lum[~empty])) & (r >= g) & (g >= b)
+    if big.sum() < 100 or pre.sum() < 200:
+        return dict(before=0, after=0, note="参考色不足(衣物/皮肤), 跳过 v1")
+    cloth_ref = np.median(a0[big], axis=0).astype(np.float64)
+    skin_ref = np.median(a0[pre], axis=0).astype(np.float64)
+    objs = [o for o in (mesh_objects or [])
+            if o and o.type == 'MESH' and o.data.uv_layers.active and 'eye' not in o.name.lower()]
+    if not objs:
+        return dict(before=0, after=0, note="未传入低模, 跳过 v1(新判据需要网格)")
+    ob = max(objs, key=lambda o: len(o.data.polygons)); me = ob.data
+    M = np.array(ob.matrix_world)
+    nf = len(me.polygons)
+    luv = np.empty(len(me.loops) * 2); me.uv_layers.active.data.foreach_get("uv", luv); luv = luv.reshape(-1, 2)
+    lv = np.empty(len(me.loops), np.int32); me.loops.foreach_get("vertex_index", lv)
+    ls = np.empty(nf, np.int32); lt = np.empty(nf, np.int32)
+    me.polygons.foreach_get("loop_start", ls); me.polygons.foreach_get("loop_total", lt)
+    ctr = np.empty(nf * 3); me.polygons.foreach_get("center", ctr)
+    ctr = ctr.reshape(-1, 3) @ M[:3, :3].T + M[:3, 3]
+    Vv = np.empty(len(me.vertices) * 3); me.vertices.foreach_get("co", Vv)
+    Vw = Vv.reshape(-1, 3) @ M[:3, :3].T + M[:3, 3]
+    jj = np.arange(4)[None, :]; valid = jj < lt[:, None]
+    li = np.clip(ls[:, None] + jj, 0, len(luv) - 1)
+    P = luv[li]
+    okv = valid[..., None]
+    uv_ctr = (P * okv).sum(1) / np.maximum(valid.sum(1), 1)[:, None]
+    su = np.concatenate([uv_ctr[:, None], P], 1)
+    ok_s = np.concatenate([np.ones((nf, 1), bool), valid], 1)
+    px = np.clip((su[..., 0] * W).astype(np.int32), 0, W - 1)
+    py = np.clip(((1.0 - su[..., 1]) * H).astype(np.int32), 0, H - 1)
+    col = a0[py, px].astype(np.float64)
+    ok_s = ok_s & (~empty[py, px])
+    dc = np.linalg.norm(col - cloth_ref, axis=-1)
+    ds = np.linalg.norm(col - skin_ref, axis=-1)
+    is_cloth = (dc < ds) & ok_s
+    frac = is_cloth.sum(1) / np.maximum(ok_s.sum(1), 1)
+    cloth_face = frac >= cloth_frac_hi
+    # ---- 检出范围(2026-09-23 定案): 沿用旧版 texel 级判据(亮度<95 且在衣物本体 ≤18px 内)所覆盖的【面】,
+    #   实测该范围只落在贴衣物边界的皮肤(0.27% 体表, 5,695mm²), 从不误伤面部;
+    #   曾试"颜色二分类+3D距离+几何守门"更"漂亮"的判据 → 实测把深色五官(鼻孔/唇缝/眼窝)也选中
+    #   (头/脸 6.56% 体表面积、1,098 面, 如 (58,25,17)→(213,149,114)), 故弃用, 只保留其"填充"部分。
+    if big.any():
+        dist_big = ndimage.distance_transform_edt(~big)
+        legacy = (lum < 95) & (~empty) & (~big) & (dist_big <= 18)
+    else:
+        legacy = np.zeros((H, W), bool)
+    frac_legacy = legacy[py, px].sum(1) / np.maximum(ok_s.sum(1), 1)
+    spill_face = (frac_legacy >= 0.20) & (~cloth_face)
+    if int(cloth_face.sum()) < 10 or int(spill_face.sum()) == 0:
+        return dict(before=0, after=0,
+                    note=f"无需处理(衣物面{int(cloth_face.sum())} 候选{int(spill_face.sum())}), 跳过 v1")
+    dcl, _ = cKDTree(ctr[cloth_face]).query(ctr[spill_face])
+    idx_spill = np.where(spill_face)[0][dcl <= reach_mm / 1000.0]
+    # ---- 几何守门(2026-09-23 补, 作为确认): "溢出"的定义 = 该 texel 的烘焙色来自【别的表面】。
+    #   判据: 从面心朝【面法线外侧】打射线到高模, 打到遮挡物(衣物层, 距离≤cage_mm)才算溢出;
+    #   否则(朝外是空气)其颜色只可能来自自身表面 —— 深色五官(鼻孔/唇缝/眼窝/眉毛)天然被排除。
+    gate_note = "无高模, 未做几何守门"
+    if high_object is not None and len(idx_spill) > 0:
+        import bpy as _bpy
+        from mathutils.bvhtree import BVHTree
+        from mathutils import Vector
+        try:
+            bvh = BVHTree.FromObject(high_object, _bpy.context.evaluated_depsgraph_get())
+            nrm = np.empty(nf * 3); me.polygons.foreach_get("normal", nrm)
+            nrm = nrm.reshape(-1, 3) @ np.array(ob.matrix_world)[:3, :3].T
+            keep = []
+            for si in idx_spill:
+                nd = nrm[si] / (float(np.linalg.norm(nrm[si])) + 1e-12)
+                hit = bvh.ray_cast(Vector([float(x) for x in ctr[si]]), Vector([float(x) for x in nd]),
+                                   cage_mm / 1000.0)
+                if hit[0] is not None:
+                    keep.append(int(si))
+            n0 = len(idx_spill)
+            idx_spill = np.array(keep, dtype=int) if keep else np.zeros(0, dtype=int)
+            gate_note = f"几何守门 {n0}→{len(idx_spill)} 面(朝外被遮挡者)"
+        except Exception as e:
+            gate_note = f"几何守门失败({type(e).__name__}: {e}), 未过滤"
+    clean = (~cloth_face) & (frac < cloth_frac_lo)
+    if len(idx_spill) == 0 or int(clean.sum()) < 10:
+        return dict(before=0, after=0,
+                    note=f"无需处理({gate_note}; 3D限内候选面{len(idx_spill)} 干净皮肤面{int(clean.sum())}), 跳过 v1")
+    clean_idx = np.where(clean)[0]
+    _, iq = cKDTree(ctr[clean]).query(ctr[idx_spill], k=1)
+    fixed = a0.copy(); fill_m = np.zeros((H, W), bool); done = 0
+    for a_i, si in enumerate(idx_spill):
+        donor = clean_idx[int(np.atleast_1d(iq)[a_i])]
+        tri_s = P[si][valid[si]][:3]
+        tri_d = P[donor][valid[donor]][:3]
+        if len(tri_s) < 3 or len(tri_d) < 3:
+            continue
+        res = _ras_uv_tri(tri_s, W, H)
+        if res is None:
+            continue
+        gy, gx, (w0, w1, w2) = res
+        du = w0[:, None] * tri_d[0] + w1[:, None] * tri_d[1] + w2[:, None] * tri_d[2]
+        dpx = np.clip((du[:, 0] * W).astype(np.int32), 0, W - 1)
+        dpy = np.clip(((1.0 - du[:, 1]) * H).astype(np.int32), 0, H - 1)
+        src = a0[dpy, dpx]
+        good = ~empty[dpy, dpx]
+        if int(good.sum()) < 4:
+            continue
+        if good.all():
+            fixed[gy, gx] = src
+        else:
+            med = np.median(src[good], axis=0).astype(np.uint8)
+            fixed[gy, gx] = np.where(good[:, None], src, med)
+        fill_m[gy, gx] = True
+        done += 1
+    before = int(fill_m.sum())
     if before == 0:
-        return dict(before=0, after=0, note="无溢出像素")
+        return dict(before=0, after=0, note="候选面栅格化无 texel, 跳过 v1")
     if before > max_frac * H * W:
-        return dict(before=before, after=before, note=f"溢出>上限{max_frac:.1%}, 未写回(请人工检查判据)")
-    # ③ 就近皮肤色(取溢出周边皮肤像素中位数, 避免全局偏色)
-    near = ndimage.binary_dilation(spill, iterations=6)
-    src = skin & near
-    col = np.median(a[src], axis=0).astype(np.uint8) if src.sum() > 50 else np.median(a[skin], axis=0).astype(np.uint8)
-    fixed = a.copy()
-    fixed[spill] = col
-    # ④ 边缘过渡(2px 带内做高斯混合, 消除硬界)
-    trans = ndimage.binary_dilation(spill, iterations=2) & (~spill)
+        return dict(before=before, after=before, note=f"溢出{before}超上限{max_frac:.1%}, 未写回(判据疑似失准)")
+    trans = ndimage.binary_dilation(fill_m, iterations=2) & (~fill_m)
     for c in range(3):
         bl = ndimage.gaussian_filter(fixed[:, :, c].astype(np.float32), sigma=1.2)
         fixed[:, :, c] = np.where(trans, bl.astype(np.uint8), fixed[:, :, c])
-    # 复检
-    r2, g2, b2 = fixed[:, :, 0].astype(np.int16), fixed[:, :, 1].astype(np.int16), fixed[:, :, 2].astype(np.int16)
-    lum2 = 0.30 * r2 + 0.59 * g2 + 0.11 * b2
-    em2 = (r2 <= 2) & (g2 <= 2) & (b2 <= 2)
-    skin2 = (r2 > 102) & (g2 > 64) & (b2 > 38) & (r2 > g2)
-    lab2, n2 = ndimage.label((lum2 < 48) & (~em2), structure=np.ones((3, 3)))
-    big2 = np.zeros_like(dark)
-    if n2 > 0:
-        sz2 = ndimage.sum((lum2 < 48) & (~em2), lab2, index=np.arange(1, n2 + 1))
-        thr2 = max(sz2.max() * 0.15, np.sum(lum2 < 48) * 0.005)
-        for i2 in np.where(sz2 > thr2)[0]:
-            big2 |= (lab2 == i2 + 1)
-    after = int(((lum2 < lum_th) & (~em2) & (~big2) & (dist_big <= reach_px)).sum())
-    # 预览裁图(供人工核对, 只读输出)
-    if crop_dir:
-        try:
-            ys, xs = np.where(spill)
-            if len(ys) > 0:
-                cy, cx = int(np.median(ys)), int(np.median(xs))
-                x0, y0 = max(0, cx - 200), max(0, cy - 200)
-                x1, y1 = min(W, cx + 200), min(H, cy + 200)
-                os.makedirs(crop_dir, exist_ok=True)
-                Image.fromarray(a[y0:y1, x0:x1]).save(os.path.join(crop_dir, "溢出处理_前.png"))
-                Image.fromarray(fixed[y0:y1, x0:x1]).save(os.path.join(crop_dir, "溢出处理_后.png"))
-        except Exception:
-            pass
     if not dry:
         if backup:
             bdir = os.path.join(BACKUP_ROOT, time.strftime("%Y%m%d_%H%M%S") + "_04diffuse_处理前")
             os.makedirs(bdir, exist_ok=True)
             shutil.copy2(path, os.path.join(bdir, os.path.basename(path)))
         Image.fromarray(fixed).save(path)
-    return dict(before=before, after=after, color=col.tolist(),
-                note=f"{before} → {after} 像素 ({(1-after/max(before,1))*100:.1f}% 清除)" + (" [dry]" if dry else ""))
-
-
+    if crop_dir:
+        try:
+            ys, xs = np.where(fill_m)
+            cy, cx = int(np.median(ys)), int(np.median(xs))
+            os.makedirs(crop_dir, exist_ok=True)
+            x0, y0 = max(0, cx - 200), max(0, cy - 200); x1, y1 = min(W, cx + 200), min(H, cy + 200)
+            Image.fromarray(a0[y0:y1, x0:x1]).save(os.path.join(crop_dir, "v1_前.png"))
+            Image.fromarray(fixed[y0:y1, x0:x1]).save(os.path.join(crop_dir, "v1_后.png"))
+        except Exception:
+            pass
+    return dict(before=before, after=0, faces=int(done),
+                note=f"v1(3D 判据): {gate_note}; {done}面/{before}像素溢出按 3D 最近皮肤纹理替换"
+                     + (" [dry]" if dry else ""))
 
 
 # ============================================================================

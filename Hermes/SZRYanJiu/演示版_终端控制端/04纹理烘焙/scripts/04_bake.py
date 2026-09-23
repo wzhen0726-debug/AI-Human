@@ -201,14 +201,20 @@ print(f"纯烘焙态已存: {raw_blend} (贴图 {raw_tex} 已打包)")
 pixels = np.array(img.pixels[:])
 print(f"Diffuse贴图: min={pixels.min():.3f}, max={pixels.max():.3f}, mean={pixels.mean():.3f}")
 
-# 2026-09-17 用户要求: 烘焙后【贴图溢出处理】— 暗色衣物渗出到皮肤的区域 → 就近替换为皮肤色 + 边缘过渡
-#   (判据: 亮度<95 且 紧贴衣物本体≤18px 且 非UV空白 且 不在衣物本体连通块内; 处理前自动备份)
+# 2026-09-17 用户要求: 烘焙后【贴图溢出处理】— 暗色衣物渗出到皮肤的区域 → 替换回皮肤色
+#  2026-09-23 重写(用户报"身体像有两种颜色"): 旧判据"亮度<95 且 距衣物(UV空间)≤18px" + 就近中位色平涂
+#  → 实测改动 37,177px(占后处理总改动 67%), 20% 是同一色值 → 皮肤上出现平涂色块。
+#  新判据: 面采样色颜色二分类(更接近衣物参考色而非皮肤参考色) + 距衣物 3D≤20mm;
+#  新填充: 从 3D 最近干净皮肤面按同重心坐标转移纹理色(保留真实皮肤纹理);
+#  + 几何守门: 候选面朝外必须打到遮挡物(衣物)才算溢出 → 深色五官不会被误伤。
+#   处理前自动备份(备份目录带时间戳)
 #   reload 让后续 pack/保存/FBX(embed) 全部携带处理后的像素
 try:
     import sys as _sys
     _sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from texture_fix import fix_diffuse_png, fix_diffuse_mesh_guided, fix_diffuse_dark_streaks, fix_diffuse_cloth_specks, fix_diffuse_cloth_faces, fix_diffuse_edge_specks, fix_diffuse_socket_interior
-    _tx = fix_diffuse_png(tex_path)
+    _tx = fix_diffuse_png(tex_path, [low_poly], high_object=high_poly, cage_mm=float(CAGE_BODY) * 1000.0,
+                          crop_dir=os.path.join(OUT_04, "_v1核对"))
     print(f"贴图溢出处理: {_tx.get('note', '')}")
     # v2: 网格引导的统计离群清理(皮肤上的孤立异常斑: 脚趾暗斑/手侧暗斑等; 阈值全部由模型自身推导)
     #     迭代两遍: 第一遍清完后邻域变干净, 第二遍能吃到剩余的弱斑
