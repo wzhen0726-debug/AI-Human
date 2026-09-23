@@ -100,6 +100,7 @@ output = nt.nodes.new('ShaderNodeOutputMaterial')
 bsdf = nt.nodes.new('ShaderNodeBsdfPrincipled')
 tex = nt.nodes.new('ShaderNodeTexImage')
 img = bpy.data.images.new('MVP_Diffuse_4K', width=4096, height=4096, alpha=False)
+img.colorspace_settings.name = 'sRGB'   # 颜色贴图必须 sRGB(显式设定, 不依赖默认值)
 tex.image = img
 nt.links.new(bsdf.outputs['BSDF'], output.inputs['Surface'])
 nt.links.new(tex.outputs['Color'], bsdf.inputs['Base Color'])
@@ -170,6 +171,7 @@ if eye_objs:
 
 print(f'烘焙Diffuse passB (cage={CAGE_EYE:.4f} 眼窝碗区)...')
 imgB = bpy.data.images.new('MVP_Diffuse_4K_eye', width=4096, height=4096, alpha=False)
+imgB.colorspace_settings.name = 'sRGB'
 tex.image = imgB
 bpy.context.scene.render.bake.cage_extrusion = CAGE_EYE
 bpy.ops.object.bake(type='DIFFUSE')
@@ -260,6 +262,11 @@ print('\\n烘焙Normal中 (4K)...')
 # 创建Normal贴图节点
 normal_tex = nt.nodes.new('ShaderNodeTexImage')
 normal_img = bpy.data.images.new('MVP_Normal_4K', width=4096, height=4096, alpha=False)
+# ⚠⚠ 2026-09-23 根因修复(用户报"打开后和你测试图差别很大/皮肤成片斑块"):
+#    法线贴图必须 Non-Color。此前用 images.new 的默认值(sRGB) → 渲染器对法线做 sRGB→线性变换,
+#    法线向量被扭曲 → 皮肤/衣服上出现成片脏斑。实测同场景仅改这一项: 45.9% 像素不同, 斑块消失。
+#    必须在 bake 之前设: 否则写进 04_normal_4k.png 的数值本身就是 gamma 编码过的错法线。
+normal_img.colorspace_settings.name = 'Non-Color'
 normal_tex.image = normal_img
 # 连接Normal到BSDF
 normal_map = nt.nodes.new('ShaderNodeNormalMap')
@@ -280,6 +287,7 @@ bpy.ops.object.bake(type='NORMAL')
 _nA = np.array(normal_img.pixels[:]).reshape(4096, 4096, 4).copy()
 if _bm is not None and bool(_bm.any()):
     nimgB = bpy.data.images.new('MVP_Normal_4K_eye', width=4096, height=4096, alpha=False)
+    nimgB.colorspace_settings.name = 'Non-Color'
     normal_tex.image = nimgB
     bpy.context.scene.render.bake.cage_extrusion = CAGE_EYE
     print(f'烘焙Normal passB (cage={CAGE_EYE:.4f} 眼窝碗区)...')
@@ -368,6 +376,22 @@ try:
     del _fbx
 except Exception as _e:
     print(f"FBX 自检跳过: {_e}")
+
+# 色彩空间自检(2026-09-23 新增, 防再犯): 只检查【本脚本生成的】贴图 —— 法线=Non-Color, 颜色=sRGB
+#   ⚠ 不要对导入的眼球贴图报警: Eye_A(AO)/Eye_N(法线) 本就该是 Non-Color。
+#   上一版判据"名字不含 normal 就当 sRGB"套到全部贴图上 → 误报 4 条(实测)。误报会让自检失去意义。
+_cs_bad = []
+for _im in bpy.data.images:
+    _nm = _im.name
+    if _nm.startswith('MVP_Normal_4K'):
+        _want = 'Non-Color'
+    elif _nm.startswith('MVP_Diffuse_4K'):
+        _want = 'sRGB'
+    else:
+        continue
+    if _im.colorspace_settings.name != _want:
+        _cs_bad.append(f"{_nm}={_im.colorspace_settings.name}(应为{_want})")
+print("色彩空间自检(仅 MVP_* 本管线生成贴图): " + ("全部正确" if not _cs_bad else "⚠ " + "; ".join(_cs_bad)))
 
 # 保存blend
 out_blend = os.path.join(OUT_04, "04_bake.blend")
