@@ -2330,6 +2330,34 @@ def make_eye_socket(obj, center, side, k_override=None):
             bpy.ops.object.mode_set(mode='OBJECT')
             print(f"make_eye_socket {side}: boolean掏空环内完成, 删坑面 {len(_cutf)}, "
                   f"rim环顶点 {_n0}→{len(_oe)}")
+            # ---- v65(2026-09-23) 眼区最终定向扫描: 修"rim 环附近零星红面" ----
+            # 症状(用户实拍+量测): Face Orientation 下, 上 rim(z≈眼心+4.2mm)/下 rim/内眼角 处
+            #   残留朝后面 15 个(L12/R3, 合计 1.6mm², ny +0.04~+0.90)。
+            # 根因: rebuild_rim_band 的定向只覆盖它自己新建的带面; 掏空后残留在眼区的皮肤面无人检查。
+            #   (旧 v38 扫描位于旧杯体函数内、本路径不执行, 且其位置窗口是死值 20mm/25mm。)
+            # 判据活性: 窗口由当前轮廓与碗深推导 —— 半径 = 轮廓最大半径×1.2, y ∈ [眼心−0.5·碗深, 眼心+1.1·碗深]。
+            # 必须先 normal_update(): 布尔/删面后法线可能陈旧, 否则"修复判据"与"自检判据"同盲区。
+            bpy.ops.object.mode_set(mode='EDIT')
+            bm = bmesh.from_edit_mesh(mesh)
+            bm.faces.ensure_lookup_table()
+            bm.normal_update()
+            # poly 是 [(x,z),...] 二维对(见 load_eyelid_contour), 不是 3D 点
+            _rmax = max(math.hypot(p[0] - center.x, p[1] - center.z) for p in poly) if poly else EYE_AREA_R
+            _y_lo, _y_hi = center.y - 0.5 * SOCKET_CUP_DEPTH, center.y + 1.1 * SOCKET_CUP_DEPTH
+            def _in_eye_zone(f):
+                c = f.calc_center_median()
+                return ((c - center).xz.length < _rmax * 1.2) and (_y_lo < c.y < _y_hi)
+            _tofix = [f for f in bm.faces if _in_eye_zone(f) and f.normal.y > 0.0]
+            _nfix = len(_tofix)
+            if _tofix:
+                bmesh.ops.reverse_faces(bm, faces=_tofix)
+                bm.normal_update()
+            bmesh.update_edit_mesh(mesh)
+            bm = bmesh.from_edit_mesh(mesh)
+            bm.normal_update()
+            _left = sum(1 for f in bm.faces if _in_eye_zone(f) and f.normal.y > 0.0)
+            print(f"make_eye_socket {side}: 眼区最终定向 翻转 {_nfix} 面, 复核残留朝后 {_left} "
+                  f"(活性窗口 半径{_rmax*1000:.1f}×1.2mm, y[{_y_lo*1000:.1f},{_y_hi*1000:.1f}]mm)")
             bpy.ops.object.mode_set(mode='EDIT')
             return _band_ok      # 2026-09-22 门控: 把"rim带重建是否得到单一闭环"上抛给调用方
         # ③b v63: 保留 boolean 切出的眼窝 pit(竖直壁+平底), 按材质槽【精确】识别这些新面 → 打 tag=2.
