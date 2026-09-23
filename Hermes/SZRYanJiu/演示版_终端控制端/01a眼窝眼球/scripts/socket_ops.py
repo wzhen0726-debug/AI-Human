@@ -461,6 +461,9 @@ def relax_ring_spikes(obj, center, side):
         for vi, nb in nadj.items():
             a = bm.verts[nb[0]].co - bm.verts[vi].co
             b = bm.verts[nb[1]].co - bm.verts[vi].co
+            # v65b(2026-09-23): 判据改【xz 投影】——rim 环形状由 (x,z) 轮廓定义, 三维转角会被
+            # 面外微小起伏稀释 → 实测 R 内眼角 xz 转角 31.7° 的尖点在三维口径下 <25° 逃过检查。
+            a = Vector((a.x, 0.0, a.z)); b = Vector((b.x, 0.0, b.z))
             if a.length < 1e-9 or b.length < 1e-9:
                 continue
             cosang = max(-1.0, min(1.0, -(a.dot(b)) / (a.length * b.length)))   # 转角(180°-张角)
@@ -2330,6 +2333,29 @@ def make_eye_socket(obj, center, side, k_override=None):
             bpy.ops.object.mode_set(mode='OBJECT')
             print(f"make_eye_socket {side}: boolean掏空环内完成, 删坑面 {len(_cutf)}, "
                   f"rim环顶点 {_n0}→{len(_oe)}")
+            # ---- v65b(2026-09-23) 环收尾: 活性焊缝 + 焊接后再去刺 ----
+            # 用户指出 rim 环不平滑(01_1 阶段即存在)。实测: R 环 28 个 >15° 顶点(vs L 4 个)、
+            # 最大 37.5°; 内眼角处两侧边仅 0.069/0.07mm → V 形凹口。
+            # 根因1: RIM_WELD_MM=0.06mm 是死值, 恰好焊不掉 0.069~0.16mm 的退化边;
+            # 根因2: 最后一次焊接(⑦g2, RIM_WELD_MM*0.5)发生在 relax_ring_spikes 之后 → 新尖点无人松弛。
+            # 活性做法: 焊缝阈值取自【环自身边长中位数】的 0.22~0.35(且不低于 RIM_WELD_MM) → 换眼型自动适配。
+            bpy.ops.object.mode_set(mode='EDIT')
+            bm = bmesh.from_edit_mesh(mesh)
+            bm.verts.ensure_lookup_table()
+            _rv2 = [v for v in bm.verts
+                    if any(len(e.link_faces) == 1 for e in v.link_edges)
+                    and (v.co - center).xz.length < EYE_AREA_R and v.co.y < center.y + Y_FRONT_M]
+            _re2 = [e for v in _rv2 for e in v.link_edges if len(e.link_faces) == 1]
+            if _re2:
+                _ls = sorted(e.calc_length() for e in _re2)
+                _med = _ls[len(_ls) // 2]
+                _wmm = min(max(RIM_WELD_MM, 0.22 * _med * 1000.0), 0.35 * _med * 1000.0)
+                bmesh.ops.remove_doubles(bm, verts=_rv2, dist=_wmm / 1000.0)
+                bmesh.update_edit_mesh(mesh)
+                print(f"make_eye_socket {side}: 环收尾焊缝 {_wmm:.3f}mm "
+                      f"(=0.22~0.35×环边中位 {_med*1000:.3f}mm), 前环顶点 {len(_rv2)}")
+            bpy.ops.object.mode_set(mode='OBJECT')
+            relax_ring_spikes(obj, center, side)   # v65b: 补做一次去刺(最后一次焊接曾在其后)
             # ---- v65(2026-09-23) 眼区最终定向扫描: 修"rim 环附近零星红面" ----
             # 症状(用户实拍+量测): Face Orientation 下, 上 rim(z≈眼心+4.2mm)/下 rim/内眼角 处
             #   残留朝后面 15 个(L12/R3, 合计 1.6mm², ny +0.04~+0.90)。
