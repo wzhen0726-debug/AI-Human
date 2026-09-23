@@ -68,23 +68,55 @@ def _mirror_axis_x(ref_pts):
     _uniq = np.unique(_q, axis=0, return_index=True)[1]
     P = P[_uniq]
     if len(P) > 1200:
-        P = P[np.random.RandomState(0).choice(len(P), 1200, replace=False)]
+        P = P[np.random.RandomState(0).choice(len(P), min(2500, len(P)), replace=False)]
     res = []
-    for dx in np.arange(-5.0, 5.001, 0.1) * 1e-3:
+    # v4b: 中位数对"平坦盆地"不敏感(实测残差 0.46→0.48mm 只差 0.02 → 轴抖 ±0.3mm, 让左眼轮廓偏 0.6mm)。
+    # 改平方距离均值(SSD) + 0.05mm 细网格 + 2500 点采样 → 盆地由"平台"变"抛物", 最小值可辨。
+    for dx in np.arange(-5.0, 5.001, 0.05) * 1e-3:
         Q = P.copy(); Q[:, 0] = 2.0 * dx - Q[:, 0]
         d = np.sqrt(((P[:, None, :] - Q[None, :, :]) ** 2).sum(-1)).min(axis=1)
-        res.append((dx, float(np.median(d))))
+        res.append((dx, float((d ** 2).mean())))
     bestv = min(v for _, v in res)
     # 残差曲线在最优附近很平(扫描件本身左右不对称 ~0.5mm), 取"盆地中心"而非单点最小值 → 抑制噪声抖动
-    tol = bestv + max(0.05e-3, 0.10 * bestv)
+    # v4b: 判据已改 SSD(mm^2) → 盆地容差必须按"距离"折算(5% 距离带), 否则盆地会退化成整个搜索窗
+    _bd = bestv ** 0.5
+    tol = (max(_bd * 1.05, _bd + 0.02e-3)) ** 2
     basin = [d for d, v in res if v <= tol]
     axis = float(sum(basin) / len(basin))
-    print(f"镜像轴(活性): x={axis*1000:+.2f}mm  (眼区 {len(P)} 点采样, 最优残差 {bestv*1000:.2f}mm, "
+    print(f"镜像轴(活性): x={axis*1000:+.2f}mm  (眼区 {len(P)} 点采样, 最优残差 {bestv ** 0.5*1000:.2f}mm, "
           f"盆地 {min(basin)*1000:+.1f}~{max(basin)*1000:+.1f}mm 共{len(basin)}档)")
     return axis
 
 
-AXIS_X = _mirror_axis_x([tuple(o.location) for o in r_objs])
+# ---- v4b(2026-09-23): 镜像轴的计算模型必须是【权威模型】(01 输出) ----
+# 轮廓最终落在 01 输出的模型上, 而本文件内嵌的是旧模型(带未清零的对象变换 -0.16mm) →
+# 实测让左眼轮廓整体偏 0.594mm(用户对 0.16mm 都不接受, 这个必须修)。
+_ref_pts = [tuple(o.location) for o in r_objs]
+_axis_src = IN_BLEND if "IN_BLEND" in globals() else os.path.join(ROOT, "01高模修复", "输出", "01_highpoly_repair.blend")
+if os.path.exists(_axis_src):
+    bpy.ops.wm.open_mainfile(filepath=_axis_src)          # → 权威模型
+    AXIS_X = _mirror_axis_x(_ref_pts)
+    bpy.ops.wm.open_mainfile(filepath=MARKERS)            # → 回打点文件(文档已切换, 下面全部重取引用)
+    r_coll = bpy.data.collections.get("LM_R")
+    r_objs = sorted([o for o in r_coll.objects if o.type == 'EMPTY'], key=lambda o: o.name)
+    for _cname in ("LM_L", "LM_VIS"):                     # 重载后磁盘上的旧 L 标记/旧顺序线又回来了, 再清一次
+        _cc = bpy.data.collections.get(_cname)
+        if _cc:
+            for _o in list(_cc.objects):
+                bpy.data.objects.remove(_o, do_unlink=True)
+    _oc = bpy.data.objects.get("眼裂顺序线_L")
+    if _oc:
+        bpy.data.objects.remove(_oc, do_unlink=True)
+    l_coll = bpy.data.collections.get("LM_L")
+    if l_coll is None:
+        l_coll = bpy.data.collections.new("LM_L"); bpy.context.scene.collection.children.link(l_coll)
+    vis = bpy.data.collections.get("LM_VIS")
+    if vis is None:
+        vis = bpy.data.collections.new("LM_VIS"); bpy.context.scene.collection.children.link(vis)
+    print(f"镜像轴: 计算模型 = {os.path.basename(_axis_src)} (权威模型, 非本文件内嵌模型)")
+else:
+    print(f"镜像轴(活性): 权威模型缺失 {_axis_src} → 退回本文件模型")
+    AXIS_X = _mirror_axis_x(_ref_pts)
 l_objs = []
 for o in r_objs:
     rx, ry, rz = o.location

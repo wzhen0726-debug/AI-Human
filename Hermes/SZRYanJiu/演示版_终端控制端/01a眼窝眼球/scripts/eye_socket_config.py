@@ -126,7 +126,7 @@ RIM_SPIKE_SURF = True
 # v64c: rim 环【深度 y 剖面】低通(XZ不动) — 治 L 侧"下睑靠外眼角"那处 1.2mm 表面台阶造成的 30~38° 折角
 RIM_DEPTH_SMOOTH = False
 # v68: 环重建(等弧长重采样 + 深度按弧长低通) —— 不碰表面/不碰轮廓线, 代价是环略离面
-RIM_REBUILD_RING = False
+RIM_REBUILD_RING = True   # 2026-09-23 用户要求开启测试: 环顶点等弧长重分布+深度低通(修 rim 环波浪)
 # v70: 去 rim 环的自交折返小尖(实测 L 环 XZ 自交 6 处, 全在下睑外侧那 3mm —— 用户看到的"缺口")
 RIM_REMOVE_FOLDS = False
 # v73(D): 折返处 rim 边界重建 —— 删折返处围绕 rim 的一小片皮肤, 沿手描轮廓重建内圈并缝合
