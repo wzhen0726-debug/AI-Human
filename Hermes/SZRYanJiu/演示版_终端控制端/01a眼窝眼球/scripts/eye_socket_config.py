@@ -167,12 +167,14 @@ RIM_LOCAL_INSET = [
    # 实测否决: y二阶差分降到0.007mm但3D转角反而恶化(L 5→25个>30°, R 0→26个, 顶点XZ间距不均→索引域低通在弧长上成阶梯)
 RIM_DEPTH_PASSES = 8
 RIM_DEPTH_LAMBDA = 0.40
-RIM_DEPTH_CAP_MM = 0.35
+# 活性(2026-09-23): 下列三个毫米级上限改为按眼球几何(碗深 SOCKET_CUP_DEPTH≈27.6mm)推导;
+#   比例由历史定案值反推 → 当前模型下数值等价(0.35/3.0/0.40mm), 换眼球尺寸自动缩放。
+RIM_DEPTH_CAP_MM = SOCKET_CUP_DEPTH * 1000.0 * (0.35 / 27.660)      # 0.35mm @当前碗深27.660mm
 
-RIM_SPIKE_SURF_R_MM = 3.0      # 以坏点为中心的平滑半径
+RIM_SPIKE_SURF_R_MM = SOCKET_CUP_DEPTH * 1000.0 * (3.0 / 27.660)    # 3.0mm @当前碗深, 以坏点为中心的平滑半径
 RIM_SPIKE_SURF_PASSES = 16
 RIM_SPIKE_SURF_LAMBDA = 0.12
-RIM_SPIKE_SURF_CAP_MM = 0.40   # 允许的表面最大位移(超过即停)
+RIM_SPIKE_SURF_CAP_MM = SOCKET_CUP_DEPTH * 1000.0 * (0.40 / 27.660)  # 0.40mm @当前碗深, 允许的表面最大位移
 
 # ---- v64: rim 带局部去噪(实测: 对"折角"无效, 只微降表面噪声; 且表面位移可达1.6mm → 默认关闭) ----
 RIM_DENOISE = False

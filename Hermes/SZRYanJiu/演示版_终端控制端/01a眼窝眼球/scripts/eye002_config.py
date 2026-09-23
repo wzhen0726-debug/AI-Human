@@ -14,7 +14,10 @@ EYE002_OBJECTS = ["Eye_Iris", "Eye_Sclera", "Eye_Shadow"]
 EYE_XZ_JSON = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端\01a眼窝眼球\3ddfa\eyelid_contour_manual.json"
 
 # 缩放: 巩膜实测中位半径12.45mm → 缩到14.5mm(与001方案角膜位置对齐, 保持已验证摆入参数)
-EYE002_SCALE = 14.5 / 12.45   # ≈1.1647
+# ---- 活性(2026-09-23): 目标球半径=单一真值源, 缩放与下面两个微调旋钮都从它推导 ----
+EYE_TARGET_RADIUS_MM = 14.5      # 目标眼球半径(mm)
+EYE002_ASSET_RADIUS_MM = 12.45   # 002 模型自带球半径(mm)
+EYE002_SCALE = EYE_TARGET_RADIUS_MM / EYE002_ASSET_RADIUS_MM   # ≈1.1647
 
 # ---- v4 摆位定案: 解剖规律(用户GUI手动微调反推, 2026-08-21验收) ----
 # 深度参考 = 眼睑开口平面(用户标记的rim, 左右几乎完全对称 → 两眼深度自动同步)
@@ -23,12 +26,14 @@ EYE002_SCALE = 14.5 / 12.45   # ≈1.1647
 # 【规律1·深度】角膜顶点与睑缘开口平面共面(凸出≈0).
 #   用户手动把v3e的-1.5mm往前拉1.57mm回到共面位 → 定案0.1mm
 #   眼球太凸 → 减小此值(更靠里); 眼球凹陷 → 增大此值
-EYE_PROTRUSION_MM = 0.1
+EYE_PROTRUSION_RATIO = 0.1 / 14.5   # 角膜凸出占目标球半径比例(定案=0.1mm@14.5mm 球)
+EYE_PROTRUSION_MM = EYE_TARGET_RADIUS_MM * EYE_PROTRUSION_RATIO
 #
 # 【规律2·高度】虹膜底缘贴下眼睑缘(可见虹膜, limbus透明区约0.5mm已含在内).
 #   等效: 虹膜中心 = 开口中心 +1.4mm(002实测); 上睑自然盖住虹膜顶约1.5mm
 #   换模型时若虹膜尺寸不同, 半自动微调面板可GUI调整后"保存到管线"
-EYE_Z_OFFSET_MM = 1.4
+EYE_Z_OFFSET_RATIO = 1.4 / 14.5     # 虹膜中心相对开口中心的高度偏移比例(=1.4mm@14.5mm 球)
+EYE_Z_OFFSET_MM = EYE_TARGET_RADIUS_MM * EYE_Z_OFFSET_RATIO
 #
 # 【规律3·左右】x=轮廓中心不动; 两眼y/z用同一偏移量 → 天然同步
 # 【半自动微调】GUI手动调好后点面板"保存位置到管线" → 写入 eyeball_finetune_manual.json,

@@ -2263,7 +2263,8 @@ def make_eye_socket(obj, center, side, k_override=None):
     bm = bmesh.from_edit_mesh(mesh)
     bm.faces.ensure_lookup_table()
     # y限制: cy+20mm(鼓包最深处~-0.10也要删净; 轮廓只覆盖眼区, 不会误删后脑壳)
-    y_cut = cy + 0.020
+    # 活性(2026-09-23): 原固定 cy+20mm; 按碗深比例(=20/27.6) → 换眼球/眼窝尺寸自动缩放
+    y_cut = cy + SOCKET_CUP_DEPTH * (0.020 / 0.027660)
     def inside_poly(fc):
         if fc.y >= y_cut: return False
         if poly is not None:

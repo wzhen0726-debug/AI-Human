@@ -37,10 +37,39 @@ import numpy as np
 import bmesh
 from mathutils.bvhtree import BVHTree
 
-CLUSTER_MM = 6.0          # 三角质心聚类阈值
+# ---- 尺寸活性(2026-09-23, 用户要求"参数都必须是活的") ----
+# 本模块所有毫米级阈值都按模型 bbox 比例算, 不再写死。基准 REF_BBOX_MAX_M 取自当前角色实测
+# (1.809m, 与 04_bake.py 的 CAGE_BODY=bbox_max*0.011 同口径), 因此下列比例与历史固定值【数值等价】:
+#   CLUSTER_MM 6.0mm / WELD_LADDER 0.8~5.0mm / RELAX_CAP_MM 0.3mm / 簇心间距 25mm
+# 换体型(孩童/女人/老人)或换比例尺时自动缩放 → 不必回来改常数。
+REF_BBOX_MAX_M = 1.808408   # 实测: 03_auto_uv.blend 低模 bbox_max(x向/臂展), 2026-09-23 量取
+CLUSTER_RATIO = 6.0 / (REF_BBOX_MAX_M * 1000.0)
+WELD_LADDER_RATIO = tuple(v / (REF_BBOX_MAX_M * 1000.0) for v in
+                          (0.8, 1.2, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0))
+RELAX_CAP_RATIO = 0.3 / (REF_BBOX_MAX_M * 1000.0)
+CENTER_DIST_RATIO = 25.0 / (REF_BBOX_MAX_M * 1000.0)
+
+# 下列为"当前模型"下的实际值, 由 _apply_size(obj) 按 bbox 实时刷新(FALLBACK = 基准体型下的值)
+CLUSTER_MM = 6.0
 WELD_LADDER = (0.0008, 0.0012, 0.0015, 0.0020, 0.0025, 0.0030, 0.0040, 0.0050)  # m
 RELAX_CAP_MM = 0.3        # 兜底平滑的单顶点位移硬上限
+MIN_CENTER_DIST_MM = 25.0
 MAX_ROUNDS = 4
+
+
+def _apply_size(obj):
+    """按 obj 的世界 bbox 刷新毫米级阈值(返回尺度系数, 1.0 = 基准体型)。"""
+    global CLUSTER_MM, WELD_LADDER, RELAX_CAP_MM, MIN_CENTER_DIST_MM
+    from mathutils import Vector
+    pts = [obj.matrix_world @ Vector(c) for c in obj.bound_box]
+    span = max(max(p[i] for p in pts) - min(p[i] for p in pts) for i in range(3))
+    sc = float(span) / REF_BBOX_MAX_M
+    CLUSTER_MM = CLUSTER_RATIO * REF_BBOX_MAX_M * 1000.0 * sc      # mm
+    # ⚠ WELD_LADDER 单位是【米】(见文件头常量注释): 比例已是 mm/mm, 故乘基准米数即可, 不能再 ×1000
+    WELD_LADDER = tuple(r * REF_BBOX_MAX_M * sc for r in WELD_LADDER_RATIO)   # m
+    RELAX_CAP_MM = RELAX_CAP_RATIO * REF_BBOX_MAX_M * 1000.0 * sc
+    MIN_CENTER_DIST_MM = CENTER_DIST_RATIO * REF_BBOX_MAX_M * 1000.0 * sc
+    return sc
 
 
 def _tri_array(me):
@@ -115,7 +144,9 @@ def _drop_dup_faces(obj):
     return n
 
 
-def _cluster_keys(pairs, tris, co, min_center_dist_mm=25.0):
+def _cluster_keys(pairs, tris, co, min_center_dist_mm=None):
+    if min_center_dist_mm is None:
+        min_center_dist_mm = MIN_CENTER_DIST_MM
     """当前所有缺陷簇的"地点指纹"(四舍五入的中心), 用于判断某次修复有没有在别处新生缺陷。"""
     if not pairs:
         return []
@@ -129,7 +160,9 @@ def _shortest_center_dist(keys, center):
     return min(np.linalg.norm(np.array(k) - np.array(center)) for k in keys)
 
 
-def _clusters(tris, co, pairs, thr_mm=CLUSTER_MM):
+def _clusters(tris, co, pairs, thr_mm=None):
+    if thr_mm is None:
+        thr_mm = CLUSTER_MM
     """把自交涉及的三角按质心距离聚类 → [ {'tris':[...], 'center':(x,y,z), 'n':对数} ]"""
     inv = sorted({t for p in pairs for t in p})
     if not inv:
@@ -188,7 +221,9 @@ def _weld(obj, vert_ids, dist):
     return n0 - len(obj.data.vertices)
 
 
-def _relax(obj, vert_ids, cap_mm=RELAX_CAP_MM, rounds=10, factor=0.3):
+def _relax(obj, vert_ids, cap_mm=None, rounds=10, factor=0.3):
+    if cap_mm is None:
+        cap_mm = RELAX_CAP_MM
     bm = bmesh.new()
     bm.from_mesh(obj.data)
     bm.verts.ensure_lookup_table()
@@ -261,6 +296,9 @@ def _fix_winding(obj):
 
 
 def clean_self_intersections(obj, verbose=True):
+    sc = _apply_size(obj)
+    if verbose:
+        print(f"[selfint_clean] 尺寸活性: bbox_max/基准={sc:.4f} → 聚类{CLUSTER_MM:.2f}mm 焊接上限{WELD_LADDER[-1]*1000:.2f}mm 兜底{RELAX_CAP_MM:.3f}mm")
     """就地清理 obj 的自交穿插 + 绕向不一致; 返回统计(中文键, 便于直接打印)"""
     rep = {"对象": obj.name, "簇": [], "残留": None}
     rep["清理前"] = dict(面数=len(obj.data.polygons), 顶点数=len(obj.data.vertices), **_hygiene(obj))
