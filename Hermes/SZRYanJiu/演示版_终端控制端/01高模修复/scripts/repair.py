@@ -221,7 +221,14 @@ def rotate_to_standard(obj):
 
 
 def center_model(obj):
-    """Center on origin (X=0, Y=0), feet at Z=0."""
+    """Center on origin (X=0, Y=0), feet at Z=0. 并把对象变换清零.
+
+    v65(2026-09-23) 为何要清零: GLB 导入的根节点会自带 ~0.1mm 级 location 偏移,
+    而 get_bbox/本函数只动顶点(局部坐标) → 偏移留在 obj.location 上, 世界坐标整体平移.
+    mirror_markers.py 的"绕世界 x=0 镜像(L=-R_x)"遇到该偏移 → 左眼系统性偏 2×偏移.
+    实测本项目: loc.x=-0.16mm → 左眼偏 0.32mm(眼角曲率半径才~1mm, 会顶出眼眶).
+    清零是"把偏移真正去掉"(几何随之外移), 不是烘焙(烘焙会保留世界位置、偏移依旧)。
+    """
     mn, mx, dims = get_bbox(obj)
     cx = (mn[0] + mx[0]) / 2.0
     cy = (mn[1] + mx[1]) / 2.0
@@ -229,7 +236,13 @@ def center_model(obj):
     arr = _get_coords(obj)
     arr[:, 0] -= cx; arr[:, 1] -= cy; arr[:, 2] -= cz_min
     _apply_coords(obj, arr)
-    print(f"  Centered: offset=({cx:.4f}, {cy:.4f}, {cz_min:.4f})")
+    _loc_before = tuple(round(v * 1000.0, 5) for v in obj.location)
+    if any(abs(v) > 1e-9 for v in obj.location):
+        obj.location = (0.0, 0.0, 0.0)
+        print(f"  Centered: offset=({cx:.4f}, {cy:.4f}, {cz_min:.4f})  "
+              f"对象变换清零(原 location={_loc_before} mm → 0,0,0; 世界几何平移 {tuple(-v for v in _loc_before)} mm)")
+    else:
+        print(f"  Centered: offset=({cx:.4f}, {cy:.4f}, {cz_min:.4f})  对象变换已是 0")
 
 
 def dissolve_degenerate(obj):
