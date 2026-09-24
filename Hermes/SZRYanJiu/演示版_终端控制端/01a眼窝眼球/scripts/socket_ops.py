@@ -1369,6 +1369,108 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
     for t in range(K):
         inner.append(bm.verts.new(Vector((float(X[t]), float(Y[t]), float(Z[t])))))
     bm.verts.ensure_lookup_table()
+    # ============ v88.2(2026-09-24) 带内中缝: inner↔outer 之间插中环, 单排 → 多排 ============
+    #  问题: v88.1 单排条带跨径 = 整个带宽 W, 每张面都是"窄(切向)×长(径向)"长条 →
+    #        带内细长比中位 L 4.10 / R 3.91(旧 walk 法 3.01/2.98), QA 长条占比 24.9%/25.0% vs 参考 0.4%/0.0%。
+    #  实测(开发台 L/K=6/W=1.30mm, logs/_ab/dev_v882_L_K6*): 只插【一圈】中环时环相邻面细长比 4.10→4.18
+    #        —— 几乎没变。原因(实测 logs/_dev_band_ratio_detail.py): ①⑦b 长边细分在 v88.1 里已把跨径
+    #        1.85mm 的长边切到 ~0.92mm, 一行中环与它等效; ②真正的限制是【布尔环的切向点距 0.224mm】
+    #        = 6× 皮肤中位边长(布尔环 412 点 = 棱柱 235 角 + 皮肤交点), 面型 ≈ 0.92mm(径向)×0.224mm(切向)。
+    #        要达"细长比 ≲3.3"需行内 3D 跨度 ≲0.73mm → 行数 3(0.62mm/行)。
+    #  做法(行数 NR 通用): ①第 j 圈中环初值 = inner↔outer 上 f=j/NR 的线性插值点(单圈时即中点);
+    #        ②投影到【切割前的皮肤快照表面】(bm_pre) —— 必须用快照: 带区皮肤在布尔切割后已被删,
+    #          投到删完的网格上会吸到眼窝内壁/后脑/眼球等错误表面;
+    #        ③健全性: 投影位移 > 0.45W 的点退回线性插值点; 与相邻中环点"深度二阶差分" > 0.35W 的退回;
+    #        ④桥接按【相邻两圈】逐对(inner↔中1↔中2↔…↔outer), 点序一一对应(与手描轮廓的配对自检=0一致)。
+    #  行数: RIM_BAND_MID_ROWS>=1 时用它; =0(默认)=自动 → NR=ceil(内外环3D间距中位 /(0.5×皮肤中位边长)),
+    #        限[1,4]; NR=1 即 v88.1 的单排(总开关 RIM_BAND_MID_ENABLE=False 也能强制回单排)。
+    rings = [inner, outer]              # 由内到外的所有环(中环插入其中)
+    mid = []                            # 中环列表(j=0..NR-2 由内到外), 空=单排
+    _mid_stat = None
+    _NR = 1
+    if bool(globals().get('RIM_BAND_MID_ENABLE', True)) and K >= 8:
+        import time as _tmid
+        _tmid0 = _tmid.time()
+        _sv = float(globals().get('RIM_SKIN_EDGE_M', 0.0) or 0.0)
+        _span3d = float(np.median([(outer[t].co - inner[t].co).length for t in range(K)]))
+        _ov = int(globals().get('RIM_BAND_MID_ROWS', 0) or 0)
+        if _ov >= 1:
+            _NR = max(1, min(4, _ov)); _nrsrc = f"配置 RIM_BAND_MID_ROWS={_ov}"
+        else:
+            _tgt = 0.5 * max(_sv, 3e-5)          # 行内跨度目标 = 0.5×皮肤中位边长
+            _NR = int(min(4, max(1, math.ceil(_span3d / _tgt))))
+            _nrsrc = (f"自动 ceil(内外环3D间距中位{_span3d*1000:.3f}mm / 目标行跨{_tgt*1000:.3f}mm"
+                      f"(=0.5×皮肤中位边长{_sv*1000:.3f}mm))")
+        if _NR > 1:
+            _bvh = None
+            try:                                                     # ② 切割前快照的最近表面查询
+                from mathutils.bvhtree import BVHTree
+                _bvh = BVHTree.FromBMesh(bm_pre, epsilon=0.0)
+            except Exception as _e:
+                print(f"rebuild_rim_band {side}: 中缝: 切割前快照表面 BVH 建立失败({_e}) → 中环取线性插值点")
+            _limd = float(globals().get('RIM_BAND_MID_DISP_FRAC', 0.45)) * W
+            _limj = float(globals().get('RIM_BAND_MID_JUMP_FRAC', 0.35)) * W
+            _d_all = []; _rev_d = 0; _rev_j = 0; _nproj = 0; _dxz_all = []
+            for j in range(1, _NR):
+                f = float(j) / float(_NR)
+                _lin = [inner[t].co.lerp(outer[t].co, f) for t in range(K)]   # ① 线性插值点
+                _pts = list(_lin)
+                if _bvh is not None:                                          # ② 投影到快照表面
+                    for t in range(K):
+                        _hit = _bvh.find_nearest(_lin[t])
+                        if _hit is None or _hit[0] is None:
+                            continue
+                        _dd = float((_hit[0] - _lin[t]).length)
+                        if _dd > _limd:
+                            _rev_d += 1                        # ③a 位移过大 → 退回线性插值点
+                            continue
+                        _pts[t] = _hit[0]; _nproj += 1; _d_all.append(_dd)
+                _yy = np.array([float(p.y) for p in _pts])            # ③b 深度跳变退回
+                _r2 = _yy - 0.5 * (np.roll(_yy, 1) + np.roll(_yy, -1))
+                for t in range(K):
+                    if abs(float(_r2[t])) > _limj:
+                        _pts[t] = _lin[t]; _rev_j += 1
+                _ring = [bm.verts.new(_pts[t]) for t in range(K)]
+                bm.verts.ensure_lookup_table()
+                mid.append(_ring)
+                rings.insert(len(rings) - 1, _ring)          # 由内到外插在 outer 之前
+                _dxz_all.extend(_poly_dist_points(CP, np.array([[_pts[t].x, _pts[t].z] for t in range(K)])) * 1000.0)
+            # ---- 自证数字(中文): 中缝点数/行数 / 投影位移 / 退回点数 / 每排面数 / 细长比(前后对比) ----
+            def _quad_asp(A, B):
+                """相邻两圈一一对应时的四边形面"细长比(最长边/最短边)"数组。"""
+                out = []
+                for _t in range(K):
+                    _t2 = (_t + 1) % K
+                    _e = [(A[_t].co - A[_t2].co).length, (B[_t].co - B[_t2].co).length,
+                          (A[_t].co - B[_t].co).length, (A[_t2].co - B[_t2].co).length]
+                    _e = [x for x in _e if x > 1e-12]
+                    if _e:
+                        out.append(max(_e) / min(_e))
+                return np.array(out)
+            _asp1 = _quad_asp(inner, outer)                                   # 虚拟单排(v88.1 面型)
+            _aspN = np.concatenate([_quad_asp(rings[q], rings[q + 1]) for q in range(len(rings) - 1)])
+            _dok = np.array(_d_all)
+            print(f"rebuild_rim_band {side}: 中缝 行数NR={_NR}({_nrsrc}; 中缝{_NR-1}圈×{K}点={(_NR-1)*K}点) "
+                  f"| 投影位移 中位{(np.median(_dok)*1000 if len(_dok) else 0.0):.3f} "
+                  f"max{(float(_dok.max())*1000 if len(_dok) else 0.0):.3f}mm(上限{_limd*1000:.3f}) "
+                  f"| 退回 位移{_rev_d} 深度跳变{_rev_j} | 成功投影{_nproj}点 "
+                  f"| 排面数 {len(rings)-1}排×{K}={len(rings)*K-K}面 | "
+                  f"中环到轮廓XZ距离 中位{(np.median(_dxz_all) if _dxz_all else 0.0):.3f}"
+                  f"[{(min(_dxz_all) if _dxz_all else 0.0):.3f},{(max(_dxz_all) if _dxz_all else 0.0):.3f}]mm(带宽W={W_mm:.2f})")
+            print(f"rebuild_rim_band {side}: 中缝细长比(最长边/最短边, 桥接原始面型) 中位: 单排(v88.1)"
+                  f"{np.median(_asp1):.2f} → {_NR}排{np.median(_aspN):.2f} | >4 的面: 单排"
+                  f"{int((_asp1>4).sum())}({int((_asp1>4).sum())*100.0/max(1,K):.1f}%)→{_NR}排"
+                  f"{int((_aspN>4).sum())}({int((_aspN>4).sum())*100.0/max(1,len(_aspN)):.1f}%) | "
+                  f">6 的面: 单排{int((_asp1>6).sum())}→{_NR}排{int((_aspN>6).sum())} | 用时{_tmid.time()-_tmid0:.1f}s")
+            _mid_stat = dict(n=K, rows=_NR, d_med=float(np.median(_dok)) if len(_dok) else 0.0,
+                             d_max=float(_dok.max()) if len(_dok) else 0.0,
+                             rev_disp=int(_rev_d), rev_jump=int(_rev_j),
+                             asp1=float(np.median(_asp1)), asp2=float(np.median(_aspN)))
+        else:
+            print(f"rebuild_rim_band {side}: 中缝 行数NR=1({_nrsrc}) → 保持单排")
+    elif bool(globals().get('RIM_BAND_MID_ENABLE', True)):
+        print(f"rebuild_rim_band {side}: 中缝: 环顶点仅 {K}(<8) → 跳过(保持单排)")
+
     # ---- ④ 一圈条带: 优先用 Blender 原生 bridge_loops(官方支持两圈顶点数不同, 自带最优配对) ----
     # 手写"逐点对拉+三角化"在两侧地形不同时会拉出细长/扭曲面(用户实测右眼更差);
     # 桥接【不改变内圈=手描轮廓】, 只把"两圈之间的面型"交给原生算法。失败则回退手写路线。
@@ -1383,49 +1485,88 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
             except ValueError:
                 e = bm.edges.get((a, b))
         return e
-    _ie = []
-    for k in range(K):
-        _e = _edge_of(inner[k], inner[(k + 1) % K])
-        if _e is not None:
-            _ie.append(_e)
-    _oe = []
-    for k in range(K):
-        _e = _edge_of(outer[k], outer[(k + 1) % K])
-        if _e is not None:
-            _oe.append(_e)
-    _bridged = False
-    if len(_ie) == K and len(_oe) == K:
-        try:
-            _r = bmesh.ops.bridge_loops(bm, edges=_ie + _oe, use_cyclic=True)
-            _bf = [g for g in _r.get("faces", []) if isinstance(g, bmesh.types.BMFace)]
-            if _bf:
-                bm.normal_update()
-                _amax = max(f.calc_area() for f in _bf) * 1e6
-                if len(_bf) >= max(4, K * 0.5) and _amax < 12.0:   # 配对失败会长出巨大面
-                    new_faces = _bf; made = len(_bf); _bridged = True
-                    print(f"rebuild_rim_band {side}: bridge_loops 桥接 {len(_bf)} 面 (最大面{_amax:.2f}mm2)")
-                else:
-                    print(f"rebuild_rim_band {side}: bridge_loops 结果异常({len(_bf)}面/最大{_amax:.1f}mm2) → 回退手写")
-                    bmesh.ops.delete(bm, geom=_bf, context='FACES')
-        except Exception as _e:
-            print(f"rebuild_rim_band {side}: bridge_loops 失败({_e}) → 回退手写")
-    if not _bridged:
+    # 各圈的边(逐对桥接用); v88.2: rings = [inner, 中1, 中2, ..., outer]
+    _loop_edges = []
+    for _q in range(len(rings)):
+        _E = []
         for k in range(K):
-            k2 = (k + 1) % K
-            a, b, c, d = inner[k], inner[k2], outer[k2], outer[k]
-            ok = 0
-            for tri in ((a, b, c), (a, c, d)):
+            _e = _edge_of(rings[_q][k], rings[_q][(k + 1) % K])
+            if _e is not None:
+                _E.append(_e)
+        _loop_edges.append(_E)
+    _ie = _loop_edges[0]
+    _oe = _loop_edges[-1]
+    _bridged = False
+    def _bridge_once(_E1, _E2):
+        """桥接两圈; 成功返回([面...], 最大面积mm²), 失败 (None, 0.0)。
+        v88.2 备注: bridge_loops 一次传三圈会多桥一排(实测 412+412+412=1236 面, 非流形边 480),
+        所以多排条带不走原生桥接, 改【相邻两圈逐对点对点】写四边形(同点数同序下与原生等价且可控)。"""
+        if len(_E1) != K or len(_E2) != K:
+            return None, 0.0
+        try:
+            _r = bmesh.ops.bridge_loops(bm, edges=_E1 + _E2, use_cyclic=True)
+            _f = [g for g in _r.get("faces", []) if isinstance(g, bmesh.types.BMFace)]
+        except Exception as _e:
+            print(f"rebuild_rim_band {side}: bridge_loops 失败({_e})")
+            return None, 0.0
+        if not _f:
+            return None, 0.0
+        bm.normal_update()
+        return _f, max(f.calc_area() for f in _f) * 1e6
+    if len(rings) > 2:
+        # ---- v88.2 多排: 相邻两圈逐对点对点写四边形(点序一一对应) ----
+        _allq = 0; _alltri = 0
+        for _q in range(len(rings) - 1):
+            _R1, _R2 = rings[_q], rings[_q + 1]
+            for k in range(K):
+                k2 = (k + 1) % K
+                a, b, c, d = _R1[k], _R1[k2], _R2[k2], _R2[k]
+                ok = 0
                 try:
-                    new_faces.append(bm.faces.new(tri)); made += 1; ok += 1
+                    new_faces.append(bm.faces.new((a, b, c, d))); made += 1; ok += 1; _allq += 1
                 except ValueError:
                     pass
-            if ok < 2:
+                if ok == 0:                 # 四边形失败(已有同面/边满) → 两个三角兜底
+                    for tri in ((a, b, c), (a, c, d)):
+                        try:
+                            new_faces.append(bm.faces.new(tri)); made += 1; ok += 1; _alltri += 1
+                        except ValueError:
+                            pass
+                if ok == 0:
+                    failed_k.append(k)
+        _bridged = True
+        bm.normal_update()
+        print(f"rebuild_rim_band {side}: 点对点桥接 {len(rings)-1} 排 = {made} 面 "
+              f"(四边{_allq} 三角兜底{_alltri}; 期望{(len(rings)-1)*K}), 未闭合格 {len(failed_k)}")
+    elif len(_ie) == K and len(_oe) == K:
+        _f1, _a1 = _bridge_once(_ie, _oe)
+        if _f1 is not None and len(_f1) >= max(4, 0.5 * K) and _a1 < 12.0:
+            new_faces = _f1; made = len(_f1); _bridged = True
+            print(f"rebuild_rim_band {side}: bridge_loops 桥接 {len(_f1)} 面 (单排, 最大面{_a1:.2f}mm2)")
+        elif _f1:
+            print(f"rebuild_rim_band {side}: bridge_loops 结果异常({len(_f1)}面/最大{_a1:.1f}mm2) → 回退手写")
+            for _f in _f1:
+                if _f.is_valid:
+                    bmesh.ops.delete(bm, geom=[_f], context='FACES')
+    if not _bridged:
+        _rows = [(rings[_q], rings[_q + 1]) for _q in range(len(rings) - 1)]
+        for (_R1, _R2) in _rows:
+            for k in range(K):
+                k2 = (k + 1) % K
+                a, b, c, d = _R1[k], _R1[k2], _R2[k2], _R2[k]
+                ok = 0
                 try:
                     new_faces.append(bm.faces.new((a, b, c, d))); made += 1; ok += 1
                 except ValueError:
                     pass
-            if ok == 0:
-                failed_k.append(k)
+                if ok == 0:
+                    for tri in ((a, b, c), (a, c, d)):
+                        try:
+                            new_faces.append(bm.faces.new(tri)); made += 1; ok += 1
+                        except ValueError:
+                            pass
+                if ok == 0:
+                    failed_k.append(k)
     # ---- ⑤ 逐面定向: 与共顶点的【非新建面】平均法线比对(避免整圈判据被污染) ----
     bm.faces.ensure_lookup_table()
     bm.normal_update()   # 关键: 新建面的 f.normal 是惰性的, 不 update 会读到旧/零值 → 定向判据全部误判
