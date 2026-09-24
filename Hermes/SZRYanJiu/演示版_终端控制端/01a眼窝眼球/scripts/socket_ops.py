@@ -607,50 +607,456 @@ def _seg_int_xz(a1, a2, b1, b2):
     return None
 
 
-def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
-    """v85(D2): 沿【整圈】rim 重建皮肤带 —— 一次解决 rim 全部缺陷(折返尖/锯齿/间距不均)。
+# ================= v88(2026-09-24) 方案1: 程序化偏移外环 + 环形布尔切割 =================
+# 背景(实测 logs/01a_4.txt): 旧法用"沿网格边界顶点邻接 walked 找单一闭环"取外环, 一旦眼区边界图里
+#   混进任何别的边界(擦出的碎小孤立环/死端)就永远凑不齐"单一闭环" → 进入"删坏顶点周围 W×1.6 内的面
+#   再重试"(最多 6 轮); 而删面本身又造出新边界 → 实测碎环数 2→5→6 递增, 6 轮后放弃 → 用断裂外环桥接
+#   → 02QR 产物的眼角平口切断 + 带内面疏密混乱; 且每轮失败 ≈ 5 分钟, 谐波门控从 K=6 一路回退到 K=2
+#   (约 8 次尝试) → 单步 40 分钟。新法不再"找环": 外环由手描轮廓【程序化向外偏移 W】得到(等点数),
+#   再用环形棱柱对该皮肤带做一次 EXACT 差集 → 带区皮肤被精确切除, 边界=布尔算出的精确闭环;
+#   内环=手描轮廓同点数 → 一一桥接, 无最近邻/解绕/单调强制(那些是"乱面"的历史源头)。
 
-    做法: ①删掉沿手描轮廓 W mm 宽的一圈皮肤面(洞被扩大到该带的外缘)
-          ②该带外缘(此时是唯一的洞边界)细分到 ≤ARC_MM
-          ③内圈 = 手描轮廓本身, 重采样到与外圈【同点数】
-          ④按点对点条带三角化缝回 → rim 环严格等于手描轮廓, 且均匀无折返
-    皮肤带之外的皮肤一个顶点不动。
+
+def _poly_dist_points(P, Q):
+    """Q 每点到闭合折线 P 的最近距离(米). P:(n,2) 折线, Q:(m,2) 点。"""
+    a = np.asarray(P, dtype=np.float64)
+    b = np.roll(a, -1, axis=0)
+    ab = b - a
+    L2 = np.maximum((ab ** 2).sum(axis=1), 1e-18)
+    D = np.full(len(Q), 1e9)
+    for k in range(len(a)):
+        v = Q - a[k]
+        t = np.clip((v @ ab[k]) / L2[k], 0.0, 1.0)
+        D = np.minimum(D, np.linalg.norm(Q - (a[k] + t[:, None] * ab[k]), axis=1))
+    return D
+
+
+def _poly_self_int_count(P):
+    """闭合折线((n,2))的自交点数(相邻段共享端点除外) —— 外环健全性自检。"""
+    N = len(P)
+    cnt = 0
+    for i in range(N):
+        a1 = P[i]; a2 = P[(i + 1) % N]
+        for j in range(i + 1, N):
+            if j == (i + 1) % N or (j + 1) % N == i:
+                continue
+            b1 = P[j]; b2 = P[(j + 1) % N]
+            r = a2 - a1; s = b2 - b1
+            den = r[0] * s[1] - r[1] * s[0]
+            if abs(den) < 1e-15:
+                continue
+            qp = b1 - a1
+            t = (qp[0] * s[1] - qp[1] * s[0]) / den
+            u = (qp[0] * r[1] - qp[1] * r[0]) / den
+            if 1e-9 < t < 1 - 1e-9 and 1e-9 < u < 1 - 1e-9:
+                cnt += 1
+    return cnt
+
+
+def ring_offset_outward_xz(CP, W, miter_limit=2.5):
+    """v88(方案1 第①步): 闭合轮廓 CP((N,2) XZ, 米) → 【向外偏移 W】的外环(等点数, 米)。
+
+    外法向 = 相邻两段法向中指向"远离形心"的那个; 两条平移 W 的直线求交点(斜接); 斜接长度限
+    miter_limit×W(防眼角尖点长出长刺); 末尾按弧长等距重采样回 N 点 → 与内环一一对应。
+    返回 (OUT(N,2), info)。
     """
-    if not RIM_BAND_ENABLE:
-        return
-    if W_mm is None:
-        W_mm = RIM_BAND_W_MM
-    cv = Vector((float(center[0]), float(center[1]), float(center[2])))
-    cy = cv.y
-    mesh = obj.data
-    bm_pre = bmesh.new()
-    bm_pre.from_mesh(mesh)          # 删面之前的快照(供取原 rim 边界)
-    CP = np.array([[float(p[0]), float(p[1])] for p in poly], dtype=np.float64)   # 手描/光滑轮廓 XZ(mm? 否: 米)
-    NP = len(CP)
-    # 轮廓每点深度: 取最近表面点(closest_point_on_mesh)。不能用沿 Y 的 ray_cast ——
-    # 洞口范围内射线会穿透打到后脑, 判无效再插值就把 rim 深度抹平了(用户: "Y轴拉平, 眼眶变形")
-    # 深度不自己采样: 沿用【原 rim 边界】在相同角度上的 y (它就在表面上, 是真值) ——
-    # 自采样(ray_cast 会穿透 / closest_point 会取到深处内壁)都会改变 rim 的 3D 形态(用户: "变形")
-    _ob = [e for e in bm_pre.edges if len(e.link_faces) == 1
-           and (e.verts[0].co - cv).xz.length < EYE_AREA_R and e.verts[0].co.y < cy + Y_FRONT_M]
-    _ovs = set()
-    for e in _ob:
-        _ovs.add(e.verts[0]); _ovs.add(e.verts[1])
-    if _ovs:
-        th = np.array([np.arctan2(v.co.z - cv.z, v.co.x - cv.x) for v in _ovs])
-        yy = np.array([v.co.y for v in _ovs])
-        o = np.argsort(th)
-        th = th[o]; yy = yy[o]
-        th = np.concatenate([th - 2 * np.pi, th, th + 2 * np.pi])
-        yy = np.concatenate([yy, yy, yy])
-        CY = np.interp(np.arctan2(np.array([p[1] for p in poly]) - cv.z,
-                                  np.array([p[0] for p in poly]) - cv.x), th, yy)
-        print(f"rebuild_rim_band {side}: 深度沿用原 rim 边界(角度插值), 原边界 {len(_ovs)} 点, "
-              f"y范围[{CY.min()*1000:.1f},{CY.max()*1000:.1f}]mm")
-    else:
-        CY = np.full(len(poly), cy)
-        print(f"rebuild_rim_band {side}: 未取到原 rim 边界 → 深度用眼中心 y 兜底")
+    P = np.asarray(CP, dtype=np.float64)
+    N = len(P)
+    c2 = P.mean(axis=0)
+    OUT = np.array(P, dtype=np.float64, copy=True)
+    miter_max = 0.0
+    for i in range(N):
+        p = P[i]
+        ep = P[i] - P[(i - 1) % N]
+        en = P[(i + 1) % N] - P[i]
+        lp = float(np.linalg.norm(ep)); ln = float(np.linalg.norm(en))
+        if lp < 1e-12 or ln < 1e-12:
+            continue
+        ep = ep / lp; en = en / ln
+        npv = np.array([-ep[1], ep[0]])
+        nnv = np.array([-en[1], en[0]])
+        rad = p - c2
+        if float(np.dot(npv, rad)) < 0.0:
+            npv = -npv
+        if float(np.dot(nnv, rad)) < 0.0:
+            nnv = -nnv
+        a = p + npv * W
+        b = p + nnv * W
+        den = ep[0] * en[1] - ep[1] * en[0]
+        if abs(den) < 1e-12:
+            q = a
+        else:
+            d = b - a
+            q = a + ep * ((d[0] * en[1] - d[1] * en[0]) / den)
+        d = q - p
+        L = float(np.linalg.norm(d))
+        if L > miter_max:
+            miter_max = L
+        if L > miter_limit * W and L > 1e-12:
+            q = p + d / L * (miter_limit * W)
+        OUT[i] = q
+    Q = np.vstack([OUT, OUT[:1]])
+    seg = np.linalg.norm(np.diff(Q, axis=0), axis=1)
+    s = np.concatenate([[0.0], np.cumsum(seg)])
+    if s[-1] > 1e-9:
+        t = np.linspace(0.0, s[-1], N, endpoint=False)
+        OUT = np.stack([np.interp(t, s, Q[:, 0]), np.interp(t, s, Q[:, 1])], axis=1)
+    dd = _poly_dist_points(P, OUT)
+    sg = np.linalg.norm(np.roll(OUT, -1, axis=0) - OUT, axis=1)
+    info = dict(n=N, W=float(W), d_med=float(np.median(dd)), d_min=float(dd.min()), d_max=float(dd.max()),
+                miter_max=float(miter_max), self_int=int(_poly_self_int_count(OUT)),
+                seg_med=float(np.median(sg)), seg_min=float(sg.min()), seg_max=float(sg.max()))
+    return OUT, info
 
+
+def _eye_boundary_loops(bm, cv, P_near=None, near_mm=None, y_extra_m=0.0, r_scale=1.2):
+    """v88: 眼区内【边界边(只有 1 个面)】按顶点连通分量分组 → [(按环序顶点索引链, 是否闭合, 顶点数)]。
+    与旧法的本质区别: 不要求"全眼只有一个环" —— 眼区里混进别的边界(碎小孤立环/死端)照样能各自成组。
+
+    v88.1 修正(实测 logs/_ab/dev_L_K6_postcut.blend): 原判据带上 `v.co.y < cy + Y_FRONT_M`(≈眼中心前
+      10.8mm), 但【外眼角的皮肤褶皱】是近乎与视线平行的陡面 —— 布尔切出的环在那里会顺着褶皱往深处
+      (颅内方向)折到 y≈-75mm, 被这条判据整段滤掉(实测 39 条边) → 本来闭合的单一环被切成"两段悬挂的链",
+      _pick_outer_loop 判"断开" → 新法被误判失败而回退旧法。修正: y 阈值放宽 y_extra_m(默认 0 保持旧行为),
+      并支持 P_near=[折线...] + near_mm: 顶点必须离其中一条折线近(几何位置判据取代 y 一刀切)。
+    """
+    cy = float(cv.y)
+    def _near(v):
+        if (v.co - cv).xz.length >= EYE_AREA_R * r_scale:
+            return False
+        if v.co.y >= cy + Y_FRONT_M + y_extra_m:
+            return False
+        if P_near:
+            q = np.array([[float(v.co.x), float(v.co.z)]], dtype=np.float64)
+            for P in P_near:
+                if float(_poly_dist_points(P, q)[0]) < near_mm:
+                    return True
+            return False
+        return True
+    _rc = {}
+    def _ok(v):
+        r = _rc.get(v.index)
+        if r is None:
+            r = _near(v)
+            _rc[v.index] = r
+        return r
+    adj = {}
+    for e in bm.edges:
+        if len(e.link_faces) != 1:
+            continue
+        a, b = e.verts[0], e.verts[1]
+        if not (_ok(a) and _ok(b)):
+            continue
+        adj.setdefault(a.index, []).append(b.index)
+        adj.setdefault(b.index, []).append(a.index)
+    seen = set()
+    comps = []
+    for s in sorted(adj.keys()):
+        if s in seen:
+            continue
+        comp = [s]; seen.add(s); stack = [s]
+        while stack:
+            x = stack.pop()
+            for y in adj[x]:
+                if y not in seen:
+                    seen.add(y); stack.append(y); comp.append(y)
+        closed = all(len(adj[k]) == 2 for k in comp)
+        chain = comp
+        if closed and len(comp) > 2:
+            chain = [comp[0]]; prev, cur = -1, comp[0]
+            while True:
+                cand = [n for n in adj[cur] if n != prev]
+                if not cand:
+                    break
+                nxt = cand[0]
+                if nxt == chain[0]:
+                    break
+                chain.append(nxt); prev, cur = cur, nxt
+            if len(chain) != len(comp):
+                closed = False
+        comps.append((chain, closed, len(comp)))
+    comps.sort(key=lambda t: len(t[0]), reverse=True)
+    return comps
+
+
+def _pick_outer_loop(bm, cv, CP, OUT, W, side):
+    """v88: 从布尔后的边界环里挑【外环】= 闭合 + 到偏移外环距离≈0 + 顶点数够。
+    小碎环(≤MAX_FRAG 顶点)不算外环, 返回给调用方清除; 有"断开且较大"的环 → 判失败(退回旧法)。
+    返回 (外环顶点列表 或 None, 需清除的碎环链, 说明)。
+
+    v88.1: 改用【几何位置判据】(离轮廓或离偏移外环 < max(0.6mm, 0.6×W)) + 放宽 y 阈值 50mm ——
+      外眼角褶皱处布尔环会往深处折(实测 y 到 -75mm), 旧判据(cy+Y_FRONT_M)会把那一段边界滤掉,
+      导致"本来闭合的环"被误判为断开。断开但两端相距很近(≤0.8mm)的链, 按闭环处理并告警(缝合时补边)。
+    """
+    comps = _eye_boundary_loops(bm, cv,
+                                P_near=[CP, OUT],
+                                near_mm=max(0.6e-3, 0.6 * W),
+                                y_extra_m=0.05, r_scale=1.6)
+    vmap = {v.index: v for v in bm.verts}
+    maxfrag = int(globals().get('RIM_BAND_RING_BOOL_MAX_FRAG', 10))
+    cand = None
+    frags = []
+    bad_big = 0
+    msg = []
+    for chain, closed, n0 in comps:
+        if n0 < 3:
+            continue
+        Pch = np.array([[vmap[k].co.x, vmap[k].co.z] for k in chain], dtype=np.float64)
+        d_out = float(np.median(_poly_dist_points(OUT, Pch))) * 1000.0
+        d_in = float(np.median(_poly_dist_points(CP, Pch))) * 1000.0
+        note = ""
+        if not closed and n0 >= 12 and d_out < 0.30 * W * 1000.0:
+            # v88.1: 断开但"贴偏移环"的链 —— 若两端相距很近, 视为闭环(缝合时由条带补上最后一条边)
+            gap = float((vmap[chain[0]].co - vmap[chain[-1]].co).length) * 1000.0
+            if gap <= 0.8:
+                closed = True
+                note = f"/两端相距{gap:.3f}mm→按闭环处理"
+            else:
+                note = f"/两端相距{gap:.3f}mm"
+        msg.append(f"{n0}点/{'闭环' if closed else '断开'}/距偏移环{d_out:.3f}mm/距轮廓{d_in:.3f}mm{note}")
+        if closed and n0 >= 12 and d_out < 0.30 * W * 1000.0:
+            if cand is None or n0 > len(cand):
+                cand = chain
+        elif n0 <= maxfrag:
+            frags.append(chain)
+        else:
+            bad_big += 1
+    print(f"rebuild_rim_band {side}: [布尔] 边界环清单({len(comps)}个): " + "; ".join(msg[:8]))
+    if cand is None or bad_big > 0:
+        print(f"rebuild_rim_band {side}: [布尔] 无合格外环(候选={'有' if cand else '无'}, 大碎环{bad_big}个)")
+        return None, frags, "; ".join(msg)
+    vlist = [vmap[k] for k in cand]
+    return vlist, frags, "; ".join(msg)
+
+
+def _count_band_faces(mesh, P_in, cv, W):
+    """带内(面心到轮廓 XZ 距离 < W)皮肤面数 —— 与旧法 nv0 同口径, 仅供对照报告。"""
+    nf = len(mesh.polygons)
+    if nf == 0:
+        return 0
+    C = np.empty(nf * 3, dtype=np.float32)
+    mesh.polygons.foreach_get("center", C); C = C.reshape(nf, 3)
+    d_in = _poly_dist_points(P_in, C[:, [0, 2]].astype(np.float64))
+    r_eye = np.linalg.norm(C[:, [0, 2]] - np.array([cv.x, cv.z]), axis=1)
+    m = (r_eye < EYE_AREA_R) & (C[:, 1] < cv.y + Y_FRONT_M) & (d_in < W)
+    return int(m.sum())
+
+
+def cut_band_by_ring_prism(obj, poly_in, poly_out, center, side, W, washer=None,
+                           back_extra_mm=None, inset_mm=None):
+    """v88(方案1 第②步): 环形(垫圈)棱柱 EXACT 差集 → 精确切除 "轮廓 ↔ 偏移外环" 之间的皮肤带。
+
+    washer=True : 内壁=轮廓(向内收 inset, 避开与既有洞边界精确重合)/外壁=偏移外环/上下端盖 → 合法闭合流形;
+    washer=False: 实心棱柱(截面=偏移外环) —— v64【掏空环内】模式下环内本来就是空的, 切除结果与垫圈等价,
+                  少一层内壁 → 布尔更稳(实测两版对比见报告, 默认 False)。
+    棱柱 y 范围: 按【带内皮肤实测 y 范围】活性校验 + 兜底前后各穿出 0.5W(否则洞口会落在端盖上)。
+    返回 info(y_f/y_b/带内皮肤y范围/耗时/切割面数/面数变化)。
+    """
+    import time as _time
+    scn = bpy.context.scene
+    if bpy.context.view_layer.objects.active is None or bpy.context.mode != 'OBJECT':
+        bpy.ops.object.mode_set(mode='OBJECT')
+    cv = Vector((float(center[0]), float(center[1]), float(center[2])))
+    if washer is None:
+        washer = bool(globals().get('RIM_BAND_RING_BOOL_WASHER', False))
+    if back_extra_mm is None:
+        back_extra_mm = float(globals().get('RIM_BAND_RING_BOOL_BACK_EXTRA', 0.30)) * 1000.0 * float(CUR.get('eye_w', 0.035))
+    if inset_mm is None:
+        inset_mm = float(globals().get('RIM_BAND_RING_BOOL_INSET_MM', 0.03))
+    P_in = [(float(p[0]), float(p[1])) for p in poly_in]
+    P_out = [(float(p[0]), float(p[1])) for p in poly_out]
+    n = len(P_out)
+    # ---- 活性: 实测"带内皮肤"的 y 范围(带内 = 到偏移外环比到轮廓更近的区域) ----
+    me = obj.data
+    nv = len(me.vertices)
+    V = np.empty(nv * 3, dtype=np.float32)
+    me.vertices.foreach_get("co", V); V = V.reshape(nv, 3)
+    xz = V[:, [0, 2]].astype(np.float64)
+    d_in = _poly_dist_points(P_in, xz)
+    d_out = _poly_dist_points(P_out, xz)
+    r_eye = np.linalg.norm(xz - np.array([cv.x, cv.z]), axis=1)
+    m = (r_eye < EYE_AREA_R) & (V[:, 1] < cv.y + Y_FRONT_M) & (d_out < d_in)
+    y_f = cv.y - PRISM_FRONT_MM / 1000.0
+    y_b = cv.y + (PRISM_BACK_MM + back_extra_mm) / 1000.0
+    y_skin = None
+    if int(m.sum()) >= 5:
+        y_skin = (float(V[m, 1].min()), float(V[m, 1].max()))
+        y_b = max(y_b, y_skin[1] + 0.5 * W)
+        y_f = min(y_f, y_skin[0] - 0.5 * W)
+    verts = []
+    faces = []
+    if washer:
+        Pi, _oi = ring_offset_outward_xz(P_in, -inset_mm / 1000.0)      # 内收 inset(负偏移)
+        Pi = [(float(a), float(b)) for a, b in Pi]
+        verts = ([(x, y_f, z) for (x, z) in Pi] + [(x, y_b, z) for (x, z) in Pi]
+                 + [(x, y_f, z) for (x, z) in P_out] + [(x, y_b, z) for (x, z) in P_out])
+        for i in range(n):
+            j = (i + 1) % n
+            faces.append((i, j, n + j, n + i))                          # 内壁
+            faces.append((2 * n + i, 2 * n + j, 3 * n + j, 3 * n + i))  # 外壁
+            faces.append((i, 2 * n + i, 2 * n + j, j))                  # 前盖
+            faces.append((n + i, n + j, 3 * n + j, 3 * n + i))          # 后盖
+    else:
+        verts = [(x, y_f, z) for (x, z) in P_out] + [(x, y_b, z) for (x, z) in P_out]
+        for i in range(n):
+            j = (i + 1) % n
+            faces.append((i, j, n + j, n + i))                          # 侧壁
+        faces.append(tuple(range(n - 1, -1, -1)))                       # 前盖
+        faces.append(tuple(range(n, 2 * n)))                            # 后盖
+    pm = bpy.data.meshes.new("band_ring_prism")
+    pm.from_pydata(verts, [], faces)
+    pm.validate()
+    _pbm = bmesh.new(); _pbm.from_mesh(pm)
+    bmesh.ops.recalc_face_normals(_pbm, faces=_pbm.faces[:])
+    _pbm.to_mesh(pm); _pbm.free()
+    tmp_mat = bpy.data.materials.get("SOCKET_CUT_TMP") or bpy.data.materials.new("SOCKET_CUT_TMP")
+    pm.materials.append(tmp_mat)
+    for p in pm.polygons:
+        p.material_index = 0
+    _head_mats = [m2.name if m2 else None for m2 in obj.data.materials]
+    if tmp_mat.name not in _head_mats:
+        obj.data.materials.append(tmp_mat)
+    cut_slot = [m2.name if m2 else None for m2 in obj.data.materials].index(tmp_mat.name)
+    prism = bpy.data.objects.new("band_ring_prism", pm)
+    scn.collection.objects.link(prism)
+    mod = obj.modifiers.new("band_ring_cut", 'BOOLEAN')
+    mod.operation = 'DIFFERENCE'
+    mod.solver = 'EXACT'
+    mod.object = prism
+    bpy.context.view_layer.objects.active = obj
+    nf0 = len(obj.data.polygons)
+    _t0 = _time.time()
+    bpy.ops.object.modifier_apply(modifier=mod.name)
+    _dt = _time.time() - _t0
+    nf1 = len(obj.data.polygons)
+    bpy.data.objects.remove(prism, do_unlink=True)
+    bpy.data.meshes.remove(pm, do_unlink=True)
+    # 删掉布尔新面(棱柱壁/端盖) —— 按材质槽精确删(v63 起沿用: 容差判据实测漏 47 面)
+    bm2 = bmesh.new(); bm2.from_mesh(obj.data)
+    bm2.faces.ensure_lookup_table()
+    cutf = [f for f in bm2.faces if f.material_index == cut_slot]
+    ncut = len(cutf)
+    if cutf:
+        bmesh.ops.delete(bm2, geom=cutf, context='FACES')
+    bm2.to_mesh(obj.data); bm2.free()
+    obj.data.update()
+    _mn = [m2.name if m2 else None for m2 in obj.data.materials]
+    if "SOCKET_CUT_TMP" in _mn:
+        obj.data.materials.pop(index=_mn.index("SOCKET_CUT_TMP"))
+    return dict(washer=bool(washer), y_f=y_f, y_b=y_b, y_skin=y_skin, dt=_dt,
+                n_wall=ncut, nf0=nf0, nf1=nf1, net=nf1 - nf0, outer_n=n)
+
+
+def _band_ringbool_cut(obj, cv, side, CP, W, W_mm):
+    """v88(方案1 主路径): 偏移外环 → 环形布尔切割 → 取布尔精确外环。
+    成功返回 (bm, outer(BMVert 环序), nv0); 失败返回 None(此时网格已还原到调用前状态)。"""
+    import time as _time
+    mesh0 = obj.data
+
+    def _restore():
+        """把对象网格还原到布尔前快照, 并释放布尔产物(数据块/残留棱柱对象)。"""
+        _old = obj.data
+        obj.data = snap
+        try:
+            if "band_ring_cut" in [m.name for m in obj.modifiers]:
+                obj.modifiers.remove(obj.modifiers["band_ring_cut"])
+        except Exception:
+            pass
+        try:
+            _po = bpy.data.objects.get("band_ring_prism")
+            if _po is not None:
+                bpy.data.objects.remove(_po, do_unlink=True)
+        except Exception:
+            pass
+        try:
+            bpy.data.meshes.remove(_old)       # 只删"布尔改过的"数据块; snap 已挂到 obj.data 上, 不能删
+        except Exception:
+            pass
+
+    # ---- ① 程序化偏移外环 ----
+    OUT, oi = ring_offset_outward_xz(CP, W)
+    print(f"rebuild_rim_band {side}: [布尔] 偏移外环 {oi['n']} 点 (W={W_mm:.2f}mm) | 实际偏移 中位{oi['d_med']*1000:.3f} "
+          f"min{oi['d_min']*1000:.3f} max{oi['d_max']*1000:.3f}mm | 斜接max{oi['miter_max']*1000:.3f}mm "
+          f"自交{oi['self_int']} | 段长 中位{oi['seg_med']*1000:.3f} [{oi['seg_min']*1000:.3f},{oi['seg_max']*1000:.3f}]mm")
+    if oi['self_int'] > 0 or oi['d_min'] < 0.5 * W:
+        print(f"rebuild_rim_band {side}: [布尔] 外环自检未过(自交{oi['self_int']} / 最小偏移{oi['d_min']*1000:.3f}mm)"
+              f" → 放弃布尔路径")
+        return None
+    nv0 = _count_band_faces(mesh0, CP, cv, W)
+    # ---- ② 环形布尔切割(失败 → 还原网格) ----
+    snap = mesh0.copy(); snap.name = "_rimbool_snap"
+    try:
+        info = cut_band_by_ring_prism(obj, CP, OUT, cv, side, W)
+    except Exception as _e:
+        print(f"rebuild_rim_band {side}: [布尔] 异常({_e}) → 还原网格")
+        _restore()
+        return None
+    print(f"rebuild_rim_band {side}: [布尔] EXACT 差集 {'垫圈' if info['washer'] else '实心'}棱柱 "
+          f"{info['outer_n']}边形 {info['dt']:.1f}s | 棱柱 y[{info['y_f']*1000:.1f},{info['y_b']*1000:.1f}]mm"
+          + (f", 带内皮肤实测 y[{info['y_skin'][0]*1000:.1f},{info['y_skin'][1]*1000:.1f}]mm" if info['y_skin'] else ", 带内皮肤点不足")
+          + f" | 切割面 {info['n_wall']} 面 → 网格面 {info['nf0']:,}→{info['nf1']:,}")
+    # ---- ③ 取边界环 ----
+    bm = bmesh.new(); bm.from_mesh(obj.data)
+    bm.verts.ensure_lookup_table(); bm.edges.ensure_lookup_table(); bm.verts.index_update()
+    outer, frags, _msg = _pick_outer_loop(bm, cv, CP, OUT, W, side)
+    if outer is None:
+        bm.free()
+        print(f"rebuild_rim_band {side}: [布尔] 未取到唯一外环 → 还原网格")
+        _restore()
+        return None
+    # 小碎环(残留小片) → 删掉它们周围的面(设计第 6 条: <MAX_FRAG 顶点的小碎环就地清掉)
+    if frags:
+        _df = set()
+        for chain in frags:
+            for k in chain:
+                v = bm.verts[k]
+                for e in v.link_edges:
+                    for f in e.link_faces:
+                        _df.add(f)
+        _df = [f for f in _df if f.is_valid]
+        if _df:
+            bmesh.ops.delete(bm, geom=_df, context='FACES')
+            bm.verts.ensure_lookup_table(); bm.edges.ensure_lookup_table(); bm.verts.index_update()
+            print(f"rebuild_rim_band {side}: [布尔] 清掉 {len(frags)} 个小碎环({[len(c) for c in frags]} 顶点) → 删面 {len(_df)}")
+            outer, frags2, _msg2 = _pick_outer_loop(bm, cv, CP, OUT, W, side)
+            if outer is None:
+                bm.free()
+                print(f"rebuild_rim_band {side}: [布尔] 清碎环后外环丢失 → 还原网格")
+                _restore()
+                return None
+    # ---- ④ 外缘细分到 ≤ RIM_BAND_ARC_MM(与旧法同一判据; 只细分眼区边界边) ----
+    # v88.1: y 阈值放宽 50mm —— 外眼角褶皱处布尔环会折到 y≈-75mm, 旧判据会把那段排除在细分之外
+    cy = float(cv.y)
+    for _ in range(5):
+        bm.edges.ensure_lookup_table()
+        _la = [e for e in bm.edges if len(e.link_faces) == 1
+               and (e.verts[0].co - cv).xz.length < EYE_AREA_R * 1.6
+               and e.verts[0].co.y < cy + Y_FRONT_M + 0.05
+               and (e.verts[0].co - e.verts[1].co).length > RIM_BAND_ARC_MM / 1000.0]
+        if not _la:
+            break
+        bmesh.ops.subdivide_edges(bm, edges=_la, cuts=1, use_grid_fill=False)
+    bm.verts.ensure_lookup_table(); bm.edges.ensure_lookup_table(); bm.verts.index_update()
+    outer, frags3, _msg3 = _pick_outer_loop(bm, cv, CP, OUT, W, side)
+    if outer is None:
+        bm.free()
+        print(f"rebuild_rim_band {side}: [布尔] 细分后外环丢失 → 还原网格")
+        _restore()
+        return None
+    # 外环健全性抽查(设计第 5 条): 布尔环本就落在皮肤上, 这里量"到偏移环的距离"确认没跑偏
+    _Pch = np.array([[v.co.x, v.co.z] for v in outer], dtype=np.float64)
+    _dsp = _poly_dist_points(OUT, _Pch) * 1000.0
+    print(f"rebuild_rim_band {side}: [布尔] 外环 {len(outer)} 顶点 单一闭环 | 到偏移环距离 "
+          f"中位{np.median(_dsp):.3f} max{_dsp.max():.3f}mm (阈值 {0.30*W*1000:.3f}mm)")
+    try:
+        bpy.data.meshes.remove(snap)
+    except Exception:
+        pass
+    return bm, outer, nv0
+
+
+def _band_walk_cut(obj, mesh, cv, cy, side, CP, W_mm):
+    """v88: 旧路径(沿网格边界走环 + 删面重试) —— 原样保留, 作为布尔路径的回退与 A/B 对比。
+    返回 ("ok", bm, outer, nv0) / ("skip", None, None, 0)(=旧语义 return None) / ("fail", None, None, 0)(=旧语义 return False)。"""
     # ---- ① 删轮廓 W mm 内的皮肤面 ----
     bm = bmesh.new()
     bm.from_mesh(mesh)
@@ -715,11 +1121,11 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
     if nv0 < 5:
         bm.free()
         print(f"rebuild_rim_band {side}: 带内仅 {nv0} 面, 跳过")
-        return
+        return ("skip", None, None, 0)
     if nv0 > RIM_BAND_MAX_FACES:
         bm.free()
         print(f"rebuild_rim_band {side}: 带内 {nv0} 面 > 上限{RIM_BAND_MAX_FACES}, 放弃")
-        return False
+        return ("fail", None, None, 0)
     bmesh.ops.delete(bm, geom=victims, context='FACES')
     bm.verts.ensure_lookup_table()
     bm.edges.ensure_lookup_table()
@@ -751,7 +1157,7 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
         if not st:
             bm.free()
             print(f"rebuild_rim_band {side}: 找不到边界环")
-            return
+            return ("skip", None, None, 0)
         vmap0 = {v.index: v for v in bm.verts}
         ring = [st[0]]; prev, cur = -1, st[0]
         while cur in nadj:
@@ -798,7 +1204,7 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
         if not bad:
             bm.free()
             print(f"rebuild_rim_band {side}: 边界异常且定位不到问题顶点, 回退")
-            return False
+            return ("fail", None, None, 0)
         bad_xy = [(v.co.x, v.co.z) for v in bad]
         v2 = []
         for f in bm.faces:
@@ -811,7 +1217,7 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
         if not v2:
             bm.free()
             print(f"rebuild_rim_band {side}: 边界异常(死端 {len(bad)} 个)且无可删面, 回退")
-            return False
+            return ("fail", None, None, 0)
         print(f"rebuild_rim_band {side}: 第{_try+1}轮边界不闭环(走{len(ring)}/{len(st)}), "
               f"删问题顶点周围 {len(v2)} 面后重试")
         bmesh.ops.delete(bm, geom=v2, context='FACES')
@@ -820,7 +1226,100 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
     if outer is None:
         bm.free()
         print(f"rebuild_rim_band {side}: 6 轮仍无法得到单一闭环边界, 放弃")
-        return False
+        return ("fail", None, None, 0)
+    return ("ok", bm, outer, nv0)
+
+
+
+def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
+    """v85(D2): 沿【整圈】rim 重建皮肤带 —— 一次解决 rim 全部缺陷(折返尖/锯齿/间距不均)。
+
+    做法: ①删掉沿手描轮廓 W mm 宽的一圈皮肤面(洞被扩大到该带的外缘)
+          ②该带外缘(此时是唯一的洞边界)细分到 ≤ARC_MM
+          ③内圈 = 手描轮廓本身, 重采样到与外圈【同点数】
+          ④按点对点条带三角化缝回 → rim 环严格等于手描轮廓, 且均匀无折返
+    皮肤带之外的皮肤一个顶点不动。
+    """
+    if not RIM_BAND_ENABLE:
+        return
+    if W_mm is None:
+        W_mm = RIM_BAND_W_MM
+    cv = Vector((float(center[0]), float(center[1]), float(center[2])))
+    cy = cv.y
+    mesh = obj.data
+    bm_pre = bmesh.new()
+    bm_pre.from_mesh(mesh)          # 删面之前的快照(供取原 rim 边界)
+    CP = np.array([[float(p[0]), float(p[1])] for p in poly], dtype=np.float64)   # 手描/光滑轮廓 XZ(mm? 否: 米)
+    NP = len(CP)
+    # 轮廓每点深度: 取最近表面点(closest_point_on_mesh)。不能用沿 Y 的 ray_cast ——
+    # 洞口范围内射线会穿透打到后脑, 判无效再插值就把 rim 深度抹平了(用户: "Y轴拉平, 眼眶变形")
+    # 深度不自己采样: 沿用【原 rim 边界】在相同角度上的 y (它就在表面上, 是真值) ——
+    # 自采样(ray_cast 会穿透 / closest_point 会取到深处内壁)都会改变 rim 的 3D 形态(用户: "变形")
+    _ob = [e for e in bm_pre.edges if len(e.link_faces) == 1
+           and (e.verts[0].co - cv).xz.length < EYE_AREA_R and e.verts[0].co.y < cy + Y_FRONT_M]
+    _ovs = set()
+    for e in _ob:
+        _ovs.add(e.verts[0]); _ovs.add(e.verts[1])
+    # v88: 只取【最贴手描轮廓的那条边界环】的顶点做深度插值 —— 旧法把眼区里所有边界顶点混在一起
+    #   (布尔擦出的碎小孤立环也在内, 实测 332 点里约三成是碎的) → 内圈深度被污染。
+    try:
+        bm_pre.verts.index_update()
+        _comps = _eye_boundary_loops(bm_pre, cv)
+        _vm = {v.index: v for v in bm_pre.verts}
+        _CPxz = np.array([[p[0], p[1]] for p in poly], dtype=np.float64)
+        _best = None
+        for _ch, _cl, _n0 in _comps:
+            if _n0 < 20:
+                continue
+            _Pc = np.array([[_vm[k].co.x, _vm[k].co.z] for k in _ch], dtype=np.float64)
+            _md = float(np.median(_poly_dist_points(_CPxz, _Pc)))
+            if _best is None or _md < _best[0]:
+                _best = (_md, _ch, _cl)
+        if _best is not None and _best[0] < 0.0015 and len(_best[1]) >= 20:
+            _ovs = set(_vm[k] for k in _best[1])
+            print(f"rebuild_rim_band {side}: 深度源=最贴轮廓的边界环 {len(_best[1])} 点(闭环={_best[2]}), "
+                  f"到轮廓中位 {_best[0]*1000:.3f}mm / 眼区边界环共 {len(_comps)} 个")
+    except Exception as _e:
+        print(f"rebuild_rim_band {side}: 深度源环挑选失败(退回全部边界顶点) {_e}")
+    if _ovs:
+        th = np.array([np.arctan2(v.co.z - cv.z, v.co.x - cv.x) for v in _ovs])
+        yy = np.array([v.co.y for v in _ovs])
+        o = np.argsort(th)
+        th = th[o]; yy = yy[o]
+        th = np.concatenate([th - 2 * np.pi, th, th + 2 * np.pi])
+        yy = np.concatenate([yy, yy, yy])
+        CY = np.interp(np.arctan2(np.array([p[1] for p in poly]) - cv.z,
+                                  np.array([p[0] for p in poly]) - cv.x), th, yy)
+        print(f"rebuild_rim_band {side}: 深度沿用原 rim 边界(角度插值), 原边界 {len(_ovs)} 点, "
+              f"y范围[{CY.min()*1000:.1f},{CY.max()*1000:.1f}]mm")
+    else:
+        CY = np.full(len(poly), cy)
+        print(f"rebuild_rim_band {side}: 未取到原 rim 边界 → 深度用眼中心 y 兜底")
+
+    # ================= v88(2026-09-24): 带区切割 / 外环获取 —— 两条路径 =================
+    W = W_mm / 1000.0
+    _mode = str(globals().get('RIM_BAND_MODE', 'walk') or 'walk')
+    bm = None
+    outer = None
+    nv0 = 0
+    if _mode == 'ringbool':
+        _rb = _band_ringbool_cut(obj, cv, side, CP, W, W_mm)
+        if _rb is not None:
+            bm, outer, nv0 = _rb
+            mesh = obj.data
+            bm.verts.index_update()
+            print(f"rebuild_rim_band {side}: [路径=ringbool] 外环 {len(outer)} 顶点(布尔精确闭环), 带内皮肤面 {nv0}")
+    if bm is None:
+        mesh = obj.data                                   # 布尔失败时 obj.data 已换回快照, 这里重新绑定
+        _st, _bm2, _ou2, _nv2 = _band_walk_cut(obj, mesh, cv, cy, side, CP, W_mm)
+        if _st == "skip":
+            return
+        if _st == "fail":
+            return False
+        bm, outer, nv0 = _bm2, _ou2, _nv2
+        bm.verts.index_update()
+        print(f"rebuild_rim_band {side}: [路径=walk] 外环 {len(outer)} 顶点(沿网格走环), 删带内皮肤面 {nv0}")
+
     vmap = {v.index: v for v in bm.verts}
     K = len(outer)
     # ---- ③ 内圈 = 手描轮廓, 按【极角单调配对】(v87, 2026-09-18 焦点修复):
