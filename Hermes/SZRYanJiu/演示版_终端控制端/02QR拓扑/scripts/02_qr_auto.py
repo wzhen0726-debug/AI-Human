@@ -4,7 +4,11 @@ ROOT = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制
 # 2026-09-09 用户明确: 测试阶段产物权威位置是 02QR拓扑/输出/(GUI核验处). 2026-09-17 归位: 交付/ 已删.
 # 所有QR产物直接写到 02QR拓扑/输出/; 中间件写 02QR拓扑/_中间/.
 W_02 = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端\02QR拓扑"
-OUT_02 = os.path.join(W_02, "输出")
+# 沙箱重定向(2026-09-24): 设 QR_OUT_ROOT=<目录> → 本脚本所有【写】产物落到 <目录>/02QR拓扑/... ,
+#   输入高模路径不变; 未设 = 与历史完全一致(写正式位置)。供"绝不碰正式产物"的只读式沙箱用。
+_SB = os.environ.get('QR_OUT_ROOT')
+W_02O = os.path.join(_SB, "02QR拓扑") if _SB else W_02      # 产物根(沙箱时指向沙箱)
+OUT_02 = os.path.join(W_02O, "输出")
 os.makedirs(OUT_02, exist_ok=True)
 # 2026-09-16 修复: WORK_01A 定义丢失导致 NameError (与 ⑦h 的 eye_w 同类: 引用与定义脱节)
 WORK_01A = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端\01a眼窝眼球\输出"
@@ -36,8 +40,8 @@ bpy.ops.wm.open_mainfile(filepath=blend_path)
 
 # 1.5 另存QR前高模分区检查副本到输出目录(2026-09-09 用户要求: 输出目录需含高模眼窝分区检查文件)
 #     这是QR的输入高模(带EyeSocket分区), 供用户核验"送进QR的分区对不对".
-os.makedirs(os.path.join(W_02, "_中间"), exist_ok=True)
-hi_check = os.path.join(W_02, "_中间", "02QR输入_眼窝材质分区_高模.blend")
+os.makedirs(os.path.join(W_02O, "_中间"), exist_ok=True)
+hi_check = os.path.join(W_02O, "_中间", "02QR输入_眼窝材质分区_高模.blend")
 bpy.ops.wm.save_as_mainfile(filepath=hi_check)
 print(f"1.5 高模分区检查副本: {hi_check}")
 # 另存后重新打开原始高模, 保证后续在正确上下文操作(save_as会切换当前文件路径)
@@ -137,6 +141,56 @@ else:
 # 高模bbox对角线(供8.5b查询阈值自适应)
 _lo=_HV_hi.min(axis=0); _up=_HV_hi.max(axis=0); _HI_BBOX_DIAG=float(_np.linalg.norm(_up-_lo))
 print(f"2.7 高模rim环内外真值缓存: 碗面(rim环内)={int(_HI_BOWL.sum())}面/{len(_HI_BOWL)} BVH就绪 bbox对角线={_HI_BBOX_DIAG*1000:.0f}mm")
+
+# ---- 2.8 (2026-09-24) 眼孔 rim 环真值缓存: 供 8.9「rim 环恢复」用, 必须在 8.5 删高模前取 ----
+# 根因(实测 logs/_ab02/, 2026-09-24): 用户报"眼角平口切断"来自【QR 引擎对眼孔边界的采样】——
+#   QR 只保留 ~37 点(高模 rim 环 434/427 点, 点距 0.22mm), 在右眼外眼角把高模环上 71 个点
+#   (16mm 弧长, 含绕眼角的深度折返)压成一条 9.091mm 直弦, 弦到真实 rim 最大偏差 5.246mm。
+#   02 的全部后处理(材质合并/自交清理/建碗/摆眼球)都不改 rim 环 → 平口切断从 QR 一路带到成品。
+# 缓存内容: 每只眼的眼孔开放边界环(世界坐标, 有序), = 01a v88.2 眼区边界(已独立验证: 单一闭环、
+#   转角 max L17.4°/R11.6°、XZ 自交 0)。
+_RIM_RESTORE = os.environ.get('QR_RIM_RESTORE', '1') == '1'
+_HI_RIM = {}
+if _RIM_RESTORE:
+    try:
+        _ROOT02 = os.path.dirname(W_02)
+        _J = json.load(open(os.path.join(_ROOT02, "01a眼窝眼球", "3ddfa", "eyelid_contour_manual.json"),
+                            encoding="utf-8"))
+        _nl_hi = len(mesh.data.loops)
+        _LE_hi = _np.empty(_nl_hi, dtype=_np.int64); mesh.data.loops.foreach_get("edge_index", _LE_hi)
+        _ne_hi = len(mesh.data.edges)
+        _E_hi = _np.empty(_ne_hi * 2, dtype=_np.int64); mesh.data.edges.foreach_get("vertices", _E_hi)
+        _E_hi = _E_hi.reshape(-1, 2)
+        _cnt_hi = _np.bincount(_LE_hi, minlength=_ne_hi)
+        for _side in ("L", "R"):
+            _c = _np.array([float(x) for x in _J[_side]["center"]])
+            _sel = []
+            for _ei in _np.where(_cnt_hi == 1)[0]:
+                _u = int(_E_hi[_ei, 0])
+                if (_np.linalg.norm(_HV_hi[_u][[0, 2]] - _c[[0, 2]]) < 0.05 and _HV_hi[_u][1] < _c[1] + 0.02):
+                    _sel.append((_u, int(_E_hi[_ei, 1])))
+            _adj = {}
+            for _u, _v in _sel:
+                _adj.setdefault(_u, []).append(_v); _adj.setdefault(_v, []).append(_u)
+            _bad = [k for k in _adj if len(_adj[k]) != 2]
+            if len(_sel) < 20 or _bad:
+                print(f"2.8 [{_side}] ⚠ 高模 rim 环异常(边界边{len(_sel)} 度≠2点{len(_bad)}) → 该眼不做 rim 恢复")
+                continue
+            _st = next(iter(_adj)); _ring = [_st]; _pv, _cu = None, _st
+            while True:
+                _nx = [x for x in _adj.get(_cu, []) if x != _pv]
+                if not _nx or _nx[0] == _st:
+                    break
+                _pv, _cu = _cu, _nx[0]
+                _ring.append(_cu)
+            _HI_RIM[_side] = _HV_hi[_np.array(_ring)].copy()
+            print(f"2.8 [{_side}] rim 环真值: {len(_ring)} 点 (单一闭环, 供 8.9 恢复)")
+    except Exception as _e:
+        import traceback as _tb
+        _tb.print_exc()
+        print(f"2.8 ⚠ rim 环真值缓存失败(不阻塞, 8.9 将跳过): {_e}")
+else:
+    print("2.8 rim 环恢复已关闭(QR_RIM_RESTORE=0) → 8.9 跳过")
 
 # 3. 导出FBX (材质分区靠material_index随FBX的smoothing/material槽带走; 不需要法向分割)
 print(f"\n3. Exporting FBX...")
@@ -363,7 +417,7 @@ else:
 #     这是QR的真实产物, 不是按rim重新赋材质(那等于自证, 看不出QR行为).
 import collections as _cc
 _nmat_raw = len(qr_obj.data.materials)
-check_blend = os.path.join(W_02, "_中间", "02_qr_150k_材质分区检查.blend")
+check_blend = os.path.join(W_02O, "_中间", "02_qr_150k_材质分区检查.blend")
 if _nmat_raw > 1:
     bpy.ops.wm.save_as_mainfile(filepath=check_blend)
     _mi_chk = [0] * len(qr_obj.data.polygons)
@@ -408,8 +462,207 @@ except Exception as _e:
     _tb.print_exc()
     print(f"[8.8] ⚠ 自交清理失败(不阻塞主流程): {_e}")
 
+# ---- 8.9 (2026-09-24) rim 环恢复: 把 QR 粗采样的眼孔边界补回高模 rim 形状(修"眼角平口切断") ----
+# 实测根因(见 2.8 注释与 logs/_ab02/): QR 输出眼孔边界环 L=38/R=37 点, 右眼外眼角有 9.091mm
+#   直弦(相对真实 rim 偏差 5.246mm), 而高模 rim 环在该处是圆滑折返。建碗/摆眼球都不改 rim 环,
+#   故在 QR 之后、保存之前把低模 rim 边按其高模弧线补密。
+# 口径: 高模 rim 环真值 = 2.8 缓存; 低模每个 rim 顶点映射到高模环最近索引; 每条 rim 边取索引之间
+#   的高模弧点(按环向), 弦偏差 > TOL 时用 RDP(TOL) 选出必要插入点, 逐点 edge_split 插入。
+# 开关: QR_RIM_RESTORE=0 → 完全不插点(与历史行为逐位一致); TOL/GAP 可调(默认 0.10/0.25mm)。
+if _RIM_RESTORE and _HI_RIM:
+    from mathutils import Vector as _Vec     # 8.9 内部使用(文件头未导入 mathutils.Vector)
+    _R_TOL = float(os.environ.get('QR_RIM_RESTORE_TOL_MM', '0.10')) / 1000.0
+    _R_GAP = float(os.environ.get('QR_RIM_RESTORE_GAP_MM', '0.25')) / 1000.0
+
+    def _rim_rdp(P, tol):
+        """Douglas-Peucker: 返回需保留的下标(含首尾)"""
+        keep = [0, len(P) - 1]; _stack = [(0, len(P) - 1)]
+        while _stack:
+            i0, i1 = _stack.pop()
+            if i1 - i0 < 2:
+                continue
+            _A, _B = P[i0], P[i1]; _AB = _B - _A; _n = float(_np.linalg.norm(_AB))
+            if _n > 1e-12:
+                _d = _np.linalg.norm(_np.cross(P[i0 + 1:i1] - _A, _AB / _n), axis=1)
+            else:
+                _d = _np.linalg.norm(P[i0 + 1:i1] - _A, axis=1)
+            _k = int(_np.argmax(_d))
+            if _d[_k] > tol:
+                keep.append(i0 + 1 + _k); _stack.append((i0, i0 + 1 + _k)); _stack.append((i0 + 1 + _k, i1))
+        return sorted(set(keep))
+
+    def _rim_metrics(P3):
+        """与 logs/_rim_ring_audit.py 同口径: 边长mm + XZ 转角"""
+        if len(P3) < 3:
+            return None
+        seg = _np.linalg.norm(_np.diff(_np.vstack([P3, P3[:1]]), axis=0), axis=1)
+        Q = _np.vstack([P3[:, [0, 2]], P3[:1, [0, 2]]])
+        ang = []
+        for i in range(1, len(Q) - 1):
+            a1 = Q[i] - Q[i - 1]; a2 = Q[i + 1] - Q[i]
+            n1, n2 = _np.linalg.norm(a1), _np.linalg.norm(a2)
+            if n1 < 1e-9 or n2 < 1e-9:
+                continue
+            ang.append(math.degrees(math.acos(float(_np.clip(_np.dot(a1, a2) / (n1 * n2), -1, 1)))))
+        ang = _np.array(ang)
+        return (f"点={len(P3)} 边长中位={_np.median(seg)*1000:.3f} max={seg.max()*1000:.3f}mm "
+                f"CV={seg.std()/seg.mean()*100:.1f}% | 转角中位={_np.median(ang):.2f}° max={ang.max():.2f}° "
+                f">15°={int((ang>15).sum())} >25°={int((ang>25).sum())}")
+
+    def _seg_dev(P, A, B):
+        """P(n,3) 到线段 AB 的最大距离(米)"""
+        AB = B - A; n = float(_np.linalg.norm(AB))
+        if n < 1e-12:
+            return float(_np.linalg.norm(P - A, axis=1).max())
+        return float(_np.linalg.norm(_np.cross(P - A, AB / n), axis=1).max())
+
+    _mwq = _np.array(qr_obj.matrix_world); _invq = _np.linalg.inv(_mwq)
+    _bm = bmesh.new(); _bm.from_mesh(qr_obj.data)
+    _bm.verts.ensure_lookup_table(); _bm.edges.ensure_lookup_table(); _bm.faces.ensure_lookup_table()
+    _rim_report = {}
+    for _side in ("L", "R"):
+        # 每只眼开始前刷新索引表(L 眼的 edge_split 会让索引表失效 → R 眼 index 查找会报错)
+        _bm.verts.index_update(); _bm.verts.ensure_lookup_table()
+        _bm.edges.index_update(); _bm.edges.ensure_lookup_table()
+        _bm.faces.ensure_lookup_table()
+        _HIw = _HI_RIM.get(_side)
+        if _HIw is None or len(_HIw) < 20:
+            continue
+        _c3w = _np.array([float(x) for x in _J[_side]["center"]])
+        # 低模 rim 环(边界边, 眼心 50mm 内) —— 局部坐标操作
+        _c3l = _invq[:3, :3] @ _c3w + _invq[:3, 3]
+        _oe = [e for e in _bm.edges if len(e.link_faces) == 1
+               and (e.verts[0].co - _Vec(_c3l)).xz.length < 0.05 and e.verts[0].co.y < _c3l[1] + 0.02]
+        _dg = {}
+        for _e in _oe:
+            _a, _b = _e.verts
+            _dg.setdefault(_a.index, []).append(_b.index); _dg.setdefault(_b.index, []).append(_a.index)
+        _deg_bad = [k for k in _dg if len(_dg[k]) != 2]
+        if len(_oe) < 10 or _deg_bad:
+            print(f"8.9 [{_side}] ⚠ 低模 rim 环异常(边界边{len(_oe)} 度≠2点{len(_deg_bad)}) → 跳过")
+            continue
+        _st_i = next(iter(_dg)); _ring_i = [_st_i]; _pv, _cu = None, _st_i
+        while True:
+            _nx = [x for x in _dg.get(_cu, []) if x != _pv]
+            if not _nx or _nx[0] == _st_i:
+                break
+            _pv, _cu = _cu, _nx[0]
+            _ring_i.append(_cu)
+        _ring_v = [_bm.verts[i] for i in _ring_i]
+        _LOl = _np.array([list(v.co) for v in _ring_v])
+        _LOw = _LOl @ _mwq[:3, :3].T + _mwq[:3, 3]
+        _m0 = _rim_metrics(_LOw)
+        # 低模环顶点 → 高模环最近索引 + 遍历方向
+        _D = _np.linalg.norm(_HIw[:, None, :] - _LOw[None, :, :], axis=2)      # (nHI, nLO)
+        _idx = _np.argmin(_D, axis=0).astype(int)
+        _nH = len(_HIw)
+        _fwd = _np.array([(int(_idx[(i + 1) % len(_idx)]) - int(_idx[i])) % _nH for i in range(len(_idx))])
+        _dir_fwd = bool(_np.median(_fwd) <= _nH / 2)
+        # 高模环 → 低模局部坐标
+        _HIl = (_HIw - _mwq[:3, 3]) @ _np.linalg.inv(_mwq[:3, :3]).T
+        # 逐边: 找插入点
+        _dev_before = []
+        _plan = []          # (边序号, [插入点(局部), ...], 弦偏差mm)
+        _n_ins = 0
+        for _i in range(len(_LOl)):
+            _j0, _j1 = int(_idx[_i]), int(_idx[(_i + 1) % len(_LOl)])
+            _span = ((_j1 - _j0) % _nH) if _dir_fwd else ((_j0 - _j1) % _nH)
+            _A, _B = _LOl[_i], _LOl[(_i + 1) % len(_LOl)]
+            if _span <= 1:
+                _plan.append((_i, [], _seg_dev(_HIl[_np.array([_j0])], _A, _B) * 1000))
+                continue
+            _step = 1 if _dir_fwd else -1
+            _mid = _HIl[_np.array([(_j0 + _step * k) % _nH for k in range(1, _span)])]
+            _arc = _np.vstack([_A[None, :], _mid, _B[None, :]])
+            _dev = _seg_dev(_arc, _A, _B) * 1000
+            _dev_before.append(_dev)
+            _ins = []
+            if _dev > _R_TOL * 1000:
+                _keep = _rim_rdp(_arc, _R_TOL)
+                for _k in _keep[1:-1]:
+                    _p = _arc[_k]
+                    if _np.linalg.norm(_p - _A) < _R_GAP or _np.linalg.norm(_p - _B) < _R_GAP:
+                        continue
+                    if _ins and _np.linalg.norm(_p - _ins[-1]) < _R_GAP * 0.5:
+                        continue
+                    _ins.append(_p)
+            _n_ins += len(_ins)
+            _plan.append((_i, _ins, _dev))
+        # 执行插入(链式 edge_split: 每次切"仍含 B 的那段", 保证环序 A→p1→…→pk→B)
+        _n_ins_done = 0
+        for _i, _ins, _dev in _plan:
+            if not _ins:
+                continue
+            _A = _ring_v[_i]; _B = _ring_v[(_i + 1) % len(_ring_v)]
+            _cur = _bm.edges.get((_A, _B))
+            if _cur is None:
+                continue
+            for _p in _ins:
+                # 投影到当前子边求比例(夹到 (0,1) 内, 只求拓扑合法; 顶点位置随后直接置为高模弧点)
+                _p0 = _np.array(list(_cur.verts[0].co)); _p1 = _np.array(list(_cur.verts[1].co))
+                _ab = _p1 - _p0; _nn = float(_ab @ _ab)
+                _fac = float(_np.clip(((_p - _p0) @ _ab) / _nn, 0.02, 0.98)) if _nn > 1e-16 else 0.5
+                try:
+                    _ne, _nv = bmesh.utils.edge_split(_cur, _cur.verts[0], _fac)
+                except Exception as _e:
+                    print(f"8.9 [{_side}] edge_split 失败(跳过该点): {_e}")
+                    break
+                _nv.co = _Vec((float(_p[0]), float(_p[1]), float(_p[2])))
+                _n_ins_done += 1
+                _nxt = [e for e in _nv.link_edges if _B in e.verts]
+                if not _nxt:
+                    break
+                _cur = _nxt[0]
+        _bm.normal_update()
+        # 恢复后环: 重建边界边邻接(含新插入点), 从原起点再走一遍
+        _badj = {}
+        for _e in _bm.edges:
+            if len(_e.link_faces) != 1:
+                continue
+            _a, _b = _e.verts
+            if (_a.co - _Vec(_c3l)).xz.length < 0.06 and _a.co.y < _c3l[1] + 0.03:
+                _badj.setdefault(_a, []).append(_b)
+                _badj.setdefault(_b, []).append(_a)
+        _all_v = []; _cur_v = _ring_v[0]; _prev = None
+        for _ in range(len(_badj) + 20):
+            _all_v.append(_cur_v)
+            _nx = [v for v in _badj.get(_cur_v, []) if v is not _prev]
+            if not _nx:
+                break
+            _prev, _cur_v = _cur_v, _nx[0]
+            if _cur_v is _ring_v[0]:
+                break
+        _RING2 = _np.array([list(v.co) for v in _all_v])
+        _RING2w = _RING2 @ _mwq[:3, :3].T + _mwq[:3, 3]
+        _m1 = _rim_metrics(_RING2w)
+        # 恢复后: 高模点 → 低模环折线 偏差
+        _dd = []
+        for _hp in _HIl:
+            _best = 1e9
+            for _k in range(len(_RING2)):
+                _A2 = _RING2[_k]; _B2 = _RING2[(_k + 1) % len(_RING2)]
+                _ab2 = _B2 - _A2; _nn2 = float(_ab2 @ _ab2)
+                _t = float(_np.clip(((_hp - _A2) @ _ab2) / _nn2, 0, 1)) if _nn2 > 1e-16 else 0.0
+                _best = min(_best, float(_np.linalg.norm(_hp - (_A2 + _ab2 * _t))))
+            _dd.append(_best)
+        _dd = _np.array(_dd) * 1000
+        _rim_report[_side] = dict(ins_planned=_n_ins, ins_done=_n_ins_done,
+                                  dev_max_before=float(max(_dev_before)) if _dev_before else 0.0,
+                                  dev_max_after=float(_dd.max()))
+        print(f"8.9 [{_side}] rim 恢复: 插入点={_n_ins_done}/{_n_ins} 弦偏差max "
+              f"{_rim_report[_side]['dev_max_before']:.3f}mm → 高模→低模环偏差max {_dd.max():.3f}mm")
+        print(f"      恢复前 {_m0}")
+        print(f"      恢复后 {_m1}")
+    if _bm is not None:
+        _bm.to_mesh(qr_obj.data); _bm.free()
+    qr_obj.data.update()
+    _hy = _hygiene_lite = None
+    print(f"8.9 rim 恢复汇总: {json.dumps(_rim_report, ensure_ascii=False)}")
+else:
+    print("8.9 rim 恢复: 跳过(QR_RIM_RESTORE=0 或无高模 rim 真值)")
+
 # 9. 保存主产物(单材质, 供下游03/04)
-output_blend = os.path.join(W_02, "_中间", "02_qr_150k.blend")
+output_blend = os.path.join(W_02O, "_中间", "02_qr_150k.blend")
 output_fbx = os.path.join(OUT_02, "02_qr_150k.fbx")
 bpy.ops.wm.save_as_mainfile(filepath=output_blend)
 print(f"9. Saved: {output_blend}")
