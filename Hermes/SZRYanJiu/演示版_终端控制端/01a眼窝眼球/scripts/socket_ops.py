@@ -835,10 +835,14 @@ def _count_band_faces(mesh, P_in, cv, W):
         return 0
     C = np.empty(nf * 3, dtype=np.float32)
     mesh.polygons.foreach_get("center", C); C = C.reshape(nf, 3)
-    d_in = _poly_dist_points(P_in, C[:, [0, 2]].astype(np.float64))
-    r_eye = np.linalg.norm(C[:, [0, 2]] - np.array([cv.x, cv.z]), axis=1)
-    m = (r_eye < EYE_AREA_R) & (C[:, 1] < cv.y + Y_FRONT_M) & (d_in < W)
-    return int(m.sum())
+    Cxz = C[:, [0, 2]].astype(np.float64)
+    r_eye = np.linalg.norm(Cxz - np.array([cv.x, cv.z]), axis=1)
+    _pre = (r_eye < EYE_AREA_R) & (C[:, 1] < cv.y + Y_FRONT_M)   # AB17-OPT: 先筛眼区(与末尾判据同一集合)
+    _idx = np.where(_pre)[0]
+    if len(_idx) == 0:
+        return 0
+    d_in = _poly_dist_points(P_in, Cxz[_idx])                    # AB17-OPT: 只对眼区面心算距离(等价)
+    return int((d_in < W).sum())
 
 
 def cut_band_by_ring_prism(obj, poly_in, poly_out, center, side, W, washer=None,
@@ -871,10 +875,15 @@ def cut_band_by_ring_prism(obj, poly_in, poly_out, center, side, W, washer=None,
     V = np.empty(nv * 3, dtype=np.float32)
     me.vertices.foreach_get("co", V); V = V.reshape(nv, 3)
     xz = V[:, [0, 2]].astype(np.float64)
-    d_in = _poly_dist_points(P_in, xz)
-    d_out = _poly_dist_points(P_out, xz)
-    r_eye = np.linalg.norm(xz - np.array([cv.x, cv.z]), axis=1)
-    m = (r_eye < EYE_AREA_R) & (V[:, 1] < cv.y + Y_FRONT_M) & (d_out < d_in)
+    _pre = (np.linalg.norm(xz - np.array([cv.x, cv.z]), axis=1) < EYE_AREA_R) & (V[:, 1] < cv.y + Y_FRONT_M)   # AB17-OPT
+    _idx = np.where(_pre)[0]
+    if len(_idx):
+        d_in = _poly_dist_points(P_in, xz[_idx])      # AB17-OPT: 两趟距离只对眼区顶点算(等价)
+        d_out = _poly_dist_points(P_out, xz[_idx])
+        m = np.zeros(nv, dtype=bool)
+        m[_idx] = (d_out < d_in)
+    else:
+        m = np.zeros(nv, dtype=bool)
     y_f = cv.y - PRISM_FRONT_MM / 1000.0
     y_b = cv.y + (PRISM_BACK_MM + back_extra_mm) / 1000.0
     y_skin = None
@@ -1572,10 +1581,14 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
     bm.normal_update()   # 关键: 新建面的 f.normal 是惰性的, 不 update 会读到旧/零值 → 定向判据全部误判
     # ---- ⑤ 定向: 用【眼周皮肤面的稳健多数法线】统一给新面定向 ----
     # (先平均→只保留与平均同向的再平均 = 排除少数异向面; 绝不能写成 ref=-ref, 那等于不翻转)
-    _fl = [f.normal.copy() for f in bm.faces
-           if f not in new_faces
-           and (f.calc_center_median() - cv).xz.length < EYE_AREA_R
-           and f.calc_center_median().y < -0.020]
+    _nfset = set(new_faces)     # AB17-OPT: 列表成员(O(N×M)) → 集合(O(N)), 同一集合
+    _fl = []
+    for f in bm.faces:
+        if f in _nfset:
+            continue
+        _cc = f.calc_center_median()          # AB17-OPT: 面心只算一次(原每面两次)
+        if (_cc - cv).xz.length < EYE_AREA_R and _cc.y < -0.020:
+            _fl.append(f.normal.copy())
     gref = Vector((0.0, 0.0, 0.0))
     for n in _fl:
         gref += n
@@ -2718,7 +2731,7 @@ def _rim_qa(obj, center, side, poly, w_mm):
     band区 = 面心到轮廓XZ距离 < 1.16×名义带宽; 参考带 = 2.3~6.2×名义带宽
     (同一网格上未被本次修改的表面); 眼区半径 = EYE_AREA_R(=0.86×实测眼宽, 模块推导值)。
     指标: 最小角<15° 占比 / 长宽比>4 占比 —— 二者为无量纲面形判据(与模型大小无关)。
-    注意: 三档扫描统一用【名义带宽 base】算窗口, 保证各轮量的是同一物理区域、分数可比。"""
+    注意: 各档扫描统一用【名义带宽 base】算窗口, 保证各轮量的是同一物理区域、分数可比。"""
     mesh = obj.data
     nf = len(mesh.polygons)
     if nf == 0:
@@ -2727,18 +2740,20 @@ def _rim_qa(obj, center, side, poly, w_mm):
     C = np.empty(nf * 3); mesh.polygons.foreach_get("center", C); C = C.reshape(-1, 3)
     CP = np.array([[float(p[0]), float(p[1])] for p in poly], dtype=np.float64)
     c0 = np.array(center[:3], dtype=float)
-    xy = C[:, [0, 2]]
+    ineye = (np.linalg.norm(C - c0, axis=1) < EYE_AREA_R) & (C[:, 1] < c0[1] + Y_FRONT_M)
+    _idx = np.where(ineye)[0]                       # AB17-OPT: 距离只对眼区内面心算(筛选用到的才有意义)
     d = np.full(nf, 1e9)
-    for k in range(len(CP)):
-        a = CP[k]; b = CP[(k + 1) % len(CP)]
-        ab = b - a; L2 = float(np.dot(ab, ab))
-        t = np.clip(((xy - a) @ ab) / max(L2, 1e-12), 0.0, 1.0)
-        proj = a + t[:, None] * ab
-        d = np.minimum(d, np.linalg.norm(xy - proj, axis=1))
+    if len(_idx):
+        xy = C[_idx][:, [0, 2]]
+        for k in range(len(CP)):
+            a = CP[k]; b = CP[(k + 1) % len(CP)]
+            ab = b - a; L2 = float(np.dot(ab, ab))
+            t = np.clip(((xy - a) @ ab) / max(L2, 1e-12), 0.0, 1.0)
+            proj = a + t[:, None] * ab
+            d[_idx] = np.minimum(d[_idx], np.linalg.norm(xy - proj, axis=1))
     _band_r = 1.16 * float(w_mm) / 1000.0          # 名义带宽的倍数(无量纲)
     _ref_lo = 2.30 * float(w_mm) / 1000.0
     _ref_hi = 6.20 * float(w_mm) / 1000.0
-    ineye = (np.linalg.norm(C - c0, axis=1) < EYE_AREA_R) & (C[:, 1] < c0[1] + Y_FRONT_M)
     sel_band = np.where(ineye & (d < _band_r))[0]
     sel_ref = np.where(ineye & (d > _ref_lo) & (d < _ref_hi))[0]
     nv = len(mesh.vertices)
@@ -2773,7 +2788,7 @@ def _rim_qa(obj, center, side, poly, w_mm):
 
 def rebuild_rim_block_qa(obj, center, side, poly):
     """v86: rim 处理块(带重建→折返清理→松弛→环重建)的【检测→调参重跑→择优】。
-    阶梯: 带宽 W = [默认, ×1.45, ×0.70](带越宽, 内圈采样越从容; 内环=手描轮廓, 不变)。
+    阶梯: 带宽 W = [默认, ×0.70](2026-09-30 起去掉 ×1.45 中间档 —— 历史全量日志 0 次中选, 每眼中选轮数不变时省 1 轮重建)。
     每轮测 band 与参考带的小角/长条占比, 按(小角+长条)择优保留;
     达"band 不差于参考带2倍"早停; 轮内异常跳过; 全部失败保留原样 —— 不阻断管线。
     (与 03UV 同设计: 判据自参照、预算有限、跑不好挑最好一版。)"""
@@ -2791,7 +2806,10 @@ def rebuild_rim_block_qa(obj, center, side, poly):
         smooth_ring_depth(obj, center, side)
         return
     base_w = RIM_BAND_W_MM
-    tries = [base_w, base_w * 1.45, base_w * 0.70]
+    # 2026-09-30 (ab17 perf P1): 去掉 ×1.45 中间档 —— 历史全量日志 "rim块 QA 选定" 记录中
+    # 该档 0 次中选, 且从未触发过"早停于第2轮"; 候选集合收敛为 {默认, ×0.70}, 早停/择优/
+    # 全部失败保留原样 的语义不变。影响评估: logs/_ab17/perf/d2/AB17D_REPORT.txt §P1。
+    tries = [base_w, base_w * 0.70]
     best = None
     best_ok = None          # 2026-09-22 门控: 该轮 rim 带重建是否成功(单一闭环+带内无未闭合格)
     for i, W in enumerate(tries):
@@ -2877,7 +2895,14 @@ def make_eye_socket(obj, center, side, k_override=None):
         #   是否采用该 K 由"rim 带重建是否得到单一闭环"决定(不合理就回滚换更小的 K)。
         if k_override is not None:
             _k_try = max(_k_floor, min(int(k_override), int(RIM_CONTOUR_HARMONICS)))
-            _k_floor = _k_try          # 只跑一轮 = 强制用该 K
+            if os.environ.get("EYE_RIM_K_RADIUS_GATE") == "1":
+                # 2026-09-30 AB17E(S1a): 恢复半径判据(09-22 k_override 门控曾把它绕过):
+                #   不钉死 _k_floor → 走下方"按 rmin>=Rt 下行搜索", 选出满足半径判据的最大 K
+                #   (预期 K*=2), 然后只跑一次。默认关 → 历史行为(单轮强制 K)。
+                print(f"make_eye_socket {side}: [门控] K={_k_try} 启用半径判据下行搜索"
+                      f"(rmin(K)>=目标 {_Rt_c*1000:.2f}mm; EYE_RIM_K_RADIUS_GATE=1)")
+            else:
+                _k_floor = _k_try          # 只跑一轮 = 强制用该 K
             print(f"make_eye_socket {side}: [门控] 指定谐波 K={_k_try}(区间下限{max(2, int(globals().get('RIM_CONTOUR_K_FLOOR', 2)))}，不启用自动搜索)")
         _best = None
         while _k_try >= _k_floor:
@@ -2892,12 +2917,31 @@ def make_eye_socket(obj, center, side, k_override=None):
                 if _ar > 1e-12:
                     _rmin2 = min(_rmin2, (_ab*_bc*_ca)/(4*_ar))
             _best = (_k_try, _p2, _dev2, _rmin2)
-            if _rmin2 >= _Rt_c:
+            # 2026-09-30 AB17E(S1a): 门控半径判据带容差(默认 0.98; env EYE_RIM_K_RADIUS_TOL):
+            #   09-16 验收口径为 2.6~2.7mm; 实测 E 眼 rmin(K=2)=2.64 vs 目标 2.66(差 0.75%)。
+            _rt_acc = (_Rt_c * float(os.environ.get("EYE_RIM_K_RADIUS_TOL", "0.98")))
+            if os.environ.get("EYE_RIM_K_RADIUS_GATE") != "1":
+                _rt_acc = _Rt_c
+            if _rmin2 >= _rt_acc:
                 break
             _k_try -= 1
         _k_used, poly, _cdev, _rmin = _best
         print(f"make_eye_socket {side}: 轮廓光滑化({RIM_CONTOUR_RESAMPLE}点, 谐波K={_k_used}(自动搜索), "
               f"最小局部半径 {_rmin*1000:.2f}mm / 目标 {_Rt_c*1000:.2f}mm), 与手描轮廓最大偏差 {_cdev:.3f}mm")
+        # 2026-09-30 AB17E(S1a): 记录该 K 的轮廓最小局部半径/目标半径, 供 run_eye_socket 门控叠加
+        #   半径判据 (EYE_RIM_K_RADIUS_GATE=1; 默认关 → 历史行为不变)。规格: logs/_ab17/c2/AB17C_REPORT.txt §4.1
+        try:
+            CUR['k_rmin_' + side] = float(_rmin)
+            CUR['k_Rt_' + side] = float(_Rt_c)
+        except Exception:
+            pass
+    # 2026-09-30 AB17E(S1c): 轮廓眼角留空(源头去贴角; 默认关: EYE_RIM_CANTHUS_CLEAR_MM>0 开启)
+    if poly is not None:
+        try:
+            import rim_ring_recalibrate as _RRRc
+            poly = _RRRc.contour_canthus_clear(poly, side, CUR.get('orig_poly_' + side), center)
+        except Exception as _ce:
+            print(f"make_eye_socket {side}: 眼角留空跳过({_ce})")
     if poly is not None:
         poly = apply_local_inset(poly, center, side, RIM_LOCAL_INSET)
     cx, cy, cz = center.x, center.y, center.z
@@ -2964,6 +3008,15 @@ def make_eye_socket(obj, center, side, k_override=None):
             # v86: rim块(带重建→折返清理→松弛→环重建) 外套【检测→调参(W阶梯)→择优, 不阻断】
             _band_ok = rebuild_rim_block_qa(obj, center, side, poly)   # 2026-09-22: 返回 True/False/None 供门控
             mesh = obj.data   # v86: QA 可能整体替换 mesh 数据块(择优保留), 重新绑定
+            # 2026-09-30 AB17E(S1b): rim 环点距重标定(默认关: EYE_RIM_RING_RECAL=1 开启; 
+            #   EYE_RIM_RING_RECAL_MM 可用 mm 值显式覆盖步长)。位置: QA 之后、任何环使用之前。
+            #   根因/规格: logs/_ab17/c2/AB17C_REPORT.txt §4.1; 算法与沙箱验证版 resample_ring.py dec 同款。
+            try:
+                import rim_ring_recalibrate as _RRR
+                _rr_info = _RRR.recalibrate_rim_ring(obj, center, side, eye_w=CUR.get('eye_w'))
+            except Exception as _re_err:
+                print(f"make_eye_socket {side}: rim环重标定跳过({_re_err})")
+            mesh = obj.data   # AB17E: 重标定回滚时 obj.data 可能已换成快照, 重新绑定
             # 2026-09-28 ab07: 眼角 3D 倒圆(可选, 默认关 → 不改变历史行为)。
             #   根因(ab07 实测): 外眼角带内 0.22mm 环 ↔ 1.15mm 外排 的单排横向断崖(19~21 细长面 + 1 退化三角形)
             #   + 眼角 3D 折角半径仅 ~2.1mm(< QR 目标 2.4~3.7mm) → QR 边界采样在眼角加密/挤压/时好时坏。

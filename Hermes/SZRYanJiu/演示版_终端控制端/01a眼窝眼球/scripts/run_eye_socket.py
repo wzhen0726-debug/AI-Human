@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from eye_socket_config import *
 from iris_detect import detect_iris_centers
 from socket_ops import make_eye_socket, make_eye_cup, finish_socket_boolean
+import socket_ops as _SO   # AB17E(S1a): 读 CUR 里的轮廓半径存储(门控用)
 
 def load_3ddfa_centers():
     """从3DDFA反投影结果读眼中心 (语义定位, 比暗像素准).
@@ -119,6 +120,10 @@ def main():
     #   失败则回滚到该眼操作前的网格快照，换更小的 K。收益: 每只眼拿到"它能承受的最大 K"(最贴手描轮廓)，
     #   且不会像直接收紧区间那样把某只眼的 rim 带重建搞崩(实测 R 眼在 K=4 时连续 6 轮拿不到单一闭环)。
     _gate_sel = {}
+    # 2026-09-30 AB17E(S1a): 门控叠加半径判据 rmin(K)>=R_target(0.07×眼宽), 默认关 → 历史行为不变。
+    #   规格: AB17C_REPORT.txt §4.1(恢复被 k_override 分支绕过的半径判据; E 眼预期 K*→2)。
+    _K_RADIUS_GATE = os.environ.get("EYE_RIM_K_RADIUS_GATE") == "1"
+    _K_RADIUS_TOL = float(os.environ.get("EYE_RIM_K_RADIUS_TOL", "0.98"))   # AB17E: 09-16 验收口径 2.6~2.7mm 容差
     def _gated_eye(c, side):
         if not globals().get('RIM_CONTOUR_K_GATE', False):
             make_eye_socket(obj, c, side)
@@ -133,8 +138,17 @@ def main():
                 obj.data = snap.copy()
                 obj.data.name = f"_gate_try_{side}_K{K}"
             ok = make_eye_socket(obj, c, side, k_override=K)
-            print(f"[门控] {side}: K={K} → rim带重建 {'通过' if (ok is True or ok is None) else '失败(回滚换小K)'}")
-            if ok is True or ok is None:
+            _ok_ring = (ok is True or ok is None)
+            _ok_r = True
+            _rmin_v = _SO.CUR.get('k_rmin_' + side)
+            _rt_v = _SO.CUR.get('k_Rt_' + side)
+            if _K_RADIUS_GATE and _rmin_v is not None and _rt_v is not None:
+                _ok_r = bool(_rmin_v >= _rt_v * _K_RADIUS_TOL)
+            _gmsg = f"rim带重建 {'通过' if _ok_ring else '失败(回滚换小K)'}"
+            if _K_RADIUS_GATE and _rmin_v is not None and _rt_v is not None:
+                _gmsg += f" + 半径判据 {'通过' if _ok_r else '不达标'}({_rmin_v*1000:.2f}/{_rt_v*1000:.2f}mm×{_K_RADIUS_TOL:.2f})"
+            print(f"[门控] {side}: K={K} → {_gmsg}")
+            if _ok_ring and _ok_r:
                 chosen = K
                 break
         if chosen is None:
@@ -155,7 +169,7 @@ def main():
     # 清掉门控/QA 遗留的孤立 mesh 数据块
     try:
         for _m in list(bpy.data.meshes):
-            if _m.users == 0 and (_m.name.startswith("_gate") or _m.name.startswith("_rimQA")):
+            if _m.users == 0 and (_m.name.startswith("_gate") or _m.name.startswith("_rimQA") or _m.name.startswith("_rimRecal")):
                 bpy.data.meshes.remove(_m)
     except Exception:
         pass

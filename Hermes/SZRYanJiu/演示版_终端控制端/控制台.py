@@ -30,6 +30,14 @@ SKIP_GUI = bool(os.environ.get("DEMO_SKIP_GUI"))
 os.environ.setdefault("EYE_EYE_AXIS_MM", "-0.67")          # ①左轮廓镜像轴覆盖(mm); 不设=历史活性自算
 os.environ.setdefault("EYE_EYEBALL_ANCHOR", "e3")          # ②眼球每侧锚定: e3=左眼按本侧3DDFA虹膜锚;
                                                            #    symmetric=历史严格对称(回退用)
+# ============ AB17 rim 根治 (2026-09-30 上正式, 控制台内置) ============
+# 背景: 09-24 v88 起 rim 主环点距 0.22mm(437点) 远小于 QR 目标边长(~2mm) → 眼角多点聚合
+#       → 直弦/扇簇/窄长面(用户症状)。AB17C 因果直证; AB17E/F/G 验收(见 logs/_ab17/)。
+# 效果: 环回 09-21/22 圆润口径(~0.55mm/180点); 8/8 抽样针状面=0; 01a 全链 20.1→5.5min。
+# 门①(解剖失配)0.301=字面边界(超1µm, 3.0档设计代价, AB17G 扫描 2.6/2.8 不可行; 带标注)。
+# 注: 单侧回退可 set EYE_RIM_RING_RECAL=0 / EYE_RIM_CANTHUS_CLEAR_MM=0(无需改代码)
+os.environ.setdefault("EYE_RIM_RING_RECAL", "1")           # ③rim 主环点距重标定(回圆润口径; 步长按眼宽活参数)
+os.environ.setdefault("EYE_RIM_CANTHUS_CLEAR_MM", "3.0")   # ④眼角留空 3mm(源头去贴角; ±6mm 弧段淡出)
 # ===================================================================
 
 G, Y, C, R, B, D, W = "\033[32m", "\033[33m", "\033[36m", "\033[31m", "\033[34m", "\033[2m", "\033[0m"
