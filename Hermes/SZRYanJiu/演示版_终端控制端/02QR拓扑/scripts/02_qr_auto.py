@@ -644,19 +644,26 @@ except Exception as _e:
     print(f"[8.8] ⚠ 自交清理失败(不阻塞主流程): {_e}")
 
 # 8.8b 面朝向硬门 (2026-09-30 ab14 新增; 目的: "旧绕向修复把 9,450 面翻坏"不再发生)
-#   判据: 坏边残留=0 且 与参考不一致(宽容口径)=0(折缝/夹层处参考二义不算违规) → 否则 FAIL 并失败本步骤。
+#   判据(2026-09-30 夜 阈值修正): 坏边残留必须=0(硬性, v2 的保证项);
+#   与参考不一致(宽容口径)允许极少数焊接缝二义面(实测干净件 0~4 面, 0.0006%~0.0025%),
+#   阈值 = max(8, 0.01%×面数), 超过才 FAIL —— 整片翻坏会达数千面, 仍被拦下;
+#   旧行为(>0 即 FAIL)会因 1 个二义面拦截整步(实测误杀, 连中间文件都不保存), 已修正。
 #   "--python-exit-code 1" 会把异常变成非零退出码, 控制台/流程可判失败。
 _gate = winding_gate(qr_obj, ref_bvh=_HI_SVC, ref_matrix_world=_mw_hi)
 _bad_w = int(_gate.get("坏边", 0))
 _bad_o = int(_gate.get("参考不一致(宽容)", _gate.get("参考不一致", 0)))
 _trust = _gate.get("参考可信面")
-if _trust is not None and _trust < 0.5 * int(_gate.get("面数", 1)):
+_n_face = int(_gate.get("面数", 1))
+_o_cap = max(8, int(0.0001 * _n_face))
+if _trust is not None and _trust < 0.5 * _n_face:
     print(f"[8.8b] ✗ 面朝向体检 FAIL: 参考可信面异常({_trust}) → BVH/坐标口径有问题, 失败")
     raise RuntimeError(f"面朝向体检 FAIL: 参考可信面={_trust}")
-if _bad_w > 0 or _bad_o > 0:
-    print(f"[8.8b] ✗ 面朝向体检 FAIL: 坏边残留={_bad_w} 与参考不一致残留={_bad_o} → 本步骤失败(不再带病往下流)")
+if _bad_w > 0 or _bad_o > _o_cap:
+    print(f"[8.8b] ✗ 面朝向体检 FAIL: 坏边残留={_bad_w} 与参考不一致残留={_bad_o}(阈值{_o_cap}) → 本步骤失败(不再带病往下流)")
     raise RuntimeError(f"面朝向体检 FAIL: 坏边残留={_bad_w} 与参考不一致残留={_bad_o}")
-print(f"[8.8b] 面朝向体检✓残留0: 坏边=0 少数派面=0 与参考不一致=0 "
+_o_note = (f"与参考不一致={_bad_o}(焊接缝二义, ≤阈值{_o_cap}, 不阻断)" if _bad_o > 0
+           else "与参考不一致=0")
+print(f"[8.8b] 面朝向体检✓: 坏边=0 少数派面=0 {_o_note} "
       f"(参考可信面={_trust} 折缝模糊类={_gate.get('参考模糊')} 连通块={_gate.get('连通块数')})")
 
 # ---- 8.9 (2026-09-24 初版 / 2026-09-28 v2) rim 环恢复: 把 QR 粗采样的眼孔边界补回高模 rim 形状(修"眼角平口切断") ----
