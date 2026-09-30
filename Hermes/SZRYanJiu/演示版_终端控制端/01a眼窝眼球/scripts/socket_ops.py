@@ -2964,6 +2964,34 @@ def make_eye_socket(obj, center, side, k_override=None):
             # v86: rim块(带重建→折返清理→松弛→环重建) 外套【检测→调参(W阶梯)→择优, 不阻断】
             _band_ok = rebuild_rim_block_qa(obj, center, side, poly)   # 2026-09-22: 返回 True/False/None 供门控
             mesh = obj.data   # v86: QA 可能整体替换 mesh 数据块(择优保留), 重新绑定
+            # 2026-09-28 ab07: 眼角 3D 倒圆(可选, 默认关 → 不改变历史行为)。
+            #   根因(ab07 实测): 外眼角带内 0.22mm 环 ↔ 1.15mm 外排 的单排横向断崖(19~21 细长面 + 1 退化三角形)
+            #   + 眼角 3D 折角半径仅 ~2.1mm(< QR 目标 2.4~3.7mm) → QR 边界采样在眼角加密/挤压/时好时坏。
+            #   开启: EYE_RIM_CANTHUS_FILLET_MM=3.0 (详见 rim_canthus_fillet.py 头注释)
+            try:
+                import rim_canthus_fillet as _RCF
+                _fr = _RCF.fillet_rim_canthus(obj, center, side)
+                if _fr:
+                    print(f"make_eye_socket {side}: 眼角3D倒圆 {_fr.get('n_moved')} 顶点 (R_target="
+                          f"{os.environ.get('EYE_RIM_CANTHUS_FILLET_MM')}mm)")
+            except Exception as _fe:
+                print(f"make_eye_socket {side}: 眼角3D倒圆跳过({_fe})")
+            # 2026-09-29 ab08: 外眼角【带行重建】(可选, 默认关 → 不改变历史行为)。
+            #   根因(ab08 实测): 倒圆后仍残留 1 微面/1 大面; 环(0.22mm)↔外排(1.15mm)带内被拉成
+            #   单排缎带(边长比 5.2~14.3 的 19~21 个细长面) + 1 退化三角 + 1 价悬挂顶点。
+            #   治本: 眼角±span 窗口内删掉带/碎片面, 用【规则四边形行】把环与外排 1:1 桥接
+            #   (必要时只在外排侧插点对齐; rim 环点数/位置严格不变)。校验不过 → 自动回滚(原 mesh 不动)。
+            #   开启: EYE_RIM_CANTHUS_BAND_MM=0.40 (+可选 _SPAN_MM / _SPAN_LO_MM / _SPAN_HI_MM / _MAXROWS)
+            try:
+                import rim_canthus_band as _RCB
+                _br = _RCB.rebuild_rim_canthus_band(obj, center, side)
+                if _br:
+                    if _br.get('ok'):
+                        print(f"make_eye_socket {side}: 眼角带行重建 {_br.get('new_faces')} 面 (窗 {_br.get('win')} 环点 → {_br.get('rail')} 列, 边比max {_br.get('max_ratio', 0):.2f}, 边界边 {_br.get('bnd_after')})")
+                    else:
+                        print(f"make_eye_socket {side}: 眼角带行重建回滚({_br.get('reason')})")
+            except Exception as _be:
+                print(f"make_eye_socket {side}: 眼角带行重建跳过({_be})")
             bpy.ops.object.mode_set(mode='EDIT')
             bm = bmesh.from_edit_mesh(mesh)
             bm.edges.ensure_lookup_table()

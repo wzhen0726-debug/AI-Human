@@ -34,7 +34,7 @@ print(f"Engine: {ENGINE}")
 print(f"Engine exists: {os.path.exists(ENGINE)}")
 
 # 1. 打开高模(01a眼窝+材质分区版; 2026-09-08 用户方案: 眼窝独立材质, QR只勾"使用材质"引导)
-blend_path = os.path.join(r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端\01a眼窝眼球\_中间", "01_1_eye_socket_qr.blend")
+blend_path = os.environ.get('QR_IN_BLEND') or os.path.join(r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端\01a眼窝眼球\_中间", "01_1_eye_socket_qr.blend")
 print(f"\n1. Loading: {blend_path}")
 bpy.ops.wm.open_mainfile(filepath=blend_path)
 
@@ -149,7 +149,11 @@ print(f"2.7 高模rim环内外真值缓存: 碗面(rim环内)={int(_HI_BOWL.sum(
 #   02 的全部后处理(材质合并/自交清理/建碗/摆眼球)都不改 rim 环 → 平口切断从 QR 一路带到成品。
 # 缓存内容: 每只眼的眼孔开放边界环(世界坐标, 有序), = 01a v88.2 眼区边界(已独立验证: 单一闭环、
 #   转角 max L17.4°/R11.6°、XZ 自交 0)。
-_RIM_RESTORE = os.environ.get('QR_RIM_RESTORE', '1') == '1'
+_RIM_RESTORE = os.environ.get('QR_RIM_RESTORE', '0') == '1'
+# 2026-09-28: 默认改为 0(关闭)。原因: 用户 GUI 验收 v2 恢复"眼窝旁边布线非常差"——
+# 在四边面上插点必然把 QR 的四边形流切成三角扇/极点(内眼角/上睑最重), 而 v2 的择优打分
+# 只含"环转角/偏差", 无周边拓扑质量项, 故会选出环好但周边烂的组合。可行性待 QR 侧密度引导研究。
+# 要用旧行为回退: QR_RIM_RESTORE=1 (不推荐, 会破坏眼窝周边布线)。
 _HI_RIM = {}
 if _RIM_RESTORE:
     try:
@@ -192,9 +196,171 @@ if _RIM_RESTORE:
 else:
     print("2.8 rim 环恢复已关闭(QR_RIM_RESTORE=0) → 8.9 跳过")
 
+# ---- 2.85 (2026-09-28 ab04 原型: "让 QR 自己给出细 rim" 的输入级旋钮; 默认全关, 未设环境变量时行为与历史完全一致) ----
+#   思路(根因): QR 输出的眼孔边界环 = 引擎在局部四边形尺寸下对边界的一次采样(38/37 点, 2.17mm),
+#   在眼角处被压成 9mm 直弦 → "平口切断"。后处理插点(8.9)已被用户否决。改为让引擎自己满足:
+#   A) QR_DENSITY_MAP=1 : 输入网格做顶点色密度图(眼周 N mm 内红=密度×4) + settings UseVertexColorMap=1
+#      → 引擎在眼周局部把四边形做小, 边界采样自然变密(干净四边面流, 不插点)。
+#   B) QR_RIM_COARSEN_MM=x : 把眼孔 rim 环顶点在本环内按 x mm 焊接(粗化后回投到真值折线上, 形状不变),
+#      配合 QR_SET_FreezeBorders=1 让引擎"从边界出发布线"(ZBrush 文档: Freeze Border 时优先沿边界布点)。
+_R_DENS = os.environ.get('QR_DENSITY_MAP', '0') == '1'
+_R_COARSE = float(os.environ.get('QR_RIM_COARSEN_MM', '0') or 0)
+if _R_DENS or _R_COARSE > 0:
+    try:
+        import bmesh as _bmesh85
+        _ROOT02 = os.path.dirname(W_02)
+        _J85 = json.load(open(os.path.join(_ROOT02, "01a眼窝眼球", "3ddfa", "eyelid_contour_manual.json"),
+                              encoding="utf-8"))
+        _E85 = _np.empty(len(mesh.data.edges) * 2, dtype=_np.int64); mesh.data.edges.foreach_get("vertices", _E85)
+        _E85 = _E85.reshape(-1, 2)
+        _LE85 = _np.empty(len(mesh.data.loops), dtype=_np.int64); mesh.data.loops.foreach_get("edge_index", _LE85)
+        _cnt85 = _np.bincount(_LE85, minlength=len(_E85))
+        _RINGS = {}
+        for _side in ("L", "R"):
+            _c = _np.array([float(x) for x in _J85[_side]["center"]])
+            _sel = []
+            for _ei in _np.where(_cnt85 == 1)[0]:
+                _u = int(_E85[_ei, 0])
+                if (_np.linalg.norm(_HV_hi[_u][[0, 2]] - _c[[0, 2]]) < 0.05 and _HV_hi[_u][1] < _c[1] + 0.02):
+                    _sel.append((_u, int(_E85[_ei, 1])))
+            _adj = {}
+            for _u, _v in _sel:
+                _adj.setdefault(_u, []).append(_v); _adj.setdefault(_v, []).append(_u)
+            _bad = [k for k in _adj if len(_adj[k]) != 2]
+            if len(_sel) < 20 or _bad:
+                print(f"2.85 [{_side}] ⚠ rim 环异常(边界边{len(_sel)} 度≠2点{len(_bad)}) → 跳过")
+                continue
+            _st = next(iter(_adj)); _ring = [_st]; _pv, _cu = None, _st
+            while True:
+                _nx = [x for x in _adj.get(_cu, []) if x != _pv]
+                if not _nx or _nx[0] == _st:
+                    break
+                _pv, _cu = _cu, _nx[0]
+                _ring.append(_cu)
+            _RINGS[_side] = _np.array(_ring, dtype=_np.int64)
+            print(f"2.85 [{_side}] rim 环: {len(_ring)} 点")
+        # A) 密度图
+        if _R_DENS and _RINGS:
+            _rr = float(os.environ.get('QR_DENS_R_MM', '12')) / 1000.0
+            _flat = float(os.environ.get('QR_DENS_PLATEAU', '0.3'))
+            _cname = os.environ.get('QR_DENS_NAME', 'Col')
+            _me85 = mesh.data
+            if len(_me85.color_attributes) == 0:
+                _ca = _me85.color_attributes.new(name=_cname, type='BYTE_COLOR', domain='POINT')
+            else:
+                _ca = _me85.color_attributes[0]
+            _col = _np.tile(_np.array([1.0, 1.0, 1.0, 1.0], dtype=_np.float32), (len(_me85.vertices), 1))
+            from mathutils.kdtree import KDTree as _KD85
+            for _side, _ring in _RINGS.items():
+                _P = _HV_hi[_ring]
+                _Pc = _np.vstack([_P, _P[:1]])
+                _segs = _np.linalg.norm(_np.diff(_Pc, axis=0), axis=1)
+                _pts = []
+                for _i in range(len(_segs)):
+                    _n = max(1, int(math.ceil(_segs[_i] / 0.00005)))
+                    _t = _np.linspace(0, 1, _n, endpoint=False)[:, None]
+                    _pts.append(_Pc[_i] * (1 - _t) + _Pc[_i + 1] * _t)
+                _S = _np.vstack(_pts)
+                _c0 = _np.array([float(x) for x in _J85[_side]["center"]])
+                _box = (_np.abs(_HV_hi[:, 0] - _c0[0]) < _rr + 0.010) & (_np.abs(_HV_hi[:, 2] - _c0[2]) < _rr + 0.010) \
+                       & (_np.abs(_HV_hi[:, 1] - _c0[1]) < 0.030)
+                _idx = _np.where(_box)[0]
+                _kd = _KD85(len(_S))
+                for _i in range(len(_S)):
+                    _kd.insert(tuple(_S[_i]), _i)
+                _kd.balance()
+                _n_hi = 0
+                for _i in _idx:
+                    _h = _kd.find(tuple(_HV_hi[_i]))
+                    _d = _h[2]
+                    if _d >= _rr:
+                        continue
+                    _t = 1.0 if _d <= _rr * _flat else 1.0 - (_d - _rr * _flat) / (_rr * (1.0 - _flat))
+                    _t = float(min(1.0, max(0.0, _t)))
+                    # 与插件画笔同映射(01a 无, 见 qr_operators paintDensityPropertyCB): 密度×4=红(1,0,0)→白(1,1,1)
+                    _col[_i, 0] = 1.0; _col[_i, 1] = 1.0 - _t; _col[_i, 2] = 1.0 - _t
+                    _n_hi += 1
+                print(f"2.85 [A] 密度图[{_side}]: 采样点{len(_S)} 圈内顶点{_n_hi}(r={_rr*1000:.0f}mm 平台{_flat:.2f})")
+            _ca.data.foreach_set("color", _col.ravel())
+            _me85.color_attributes.active_color_index = 0
+            _me85.color_attributes.render_color_index = 0
+            mesh.data.update()
+            print(f"2.85 [A] 顶点色密度图就绪: 属性={_cname} 域=POINT 非白顶点={int((_col[:, 1] < 0.999).sum())}")
+        # B) rim 环粗化(仅本环顶点内焊接 + 回投真值折线)
+        if _R_COARSE > 0 and _RINGS:
+            # ⚠ 两条环先在同一 bmesh 会话里取 ELEM 引用再焊接(remove_doubles 重排顶点表 / to_mesh 后 mesh 顶点数变化
+            #   都会让"按 mesh 索引取 bm.verts[i]"错位越界 —— 实测 IndexError: index 969061 out of range)
+            _bm85 = _bmesh85.new(); _bm85.from_mesh(mesh.data); _bm85.verts.ensure_lookup_table()
+            _VSEL85 = {_s: [_bm85.verts[int(i)] for i in _r] for _s, _r in _RINGS.items()}
+            for _side, _ring in _RINGS.items():
+                _P = _HV_hi[_ring]
+                _vsel = _VSEL85[_side]
+                _b_before = len(_ring)
+                _res = _bmesh85.ops.remove_doubles(_bm85, verts=_vsel, dist=_R_COARSE / 1000.0)
+                _bm85.verts.ensure_lookup_table()
+                # 回投: 粗化后残余环顶点吸附到真值折线最近点(形状不变)
+                from mathutils.kdtree import KDTree as _KD85b
+                _Pc = _np.vstack([_P, _P[:1]])
+                _S = []
+                for _i in range(len(_Pc) - 1):
+                    _segs = _np.linalg.norm(_Pc[_i + 1] - _Pc[_i])
+                    _n = max(1, int(math.ceil(_segs / 0.00005)))
+                    _t = _np.linspace(0, 1, _n, endpoint=False)[:, None]
+                    _S.append(_Pc[_i] * (1 - _t) + _Pc[_i + 1] * _t)
+                _S = _np.vstack(_S)
+                _kd2 = _KD85b(len(_S))
+                for _i in range(len(_S)):
+                    _kd2.insert(tuple(_S[_i]), _i)
+                _kd2.balance()
+                _moved = 0
+                _inv85 = _np.linalg.inv(_mw_hi)   # 最近点在【世界】坐标系, _v.co 是【局部】 → 必须变换回局部
+                for _v in _vsel:
+                    if not _v.is_valid:
+                        continue
+                    _co = _v.co
+                    _h = _kd2.find(tuple(_co))
+                    if _h[0] is not None and _h[2] > 1e-6:
+                        _pw = _np.array(_h[0])
+                        _v.co = tuple(_pw @ _inv85[:3, :3].T + _inv85[:3, 3]); _moved += 1
+                print(f"2.85 [B] [{_side}] rim 环粗化({_R_COARSE}mm): {_b_before} → 环顶点(残留见下) 回投={_moved}")
+                _bm85.to_mesh(mesh.data); mesh.data.update()   # 回写放在循环末尾, bm 两条环都处理完再 free(见下)
+                _E85r = _np.empty(len(mesh.data.edges) * 2, dtype=_np.int64); mesh.data.edges.foreach_get("vertices", _E85r)
+                _E85r = _E85r.reshape(-1, 2)
+                _LE85r = _np.empty(len(mesh.data.loops), dtype=_np.int64); mesh.data.loops.foreach_get("edge_index", _LE85r)
+                _cnt85r = _np.bincount(_LE85r, minlength=len(mesh.data.edges))
+                _HVr = _np.empty(len(mesh.data.vertices) * 3); mesh.data.vertices.foreach_get("co", _HVr)
+                _HVr = _HVr.reshape(-1, 3) @ _mw_hi[:3, :3].T + _mw_hi[:3, 3]
+                _c0r = _np.array([float(x) for x in _J85[_side]["center"]])
+                _vbr = _HVr[_E85r[:, 0]]
+                _nearr = (_np.linalg.norm(_vbr[:, [0, 2]] - _c0r[[0, 2]][None, :], axis=1) < 0.05) & (_vbr[:, 1] < _c0r[1] + 0.02)
+                print(f"2.85 [B] [{_side}] 粗化后 rim 边界边 = {int(((_cnt85r == 1) & _nearr).sum())} (原 {len(_ring)})")
+            _bm85.free()
+            _LE85b = _np.empty(len(mesh.data.loops), dtype=_np.int64); mesh.data.loops.foreach_get("edge_index", _LE85b)
+            _cnt85b = _np.bincount(_LE85b, minlength=len(mesh.data.edges))
+            _E85b = _np.empty(len(mesh.data.edges) * 2, dtype=_np.int64); mesh.data.edges.foreach_get("vertices", _E85b)
+            _E85b = _E85b.reshape(-1, 2)
+            _HVb = _np.empty(len(mesh.data.vertices) * 3); mesh.data.vertices.foreach_get("co", _HVb)
+            _HVb = _HVb.reshape(-1, 3)
+            for _side in ("L", "R"):
+                _c0 = _np.array([float(x) for x in _J85[_side]["center"]])
+                _vb = _HVb[_E85b[:, 0]]
+                _near = (_np.linalg.norm(_vb[:, [0, 2]] - _c0[[0, 2]][None, :], axis=1) < 0.05) & (_vb[:, 1] < _c0[1] + 0.02)
+                _n = int(((_cnt85b == 1) & _near).sum())
+                print(f"2.85 [B] [{_side}] 粗化后 rim 边界边 = {_n} (原 {len(_RINGS.get(_side, []))})")
+    except Exception as _e85:
+        import traceback as _tb85
+        _tb85.print_exc()
+        print(f"2.85 ⚠ 输入级旋钮失败(不阻塞): {_e85}")
+else:
+    print("2.85 输入级旋钮: 关闭(QR_DENSITY_MAP=0, QR_RIM_COARSEN_MM=0)")
+
 # 3. 导出FBX (材质分区靠material_index随FBX的smoothing/material槽带走; 不需要法向分割)
 print(f"\n3. Exporting FBX...")
-bpy.ops.export_scene.fbx(filepath=inputFbx, use_selection=True)
+_FBX_KW = {}
+if _R_DENS:
+    _FBX_KW['colors_type'] = os.environ.get('QR_FBX_COLORS_TYPE', 'SRGB')
+    print(f"   顶点色随FBX导出: colors_type={_FBX_KW['colors_type']}")
+bpy.ops.export_scene.fbx(filepath=inputFbx, use_selection=True, **_FBX_KW)
 fbx_mb = os.path.getsize(inputFbx) / 1024 / 1024
 print(f"   FBX: {fbx_mb:.1f} MB")
 
@@ -205,16 +371,30 @@ with open(settingsFile, "w") as f:
     f.write(f'FileIn="{inputFbx}"\n')
     f.write(f'FileOut="{retopoFbx}"\n')
     f.write(f'ProgressFile="{progressFile}"\n')
-    f.write('TargetQuadCount=150000\n')  # 14万quad ≈ 28万三角面（比例调整后模型更大）
-    f.write('CurvatureAdaptivness=95\n')
+    f.write('TargetQuadCount=%s\n' % os.environ.get('QR_TARGET_QUADS', '150000'))  # 14万quad ≈ 28万三角面（比例调整后模型更大）
+    f.write('CurvatureAdaptivness=%s\n' % os.environ.get('QR_ADAPTIVE_SIZE', '95'))
     f.write('ExactQuadCount=0\n')
-    f.write('UseVertexColorMap=0\n')
+    # ab04 原型: QR_DENSITY_MAP=1 时启用引擎的顶点色密度图(局部加密); 默认 0 = 与历史一致
+    f.write('UseVertexColorMap=%d\n' % (1 if _R_DENS else 0))
     # 2026-09-08 用户方案: 默认 UseMaterialIds=0(实测该组拓扑最优; 材料边界布线在眼窝处过硬).
     # QR_USE_MATIDS=1 为A/B实验开关(沿材质边界布线), 仅实验用, 勿当默认.
     f.write(('UseMaterialIds=%d\n' % (1 if os.environ.get('QR_USE_MATIDS') == '1' else 0)))
     f.write('UseIndexedNormals=0\n')    # ✗取消法向分割
     f.write('AutoDetectHardEdges=0\n')  # ✗取消角度检测硬边(实测抹平眼窝折角35.7°)
     # 不写SymAxis：模型纹理不对称，强制对称拓扑会导致纹理错位
+    # ---- ab04 原型: 引擎"未暴露在 Blender 面板"的键, 用 QR_SET_<键>=<值> 显式注入(不设=不写=行为不变) ----
+    #   键名取自引擎字符串表(xremeshlib.dll, 见 logs/_ab04/qr_knobs.txt); 例: QR_SET_FreezeBorders=1
+    _QR_EXTRA_KEYS = ('VarDensityRatio', 'MaxQuadRatio', 'NumPointCirc', 'TargetEdgeLength',
+                      'TargetQuadCountAsInputPercentage', 'FollowBorders', 'FreezeBorders', 'FreezeBordersCoef',
+                      'DenoiseStrength', 'SmartMergeCADFacesGroups', 'PreProcess_WeldPoints',
+                      'PostProcess_SplitPointsOnCreasedNormals', 'UsePolygonGroups', 'UseSmoothingGroups',
+                      'UseHardEdgeFlags', 'UseFacesSelections', 'UseEdgesSelections', 'AutoDetectHardEdges_Angle',
+                      'SymTopo', 'MaxNumThread', 'RetopoNodeName', 'PostProcess', 'PreProcess')
+    for _k in _QR_EXTRA_KEYS:
+        _v = os.environ.get('QR_SET_' + _k)
+        if _v not in (None, ''):
+            f.write('%s=%s\n' % (_k, _v))
+            print(f"   [ext] {_k}={_v}")
 print("   Settings written")
 
 # 清理旧输出

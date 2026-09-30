@@ -46,13 +46,16 @@ def compute_eye_position(side, corneal_dist, finetune=(0.0, 0.0, 0.0)):
       回归本源设计(本文件docstring: "位置基准不变: x/z=3DDFA")。此前 x/z 误用【手描轮廓中心】——
       半自动打点每轮重画 → 轮廓中心横向漂移, 实测眼珠从 09-14 的 ±35.05mm 漂到 ±36.70mm(外移1.65mm/只)。
       三个独立参照(3DDFA虹膜±34.2 / 原始扫描自带眼睛±34.5 / 09-14时期±35.05)一致指向内侧 →
-      改回 3DDFA 锚定并对称化(用户要求左右严格对称); 缺文件时回退旧行为并告警。"""
+      改回 3DDFA 锚定并对称化(用户要求左右严格对称); 缺文件时回退旧行为并告警。
+    v89(2026-09-30, E3 上正式): x 不再强制左右对称 —— 见下方 "每侧锚定"(env EYE_EYEBALL_ANCHOR):
+      L 取本侧 3DDFA 锚(当前模型 ≈-35.80mm), R 保持对称锚(沙箱 E3 已验收件); 可回退 symmetric。"""
     import json
     with open(EYE_XZ_JSON, encoding="utf-8") as f:
         cont = json.load(f)
     c = cont[side]["center"]
     rim_y = c[1]                                # 眼睑开口平面y(用户标记)
     dx, dy, dz = finetune
+    _cl, _cr = None, None
     _cx, _cz = None, None
     try:
         _ip = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "3ddfa", "iris_3ddfa.json")
@@ -68,6 +71,29 @@ def compute_eye_position(side, corneal_dist, finetune=(0.0, 0.0, 0.0)):
         print(f"  警告: 3DDFA虹膜锚点读取失败({_e}), 回退手描轮廓中心(会随打点漂移)")
     if _cx is None or _cz is None:
         _cx, _cz = c[0], c[2]
+    # ---- v89(2026-09-30, E3 上正式): 眼球 x "每侧锚定" ----
+    # 背景(AB10/AB11 沙箱已验, 用户已验收 E3): 左眼开口按左虹膜修正(-1.2mm)后, 眼球必须跟到
+    #   【本侧】锚点; 否则 "严格对称 ±34.21" 会让左虹膜在开口内偏内 ~1.3mm。
+    # 模式(env EYE_EYEBALL_ANCHOR):
+    #   e3(默认): L = 本侧 3DDFA 虹膜锚(iris_3ddfa.json L.center_3d.x, 当前模型 ≈-35.80mm);
+    #             R = 保持对称锚(与已验收沙箱件一致: AB10 D6 "右 +0.0342 不变")。
+    #   per_side: L/R 均用本侧 3DDFA 锚 —— 右眼将移到 ≈+32.61mm(该侧 3DDFA 与模型本侧瞳孔
+    #             实测 +34.51mm 差 1.9mm, 属未经用户验收的位移, 故非默认)。
+    #   symmetric: 恢复历史"严格对称"行为(两侧同值; 回退用)。
+    _amode = (os.environ.get("EYE_EYEBALL_ANCHOR") or "e3").strip().lower()
+    if _amode not in ("e3", "per_side", "symmetric"):
+        print(f"  警告: EYE_EYEBALL_ANCHOR={_amode!r} 未知 → 按 e3 处理")
+        _amode = "e3"
+    if _amode != "symmetric" and _cl is not None and _cr is not None:
+        if side == "L":
+            print(f"  [每侧锚定 {_amode}] L 眼球 x: 对称锚 {_cx*1000:+.3f}mm → 本侧 3DDFA 锚 {float(_cl[0])*1000:+.3f}mm")
+            _cx = float(_cl[0])
+        elif _amode == "per_side":
+            print(f"  [每侧锚定 per_side] R 眼球 x: 对称锚 {_cx*1000:+.3f}mm → 本侧 3DDFA 锚 {float(_cr[0])*1000:+.3f}mm")
+            _cx = float(_cr[0])
+        else:
+            print(f"  [每侧锚定 e3] R 眼球 x: 保持对称锚 {_cx*1000:+.3f}mm (沙箱 E3 已验收口径; "
+                  f"右眼本侧 3DDFA 锚 {float(_cr[0])*1000:+.3f}mm 未采用)")
     cx = _cx + dx / 1000.0
     cz = _cz + EYE_Z_OFFSET_MM / 1000.0 + dz / 1000.0
     cy = rim_y + corneal_dist - EYE_PROTRUSION_MM / 1000.0 + dy / 1000.0

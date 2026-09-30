@@ -117,6 +117,20 @@ if os.path.exists(_axis_src):
 else:
     print(f"镜像轴(活性): 权威模型缺失 {_axis_src} → 退回本文件模型")
     AXIS_X = _mirror_axis_x(_ref_pts)
+
+# ---- v89(2026-09-30, E3 上正式): 眼区镜像轴 env 覆盖 ----
+# 背景(logs/_ab10~_ab12 沙箱已验): 两眼相对脸面本底不对称(特征级 ~1.1mm), 纯镜像无法同时对齐
+#   "眼区表面"与"眼睛自身特征"。E3 定案: 左轮廓按【眼区镜像轴 -0.67mm】重生(等效左轮廓整体
+#   x 平移 -1.2mm), 让左轮廓落到左眼自身几何上(解剖相对失配 1.138→0.165mm)。
+# 用法: 设 EYE_EYE_AXIS_MM=-0.67 → 本步镜像轴固定为该值(mm, 跳过活性自算); 默认不设 = 现行
+#   活性自算(历史行为不变)。与 read_eyelid_markers.py 的同名 env 配对(打点链↔读点链同一机制)。
+_AA = os.environ.get("EYE_EYE_AXIS_MM")
+if _AA not in (None, ""):
+    try:
+        AXIS_X = float(_AA) / 1000.0
+        print(f"镜像轴(env 覆盖): EYE_EYE_AXIS_MM={float(_AA):+.4f}mm → x={AXIS_X*1000:+.4f}mm (跳过活性自算)")
+    except ValueError:
+        print(f"镜像轴(env 覆盖)无效: {_AA!r} → 忽略, 保持活性自算")
 l_objs = []
 for o in r_objs:
     rx, ry, rz = o.location

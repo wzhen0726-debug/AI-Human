@@ -24,8 +24,10 @@ D = r"E:/WangZhen_Project/AI/ShuZiRen/Hermes/SZRYanJiu/演示版_终端控制端
 # 沙箱重定向(2026-09-24): 设 QR_OUT_ROOT=<目录> → 输入/输出都落到 <目录>/02QR拓扑/... (配合 02_qr_auto.py
 #   的 QR_OUT_ROOT 使用); 未设 = 与历史完全一致。供"绝不碰正式产物"的只读式沙箱用。
 _D0 = os.environ.get('QR_OUT_ROOT') or D
-QR_BLEND = os.path.join(_D0, "02QR拓扑", "_中间", "02_qr_150k.blend")
-OUT = os.path.join(_D0, "02QR拓扑", "输出", "02_qr_150k_socket.blend")
+# 2026-09-28 ab06 新增(默认关, 不设环境变量时与历史行为完全一致): 在同一沙箱树内指定 cup 的
+#   读入/写出文件, 供"QR → 纯移动(rim_pure_move) → 建碗"这类多步沙箱流水线使用。
+QR_BLEND = os.environ.get('QR_CUP_IN') or os.path.join(_D0, "02QR拓扑", "_中间", "02_qr_150k.blend")
+OUT = os.environ.get('QR_CUP_OUT') or os.path.join(_D0, "02QR拓扑", "输出", "02_qr_150k_socket.blend")
 J = json.load(open(os.path.join(D, "01a眼窝眼球", "3ddfa", "eyelid_contour_manual.json"), encoding="utf-8"))
 
 # (2026-09-17 v19 移除: 眼球载入(BALL) 与 旧参考件(_eye_cup_ref)载入 — 碗=纯 rim 几何)

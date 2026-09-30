@@ -21,6 +21,17 @@ LOGS = os.path.join(BASE, "logs")
 os.makedirs(LOGS, exist_ok=True)
 SKIP_GUI = bool(os.environ.get("DEMO_SKIP_GUI"))
 
+# ============ E3 定案配置 (2026-09-30 上正式, 控制台内置) ============
+# 背景: 脸的左右本底不对称(几何中位 0.49mm / 眼睛特征级 ~1.1mm), 右手点严格镜像会把
+#       左眼轮廓装错位 1.1~1.3mm(左外眼角偏内/偏软的真因)。改用"眼睛特征最佳镜像轴"
+#       -0.67mm: 左轮廓由右手描点(LM_R)绕该轴镜像生成, 解剖相对失配 1.14→0.17mm。
+# 依据: logs/_ab10/AB10_REPORT.txt(机制排查) + logs/_ab13_E3正式/AB13_REPORT.txt(上正式验收)
+# 注: 后续可改为按虹膜/瞳孔特征自动估计(待定); 外部如需实验可先 set 覆盖(setdefault 不覆盖已有值)
+os.environ.setdefault("EYE_EYE_AXIS_MM", "-0.67")          # ①左轮廓镜像轴覆盖(mm); 不设=历史活性自算
+os.environ.setdefault("EYE_EYEBALL_ANCHOR", "e3")          # ②眼球每侧锚定: e3=左眼按本侧3DDFA虹膜锚;
+                                                           #    symmetric=历史严格对称(回退用)
+# ===================================================================
+
 G, Y, C, R, B, D, W = "\033[32m", "\033[33m", "\033[36m", "\033[31m", "\033[34m", "\033[2m", "\033[0m"
 BOLD = "\033[1m"
 os.system("")  # 启用Windows终端ANSI
