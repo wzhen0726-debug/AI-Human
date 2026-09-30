@@ -23,8 +23,9 @@
     ③ 每簇: 顶点级微焊接, 距离由小到大逐档试, 取第一个"清零 **且卫生不退化**"的档;
             焊接后删同顶点集重复面(非流形边的主因); 卫生退化 → 该档回退试下一档;
             全档失败 → 限幅平滑兜底(单顶点位移硬上限 RELAX_CAP_MM)
-    ④ 绕向不一致边贪心翻转 → 0
-    ⑤ 全模型复检(最多 MAX_ROUNDS 轮), 残留如实报告
+    ④ 绕向修复 v2(2026-09-30 ab14): 并查集奇偶解 + 每连通块参考/多数定向 → 坏边残留=0(旧版
+           "坏边两侧一起翻"会波浪扩散不收敛, 已废, 见 logs/_ab14/AB14_REPORT.txt)
+        ⑤ 全模型复检(最多 MAX_ROUNDS 轮), 残留如实报告
 
 ⚠ 卫生硬指标: 清理不得让 非流形边/退化面 变多, 否则该档回退 —— 为了"眼见好看"把网格
    改坏是本管线的禁令(修复引入新错误=全否)。
@@ -250,52 +251,252 @@ def _relax(obj, vert_ids, cap_mm=None, rounds=10, factor=0.3):
     obj.data.update()
 
 
-def _fix_winding(obj):
-    """绕向不一致边(相邻两面沿该边同向)贪心翻转; 返回翻转过的面数"""
+# =============================================================================================
+# 绕向修复 v2 (2026-09-30 ab14 重写; 旧版"把坏边两侧所有面一起翻"= 相对绕向不变 → 坏边修不掉、
+#   每轮向外扩散一圈、计数器只涨不回落(实测 721,539 / 3,898,733 次翻转后仍残留 9,450 / 30,911
+#   面朝向错误, 见 logs/_ab14/AB14_REPORT.txt)。
+#   v2 原理(确定性: 同输入必得同输出; 与遍历顺序无关):
+#     ① 并查集(带奇偶)解每面 flip 奇偶 p: 2面共享边 f2 要求 p(f2)=p(f1) XOR s(该边当前是否同向)
+#        → 解完内部边全一致, 坏边残留必=0(不可定向冲突如实计数);
+#     ② 每连通块整体朝向: 优先高模参考最近面法线面积加权投票; 无参考 → "修复前原朝向"面积多数表决;
+#     ③ 只对 final_flip 面做 reverse_faces(不新建/不删面, 几何零改变)。
+#   调用: _fix_winding(obj) 兼容旧签名(无参考=多数表决); 需参考时传 ref_bvh/ref_matrix_world。
+# =============================================================================================
+_WF_REF_TOL_RATIO = 0.002   # 参考可信距离 = 目标 bbox 对角线 × 0.002 (与 02_qr_auto 8.5b 同口径)
+_WF_AMBIG_DOT = 0.10        # |dot| <= 该值 = 模糊(掠射/锐折), 不计入"参考不一致"
+
+
+def _wf_arrays(me):
+    """面/环/边结构数组: 每 loop 沿其边的方向 d + 边→loop 分组"""
+    nf, nl, ne, nv = len(me.polygons), len(me.loops), len(me.edges), len(me.vertices)
+    LS = np.empty(nf, dtype=np.int64); me.polygons.foreach_get("loop_start", LS)
+    LT = np.empty(nf, dtype=np.int64); me.polygons.foreach_get("loop_total", LT)
+    L = np.empty(nl, dtype=np.int64); me.loops.foreach_get("vertex_index", L)
+    LE = np.empty(nl, dtype=np.int64); me.loops.foreach_get("edge_index", LE)
+    E = np.empty(ne * 2, dtype=np.int64); me.edges.foreach_get("vertices", E); E = E.reshape(-1, 2)
+    F = np.repeat(np.arange(nf, dtype=np.int64), LT)
+    nxt = np.empty(nl, dtype=np.int64)
+    if nl:
+        nxt[:-1] = L[1:]; nxt[-1] = L[0]
+        lm = np.zeros(nl, dtype=bool); lm[LS + LT - 1] = True
+        nxt[lm] = L[LS[F[lm]]]
+    d = ((L == E[LE, 0]) & (nxt == E[LE, 1])).astype(np.int8) if nl else np.zeros(0, dtype=np.int8)
+    order = np.argsort(LE, kind="stable")
+    start = np.searchsorted(LE[order], np.arange(ne))
+    cnt = np.bincount(LE, minlength=ne)
+    return {"nf": nf, "nl": nl, "ne": ne, "nv": nv, "LS": LS, "LT": LT, "L": L, "LE": LE,
+            "E": E, "F": F, "d": d, "order": order, "start": start, "cnt": cnt}
+
+
+def _wf_bad_edges(A):
+    """2面共享边中两面同向的 = 绕向不一致(坏)边"""
+    two = np.where(A["cnt"] == 2)[0]
+    l0 = A["order"][A["start"][two]]
+    l1 = A["order"][A["start"][two] + 1]
+    f0, f1 = A["F"][l0], A["F"][l1]
+    ok = f0 != f1
+    d0, d1 = A["d"][l0], A["d"][l1]
+    return {"two": two, "f0": f0, "f1": f1, "ok": ok, "d0": d0, "d1": d1, "bad": ok & (d0 == d1)}
+
+
+def _wf_solve_parity(A):
+    """带奇偶并查集: p(f2) = p(f1) XOR s → (p 每面 0/1, roots, 不可定向冲突数)
+    find 返回 (root, p(x) XOR p(root)) —— 顺序勿反, 调用方按 root 比较/挂树"""
+    B = _wf_bad_edges(A)
+    nf = A["nf"]
+    if nf == 0:
+        return np.zeros(0, dtype=np.int8), np.zeros(0, dtype=np.int64), 0
+    parent = list(range(nf)); rnk = [0] * nf; par = [0] * nf
+
+    def find(x):
+        r = 0
+        while parent[x] != x:
+            r ^= par[x]; x = parent[x]
+        return x, r
+
+    conflict = 0
+    for k in np.where(B["ok"])[0]:
+        a = int(B["f0"][k]); b = int(B["f1"][k])
+        s = 0 if B["d0"][k] != B["d1"][k] else 1
+        ra, xa = find(a); rb, xb = find(b)
+        if ra == rb:
+            if (xa ^ xb) != s:
+                conflict += 1
+            continue
+        if rnk[ra] < rnk[rb]:
+            parent[ra] = rb; par[ra] = xa ^ xb ^ s
+        else:
+            parent[rb] = ra; par[rb] = xa ^ xb ^ s
+            if rnk[ra] == rnk[rb]:
+                rnk[ra] += 1
+    p = np.empty(nf, dtype=np.int8); roots = np.empty(nf, dtype=np.int64)
+    for k in range(nf):
+        r, x = find(k); roots[k] = r; p[k] = x
+    return p, roots, conflict
+
+def _wf_ref_probe(obj, ref_bvh, ref_matrix_world, tol):
+    """面(世界系)法线 vs 参考最近面法线(转世界) 的 dot; 返回 (dot数组, 可信mask, 查询点(ref局部), 面法线世界系)"""
     me = obj.data
-    me.calc_loop_triangles()
-    flipped = 0
-    for _ in range(100):
-        bm = bmesh.new()
-        bm.from_mesh(me)
-        bm.verts.ensure_lookup_table()      # 否则 bm.faces[i] 报 outdated internal index table
-        bm.faces.ensure_lookup_table()
-        bm.edges.ensure_lookup_table()
-        bad = set()
-        for e in bm.edges:
-            if len(e.link_faces) != 2:
+    nf = len(me.polygons)
+    mw = np.array(obj.matrix_world)
+    R = mw[:3, :3]
+    nrm = np.empty(nf * 3); me.polygons.foreach_get("normal", nrm); nrm = nrm.reshape(-1, 3)
+    cen = np.empty(nf * 3); me.polygons.foreach_get("center", cen); cen = cen.reshape(-1, 3)
+    nw = nrm @ R.T
+    nw /= np.maximum(np.linalg.norm(nw, axis=1, keepdims=True), 1e-12)
+    cw = cen @ R.T + mw[:3, 3]
+    if ref_matrix_world is None:
+        rinv = np.eye(4); Rref = np.eye(3)
+    else:
+        rm = np.array(ref_matrix_world)
+        rinv = np.linalg.inv(rm); Rref = rm[:3, :3]
+    q = cw @ rinv[:3, :3].T + rinv[:3, 3]
+    dot = np.full(nf, np.nan); trust = np.zeros(nf, dtype=bool)
+    for k in range(nf):
+        h = ref_bvh.find_nearest(tuple(q[k]))
+        if h[0] is None or h[3] > tol:
+            continue
+        rn = np.array(h[1]) @ Rref.T
+        nn = np.linalg.norm(rn)
+        if nn < 1e-12:
+            continue
+        dot[k] = float(np.dot(nw[k], rn / nn)); trust[k] = True
+    return dot, trust, q, nw
+
+
+def _wf_ref_violations(ref_bvh, nw, dot, trust, q, agree_mm=2.0):
+    """宽容口径违规面: 最近参考面反对(dot < -_WF_AMBIG_DOT) 且在 agree_mm 邻域内找不到任何赞成面(dot>0)。
+    折缝/夹层处(高模在 <agree_mm 内二次折返)参考本身二义 → 不算违规; 真翻转(局部参考一致反对)必被抓。"""
+    bad = np.where(trust & (dot < -_WF_AMBIG_DOT))[0]
+    n_viol = 0
+    for k in bad:
+        hits = ref_bvh.find_nearest_range(tuple(q[k]), agree_mm / 1000.0)
+        agree = False
+        for hh in hits:
+            rn = np.array(hh[1]); nn = np.linalg.norm(rn)
+            if nn < 1e-12:
                 continue
-            a, b = e.verts[0].index, e.verts[1].index
-            dirs = []
-            for f in e.link_faces:
-                li = [v.index for v in f.verts]
-                k = li.index(a)
-                dirs.append(li[(k + 1) % len(li)] == b)
-            if dirs[0] == dirs[1]:
-                bad.add((a, b))
-                bad.add((b, a))
-        if not bad:
-            bm.free()
-            break
-        tgt = set()
-        for f in bm.faces:
-            li = [v.index for v in f.verts]
-            for k in range(len(li)):
-                if (li[k], li[(k + 1) % len(li)]) in bad:
-                    tgt.add(f.index)
-                    break
-        if not tgt:
-            bm.free()
-            break
-        bmesh.ops.reverse_faces(bm, faces=[bm.faces[i] for i in sorted(tgt)])
-        bm.to_mesh(me)
-        bm.free()
-        me.update()
-        flipped += len(tgt)
-    return flipped
+            if float(np.dot(nw[k], rn / nn)) > 0.0:
+                agree = True
+                break
+        if not agree:
+            n_viol += 1
+    return n_viol
+
+def _wf_ref_tol(obj, ref_tol_mm=None):
+    if ref_tol_mm is not None:
+        return ref_tol_mm
+    from mathutils import Vector
+    pts = np.array([obj.matrix_world @ Vector(c) for c in obj.bound_box])
+    diag = float(np.linalg.norm(pts.max(axis=0) - pts.min(axis=0)))
+    return _WF_REF_TOL_RATIO * diag * 1000.0
 
 
-def clean_self_intersections(obj, verbose=True):
+def _fix_winding(obj, ref_bvh=None, ref_matrix_world=None, ref_tol_mm=None, report=None, verbose=True):
+    """确定性绕向修复。返回实际改变面数(int); report 传 dict 则填详细报告。
+    收敛保证: 修复后坏边残留必=0(仅计2面共享边)。ref_bvh=None 时按"修复前原朝向"面积多数表决。"""
+    me = obj.data
+    A = _wf_arrays(me)
+    nf = A["nf"]
+    B = _wf_bad_edges(A)
+    n_bad0 = int(B["bad"].sum())
+    p, roots, conflict = _wf_solve_parity(A)
+    uniq, inv, cnts = np.unique(roots, return_inverse=True, return_counts=True) if nf else (np.zeros(0), np.zeros(0, dtype=np.int64), np.zeros(0))
+
+    dot = trust = None
+    if ref_bvh is not None and nf:
+        tol = _wf_ref_tol(obj, ref_tol_mm) / 1000.0
+        dot, trust, _q, _nw = _wf_ref_probe(obj, ref_bvh, ref_matrix_world, tol)
+
+    areas = np.empty(nf); me.polygons.foreach_get("area", areas)
+    s_p = np.where(p == 1, -1.0, 1.0)
+    final_flip = np.zeros(nf, dtype=bool)
+    isl_rep = []
+    for i, n in enumerate(cnts):
+        sel = np.where(inv == i)[0]
+        basis = None; score = None
+        if dot is not None:
+            ts = sel[trust[sel]]
+            if len(ts) > 0:
+                score = float(np.sum(areas[ts] * s_p[ts] * dot[ts])); basis = "参考"
+        if basis is None:
+            score = float(np.sum(areas[sel] * s_p[sel])); basis = "多数表决(无参考/参考不可信)"
+        blk_flip = 1 if score < 0 else 0
+        final_flip[sel] = (p[sel] == (0 if blk_flip else 1))
+        isl_rep.append({"面数": int(n), "奇偶1面": int(p[sel].sum()), "整体翻转": bool(blk_flip),
+                        "依据": basis, "得分": round(score, 6),
+                        "参考可信面": (int(trust[sel].sum()) if trust is not None else None)})
+    isl_rep.sort(key=lambda d: -d["面数"])
+    n_change = int(final_flip.sum())
+    rep = {"面数": nf, "连通块数": int(len(cnts)), "不可定向冲突边": int(conflict),
+           "坏边_修复前": n_bad0, "实际改变面数": n_change, "连通块": isl_rep[:12]}
+    if dot is not None:
+        rep["参考_可信面"] = int(trust.sum())
+        rep["参考_不一致_修复前"] = int(np.nansum((dot < -_WF_AMBIG_DOT) & trust))
+        rep["参考_模糊_修复前"] = int(np.nansum((np.abs(dot) <= _WF_AMBIG_DOT) & trust))
+    if n_change > 0:
+        bm = bmesh.new(); bm.from_mesh(me)
+        bm.faces.ensure_lookup_table()
+        bmesh.ops.reverse_faces(bm, faces=[bm.faces[int(i)] for i in np.where(final_flip)[0]])
+        bm.to_mesh(me); bm.free(); me.update()
+        A2 = _wf_arrays(me)
+        rep["坏边_修复后"] = int(_wf_bad_edges(A2)["bad"].sum())
+        if dot is not None:
+            dot2, trust2, _q2, _nw2 = _wf_ref_probe(obj, ref_bvh, ref_matrix_world, _wf_ref_tol(obj, ref_tol_mm) / 1000.0)
+            rep["参考_不一致_修复后"] = int(np.nansum((dot2 < -_WF_AMBIG_DOT) & trust2))
+            rep["参考_模糊_修复后"] = int(np.nansum((np.abs(dot2) <= _WF_AMBIG_DOT) & trust2))
+    else:
+        rep["坏边_修复后"] = n_bad0
+        if dot is not None:
+            rep["参考_不一致_修复后"] = rep["参考_不一致_修复前"]
+            rep["参考_模糊_修复后"] = rep["参考_模糊_修复前"]
+    rep["坏边残留"] = rep["坏边_修复后"]
+    rep["参考不一致残留"] = rep.get("参考_不一致_修复后")
+    if report is not None:
+        report.clear(); report.update(rep)
+    if verbose:
+        print(f"[绕向v2] 面={nf:,} 坏边 {n_bad0}→{rep['坏边_修复后']} 改变面={n_change:,} "
+              f"依据={isl_rep[0]['依据'] if isl_rep else '-'}"
+              + (f" 参考不一致 {rep['参考_不一致_修复前']}→{rep['参考_不一致_修复后']}" if dot is not None else "")
+              + f" {'✓' if rep['坏边_修复后'] == 0 else '✗'}", flush=True)
+    return n_change
+
+
+def winding_gate(obj, ref_bvh=None, ref_matrix_world=None, ref_tol_mm=None, verbose=True):
+    """绕向体检(只读, 不改网格): 坏边 / 少数派面数 / 与参考不一致(强/宽容口径)。
+    返回 dict。"""
+    me = obj.data
+    A = _wf_arrays(me)
+    nf = A["nf"]
+    B = _wf_bad_edges(A)
+    p, roots, conflict = _wf_solve_parity(A)
+    out = {"面数": nf, "坏边": int(B["bad"].sum()), "不可定向冲突边": int(conflict)}
+    if nf:
+        uniq, inv, cnts = np.unique(roots, return_inverse=True, return_counts=True)
+        minority = 0
+        for i, n in enumerate(cnts):
+            k = int(p[np.where(inv == i)[0]].sum()); minority += min(k, int(n) - k)
+        out["少数派面数"] = minority
+        out["连通块数"] = int(len(cnts))
+    else:
+        out["少数派面数"] = 0; out["连通块数"] = 0
+    if ref_bvh is not None and nf:
+        tol = _wf_ref_tol(obj, ref_tol_mm) / 1000.0
+        dot, trust, q, nw = _wf_ref_probe(obj, ref_bvh, ref_matrix_world, tol)
+        out["参考不一致"] = int(np.nansum((dot < -_WF_AMBIG_DOT) & trust))
+        out["参考模糊"] = int(np.nansum((np.abs(dot) <= _WF_AMBIG_DOT) & trust))
+        out["参考可信面"] = int(trust.sum())
+        # 宽容口径(硬门用): 折缝/夹层处参考二义不算违规 → 真翻转才计数
+        out["参考不一致(宽容)"] = int(_wf_ref_violations(ref_bvh, nw, dot, trust, q))
+    if verbose:
+        print("[绕向体检] " + " ".join(f"{k}={v}" for k, v in out.items()), flush=True)
+    return out
+
+
+def clean_self_intersections(obj, verbose=True, ref_bvh=None, ref_matrix_world=None, ref_tol_mm=None):
+    """就地清理 obj 的自交穿插 + 绕向不一致; 返回统计(中文键, 便于直接打印)
+    ref_bvh/ref_matrix_world: 可选的高模参考(BVHTree.FromPolygons 数据拷贝 + 其 matrix_world)
+      —— 传给绕向修复 v2 做"整体朝向"判据; 不传 = 按修复前原朝向多数表决(兼容旧调用)。"""
     sc = _apply_size(obj)
     if verbose:
         print(f"[selfint_clean] 尺寸活性: bbox_max/基准={sc:.4f} → 聚类{CLUSTER_MM:.2f}mm 焊接上限{WELD_LADDER[-1]*1000:.2f}mm 兜底{RELAX_CAP_MM:.3f}mm")
@@ -368,7 +569,12 @@ def clean_self_intersections(obj, verbose=True):
                       f"{'✓' if rem == 0 else '✗未清零'}", flush=True)
 
     rep["残留"] = len(_self_pairs(obj.data))
-    rep["翻转面数"] = _fix_winding(obj)
+    # ④ 绕向修复 v2 (2026-09-30 ab14): 奇偶解 + 参考/多数定向 → 收敛且坏边残留必=0。
+    #   旧字段"翻转面数"保持(现=实际改变面数); 新增"绕向报告"字段(坏边残留/参考不一致等)。
+    _wrep = {}
+    rep["翻转面数"] = _fix_winding(obj, ref_bvh=ref_bvh, ref_matrix_world=ref_matrix_world,
+                                  ref_tol_mm=ref_tol_mm, report=_wrep, verbose=verbose)
+    rep["绕向报告"] = _wrep
     rep["残留"] = len(_self_pairs(obj.data))
     rep["清理后"] = dict(面数=len(obj.data.polygons), 顶点数=len(obj.data.vertices), **_hygiene(obj))
     if verbose:

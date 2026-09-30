@@ -626,21 +626,38 @@ if _nmat > 1:
 else:
     print(f"   材质槽={_nmat}(QR未保留分区, 无需合并)")
 
-# 8.8 自交穿插清理 (2026-09-22 新增)
+# 8.8 自交穿插清理 (2026-09-22 新增; 2026-09-30 ab14: 绕向修复换 v2(确定性+参考定向) + 后接硬门)
 #   用户报"右侧正面+侧面腿部衣服与身体交界略上1cm 两处破面"。归属实测:
 #   该处高模局部自交=0, 而 QR 重拓扑输出=34 对 → 是 QR 把"衣服壳/身体壳"在衣摆交界处
 #   重拓扑成单层封闭面时产生的双层近共面微折 + 绕向不一致面(渲染成尖角/台阶/暗面)。
-#   清理只做: 缺陷处顶点级微焊接(距离自动搜最小档) + 删同顶点集重复面 + 绕向修复;
+#   清理只做: 缺陷处顶点级微焊接(距离自动搜最小档) + 删同顶点集重复面 + 绕向 v2 修复;
 #   硬约束: 不得让 非流形边/退化面 变多, 不得在别处新生缺陷簇, 否则该档回退。
 try:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from selfint_clean import clean_self_intersections
-    _rp = clean_self_intersections(qr_obj)
+    from selfint_clean import clean_self_intersections, winding_gate
+    # 绕向参考 = 高模 BVH(2.7 段缓存, FromPolygons 数据拷贝; 高模对象 8.5 已删除 → 必须显式传入)
+    _rp = clean_self_intersections(qr_obj, ref_bvh=_HI_SVC, ref_matrix_world=_mw_hi)
     print("[8.8] 自交清理:", json.dumps(_rp, ensure_ascii=False))
 except Exception as _e:
     import traceback as _tb
     _tb.print_exc()
     print(f"[8.8] ⚠ 自交清理失败(不阻塞主流程): {_e}")
+
+# 8.8b 面朝向硬门 (2026-09-30 ab14 新增; 目的: "旧绕向修复把 9,450 面翻坏"不再发生)
+#   判据: 坏边残留=0 且 与参考不一致(宽容口径)=0(折缝/夹层处参考二义不算违规) → 否则 FAIL 并失败本步骤。
+#   "--python-exit-code 1" 会把异常变成非零退出码, 控制台/流程可判失败。
+_gate = winding_gate(qr_obj, ref_bvh=_HI_SVC, ref_matrix_world=_mw_hi)
+_bad_w = int(_gate.get("坏边", 0))
+_bad_o = int(_gate.get("参考不一致(宽容)", _gate.get("参考不一致", 0)))
+_trust = _gate.get("参考可信面")
+if _trust is not None and _trust < 0.5 * int(_gate.get("面数", 1)):
+    print(f"[8.8b] ✗ 面朝向体检 FAIL: 参考可信面异常({_trust}) → BVH/坐标口径有问题, 失败")
+    raise RuntimeError(f"面朝向体检 FAIL: 参考可信面={_trust}")
+if _bad_w > 0 or _bad_o > 0:
+    print(f"[8.8b] ✗ 面朝向体检 FAIL: 坏边残留={_bad_w} 与参考不一致残留={_bad_o} → 本步骤失败(不再带病往下流)")
+    raise RuntimeError(f"面朝向体检 FAIL: 坏边残留={_bad_w} 与参考不一致残留={_bad_o}")
+print(f"[8.8b] 面朝向体检✓残留0: 坏边=0 少数派面=0 与参考不一致=0 "
+      f"(参考可信面={_trust} 折缝模糊类={_gate.get('参考模糊')} 连通块={_gate.get('连通块数')})")
 
 # ---- 8.9 (2026-09-24 初版 / 2026-09-28 v2) rim 环恢复: 把 QR 粗采样的眼孔边界补回高模 rim 形状(修"眼角平口切断") ----
 # 根因(见 2.8 注释与 logs/_ab02/): QR 输出的眼孔边界环被粗化(实测样本 L=38/R=37 点, 右外眼角有 9.091mm
