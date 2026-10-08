@@ -17,6 +17,108 @@ from eye_socket_config import *
 # 分配均匀肤色avg_uv → 睫毛丢失、眼窝里是纯肉色. 修复=删面前捕获眼区UV, 重建碗后按XZ位置加权映射回.
 _EYE_UV_SAMPLES = {}
 
+# =========== AB18(2026-10-08): 环边界扫描/尖点追踪/最终深度尖点限幅(正式版; 与沙箱验证文本同文) ===========
+def _ab18_ring_scan(me, cv):
+    """[AB18] numpy 提取眼窗边界环链 → (chain_idx, y, |d2y|, seg_len, V) 或 None. 只读."""
+    try:
+        ne = len(me.edges); nl = len(me.loops)
+        LE = np.empty(nl, dtype=np.int64); me.loops.foreach_get("edge_index", LE)
+        cnt = np.bincount(LE, minlength=ne)
+        EV = np.empty(ne * 2, dtype=np.int64); me.edges.foreach_get("vertices", EV); EV = EV.reshape(-1, 2)
+        b1 = np.where(cnt == 1)[0]
+        if len(b1) == 0:
+            return None
+        nv = len(me.vertices)
+        V = np.empty(nv * 3); me.vertices.foreach_get("co", V); V = V.reshape(-1, 3)
+        bv = np.unique(EV[b1])
+        keep = (np.hypot(V[bv, 0] - cv.x, V[bv, 2] - cv.z) < EYE_AREA_R) & (V[bv, 1] < cv.y + Y_FRONT_M + 0.05)
+        bv = bv[keep]
+        if len(bv) < 8:
+            return None
+        bset = set(int(x) for x in bv)
+        adj = {}
+        for a, b in EV[b1]:
+            a = int(a); b = int(b)
+            if a in bset and b in bset:
+                adj.setdefault(a, []).append(b); adj.setdefault(b, []).append(a)
+        st = [k for k in adj if len(adj[k]) == 2]
+        if not st:
+            return None
+        chain = [st[0]]; seen = {st[0]}; cur = st[0]
+        while True:
+            nxts = [q for q in adj.get(cur, []) if q not in seen]
+            if not nxts:
+                break
+            q = nxts[0]; chain.append(q); seen.add(q); cur = q
+        if len(chain) < 8:
+            return None
+        chain = np.array(chain, dtype=np.int64)
+        y = V[chain, 1].astype(np.float64)
+        d2 = np.abs(y - 0.5 * (np.roll(y, 1) + np.roll(y, -1)))
+        seg = np.linalg.norm(np.roll(V[chain], -1, axis=0) - V[chain], axis=1)
+        return chain, y, d2, seg, V
+    except Exception as e:
+        print(f"[AB18] ring_scan 异常 {e}")
+        return None
+
+
+def _ab18_ring_yprobe(me, cv, side, label):
+    """[AB18-TRACE] 环 y 尖点追踪(只读)."""
+    r = _ab18_ring_scan(me, cv)
+    if r is None:
+        print(f"[AB18-TRACE] {side} {label}: 环缺失/过短")
+        return
+    chain, y, d2, seg, V = r
+    k = int(np.argmax(d2)); kk = int(np.argmax(seg))
+    print(f"[AB18-TRACE] {side} {label}: 环{len(chain)}点 边长max{seg.max()*1000:.3f}@({V[chain[kk],0]*1000:.1f},{V[chain[kk],2]*1000:.1f}) "
+          f"|d2y|max{d2.max()*1000:.3f}@({V[chain[k],0]*1000:.1f},{V[chain[k],2]*1000:.1f}) y[{y.min()*1000:.1f},{y.max()*1000:.1f}]")
+
+
+def _ab18_clamp_ring_y(obj, center, side, thr_mm=1.5, rounds=4):
+    """[AB18] 最终 rim 环 y 尖点限幅: |d2y|>阈值 的点拉向环上两邻 y 均值; 无超限=零动作. 只动这些点的 y.
+    v2: 先切 OBJECT(落盘一致状态) → numpy 扫描 → bmesh.new/from_mesh 改 y → to_mesh+update 回写(逐轮复测)."""
+    cv = Vector((float(center[0]), float(center[1]), float(center[2])))
+    try:
+        if obj.mode != 'OBJECT':
+            bpy.context.view_layer.objects.active = obj
+            bpy.ops.object.mode_set(mode='OBJECT')
+    except Exception:
+        pass
+    me = obj.data
+    total = 0; dmax0 = None; dmax1 = None
+    for _rd in range(rounds):
+        r = _ab18_ring_scan(me, cv)
+        if r is None:
+            break
+        chain, y, d2, seg, V = r
+        if dmax0 is None:
+            dmax0 = float(d2.max()) * 1000.0
+        bad = np.where(d2 * 1000.0 > thr_mm)[0]
+        print(f"[AB18-CLAMP] {side}: round{_rd+1} 环{len(chain)}点 |d2y|max{d2.max()*1000:.3f}mm 超限{len(bad)}点")
+        if len(bad) == 0:
+            break
+        ynew = y.copy()
+        for _bi in bad:
+            ynew[_bi] = 0.5 * (y[(_bi - 1) % len(chain)] + y[(_bi + 1) % len(chain)])
+        bm = bmesh.new()
+        bm.from_mesh(me)
+        bm.verts.ensure_lookup_table()
+        for _k in range(len(chain)):
+            if abs(ynew[_k] - y[_k]) > 1e-12:
+                _vv = bm.verts[int(chain[_k])]
+                _vv.co = Vector((_vv.co.x, float(ynew[_k]), _vv.co.z))
+        bm.to_mesh(me)
+        bm.free()
+        me.update()
+        total += len(bad)
+    r2 = _ab18_ring_scan(me, cv)
+    dmax1 = float(r2[2].max()) * 1000.0 if r2 is not None else -1.0
+    if total:
+        print(f"[AB18-CLAMP] {side}: 深度尖点限幅 {total} 点(阈值{thr_mm}mm) |d2y|max {dmax0:.3f}→{dmax1:.3f}mm")
+    else:
+        print(f"[AB18-CLAMP] {side}: 无超限尖点(|d2y|max {dmax0:.3f}mm, 阈值{thr_mm}mm)")
+# =================== AB18 helpers 结束 ===================
+
 def load_eyelid_contour(side, n_points=72, margin_x_mm=0.0, margin_z_mm=0.0, outer_extra_mm=0.0, inner_extra_mm=0.0):
     """读3DDFA眼睑轮廓(杏仁形), 返回(x,z)多边形顶点列表.
     加密到n_points点(样条插值) + 方向性扩展(margin_x水平/margin_z垂直) + 外眼角extra + 内眼角extra.
@@ -1271,6 +1373,7 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
         _ovs.add(e.verts[0]); _ovs.add(e.verts[1])
     # v88: 只取【最贴手描轮廓的那条边界环】的顶点做深度插值 —— 旧法把眼区里所有边界顶点混在一起
     #   (布尔擦出的碎小孤立环也在内, 实测 332 点里约三成是碎的) → 内圈深度被污染。
+    _depth_src = None   # AB18(2026-10-08): 深度源阶梯标记 'orig'(原判据)/'relax'(放宽闭环)/'sample'(逐点贴面)
     try:
         bm_pre.verts.index_update()
         _comps = _eye_boundary_loops(bm_pre, cv)
@@ -1285,11 +1388,31 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
             if _best is None or _md < _best[0]:
                 _best = (_md, _ch, _cl)
         if _best is not None and _best[0] < 0.0015 and len(_best[1]) >= 20:
+            _depth_src = 'orig'
             _ovs = set(_vm[k] for k in _best[1])
             print(f"rebuild_rim_band {side}: 深度源=最贴轮廓的边界环 {len(_best[1])} 点(闭环={_best[2]}), "
                   f"到轮廓中位 {_best[0]*1000:.3f}mm / 眼区边界环共 {len(_comps)} 个")
     except Exception as _e:
         print(f"rebuild_rim_band {side}: 深度源环挑选失败(退回全部边界顶点) {_e}")
+    # ---- AB18 阶梯②(2026-10-08): ①(原环<1.5mm)未命中时, 退一步取存在的环里最贴近的【闭环】,
+    #   放宽到 <6mm 即可用 —— 洞边边界环本身就是真表面数据, 远好于平直兜底; 碎环(<20点)/断开环仍不取。
+    if _depth_src is None:
+        try:
+            _best2 = None
+            for _ch2, _cl2, _n02 in _comps:
+                if _n02 < 20 or not _cl2:
+                    continue
+                _Pc2 = np.array([[_vm[k].co.x, _vm[k].co.z] for k in _ch2], dtype=np.float64)
+                _md2 = float(np.median(_poly_dist_points(_CPxz, _Pc2)))
+                if _best2 is None or _md2 < _best2[0]:
+                    _best2 = (_md2, _ch2)
+            if _best2 is not None and _best2[0] < 0.006:
+                _ovs = set(_vm[k] for k in _best2[1])
+                _depth_src = 'relax'
+                print(f"rebuild_rim_band {side}: [阶梯②] 深度源=放宽取最近闭环 {len(_best2[1])} 点, "
+                      f"到轮廓中位 {_best2[0]*1000:.3f}mm (原判据<1.5mm 未命中)")
+        except Exception as _eB:
+            print(f"rebuild_rim_band {side}: [阶梯②] 挑选失败 {_eB}")
     if _ovs:
         th = np.array([np.arctan2(v.co.z - cv.z, v.co.x - cv.x) for v in _ovs])
         yy = np.array([v.co.y for v in _ovs])
@@ -1299,11 +1422,59 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
         yy = np.concatenate([yy, yy, yy])
         CY = np.interp(np.arctan2(np.array([p[1] for p in poly]) - cv.z,
                                   np.array([p[0] for p in poly]) - cv.x), th, yy)
-        print(f"rebuild_rim_band {side}: 深度沿用原 rim 边界(角度插值), 原边界 {len(_ovs)} 点, "
-              f"y范围[{CY.min()*1000:.1f},{CY.max()*1000:.1f}]mm")
+        if _depth_src == 'relax':
+            print(f"rebuild_rim_band {side}: [阶梯②] 深度沿用放宽边界(角度插值), 原边界 {len(_ovs)} 点, "
+                  f"y范围[{CY.min()*1000:.1f},{CY.max()*1000:.1f}]mm")
+        else:
+            print(f"rebuild_rim_band {side}: 深度沿用原 rim 边界(角度插值), 原边界 {len(_ovs)} 点, "
+                  f"y范围[{CY.min()*1000:.1f},{CY.max()*1000:.1f}]mm")
     else:
-        CY = np.full(len(poly), cy)
-        print(f"rebuild_rim_band {side}: 未取到原 rim 边界 → 深度用眼中心 y 兜底")
+        # ---- AB18 阶梯③(2026-10-08): 无任何可用环 → 逐点贴面取样 —— 深度必须来自真实表面(禁止平直值) ----
+        #   候选 = 删带前网格 bm_pre 内、眼窗(xz<1.2R)、y∈[眼心-50mm, 眼心+30mm] 的顶点;
+        #   每个轮廓点取 XZ 最近候选(≤2.0mm)的 y; 无候选点按角序邻点(周期×3)插值补齐; 再 5 点循环中值平滑。
+        CY = None
+        try:
+            _tm3 = bpy.data.meshes.new("_rim_depth_cand")
+            bm_pre.to_mesh(_tm3)
+            _nv3 = len(_tm3.vertices)
+            _V3 = np.empty(_nv3 * 3, dtype=np.float64); _tm3.vertices.foreach_get("co", _V3); _V3 = _V3.reshape(-1, 3)
+            bpy.data.meshes.remove(_tm3)
+            _sel3 = ((np.hypot(_V3[:, 0] - cv.x, _V3[:, 2] - cv.z) < EYE_AREA_R * 1.2)
+                     & (_V3[:, 1] > cy - 0.05) & (_V3[:, 1] < cy + 0.03))
+            _Vc3 = _V3[_sel3]
+            if len(_Vc3):
+                from mathutils import kdtree as _kdtree3
+                _kd3 = _kdtree3.KDTree(len(_Vc3))
+                for _i3 in range(len(_Vc3)):
+                    _kd3.insert((float(_Vc3[_i3, 0]), 0.0, float(_Vc3[_i3, 2])), _i3)
+                _kd3.balance()
+                _CY3 = np.full(len(poly), np.nan)
+                for _i3, _p3 in enumerate(poly):
+                    _h3 = _kd3.find((float(_p3[0]), 0.0, float(_p3[1])))
+                    if _h3 is not None and _h3[0] is not None and _h3[2] <= 0.0020:
+                        _CY3[_i3] = float(_Vc3[_h3[1], 1])
+                _n_hit3 = int(np.isfinite(_CY3).sum())
+                if _n_hit3 >= max(3, len(poly) // 10):
+                    if _n_hit3 < len(poly):
+                        _ok3 = np.flatnonzero(np.isfinite(_CY3))
+                        _ix3 = np.concatenate([_ok3 - len(poly), _ok3, _ok3 + len(poly)])
+                        _yy3 = np.concatenate([_CY3[_ok3], _CY3[_ok3], _CY3[_ok3]])
+                        _CY3 = np.interp(np.arange(len(poly)), _ix3, _yy3)
+                    _CY5 = np.empty_like(_CY3)
+                    for _i3 in range(len(poly)):
+                        _CY5[_i3] = float(np.median([_CY3[(_i3 + _d3) % len(poly)] for _d3 in (-2, -1, 0, 1, 2)]))
+                    CY = _CY5
+                    print(f"rebuild_rim_band {side}: [阶梯③] 深度=逐点贴面取样(候选{len(_Vc3)}顶点): 命中 {_n_hit3}/{len(poly)} 点, "
+                          f"其余按角序插值 + 5点循环中值平滑, y范围[{CY.min()*1000:.1f},{CY.max()*1000:.1f}]mm")
+                else:
+                    print(f"rebuild_rim_band {side}: [阶梯③] 候选命中过少({_n_hit3}/{len(poly)})")
+            else:
+                print(f"rebuild_rim_band {side}: [阶梯③] 眼窗无表面候选顶点")
+        except Exception as _eC:
+            print(f"rebuild_rim_band {side}: [阶梯③] 贴面取样异常 {_eC}")
+        if CY is None:
+            CY = np.full(len(poly), cy)
+            print(f"rebuild_rim_band {side}: ❌ 无环且无候选 → 深度用眼中心 y 兜底(不应发生, 需查输入)")
 
     # ================= v88(2026-09-24): 带区切割 / 外环获取 —— 两条路径 =================
     W = W_mm / 1000.0
@@ -2109,6 +2280,26 @@ def rebuild_rim_band(obj, center, side, poly, W_mm=None, tol_mm=0.35):
         if len(f.verts) > 4:
             _nonquad += 1
     print(f"rebuild_rim_band {side}: 收尾清理 三角化n-gon后残留>4边 {_nonquad}, 补smooth {_smooth} 面")
+    # ---- 后检查(2026-10-08 AB18): 最终 rim 环抽样到【删带前表面 bm_pre】的距离 —— 只打印+告警, 不改行为 ----
+    #   环应贴真实表面(中位≈0); 中位 >1.5mm = 深度源异常信号(历史上: 平直兜底导致环浮空)。
+    try:
+        from mathutils.bvhtree import BVHTree as _BVT18pc
+        _bvh18pc = _BVT18pc.FromBMesh(bm_pre, epsilon=0.0)
+        _ring18pc = [v for v in bm.verts if any(len(e.link_faces) == 1 for e in v.link_edges)
+                     and (v.co - cv).xz.length < EYE_AREA_R and v.co.y < cy + Y_FRONT_M + 0.05]
+        if len(_ring18pc) > 400:
+            _ring18pc = _ring18pc[:: len(_ring18pc) // 400 + 1]
+        _d18pc = []
+        for _v18pc in _ring18pc:
+            _hv18pc = _bvh18pc.find_nearest(_v18pc.co)
+            if _hv18pc[0] is not None:
+                _d18pc.append(float((_hv18pc[0] - _v18pc.co).length) * 1000.0)
+        if _d18pc:
+            _med18pc = float(np.median(_d18pc))
+            print(f"rebuild_rim_band {side}: 后检查 最终环到删带前表面 中位{_med18pc:.3f} max{max(_d18pc):.3f}mm"
+                  + ("  ⚠ >1.5mm(深度源异常)" if _med18pc > 1.5 else ""))
+    except Exception:
+        pass
     bm.to_mesh(mesh)
     bm.free()
     try:
@@ -3008,6 +3199,12 @@ def make_eye_socket(obj, center, side, k_override=None):
             # v86: rim块(带重建→折返清理→松弛→环重建) 外套【检测→调参(W阶梯)→择优, 不阻断】
             _band_ok = rebuild_rim_block_qa(obj, center, side, poly)   # 2026-09-22: 返回 True/False/None 供门控
             mesh = obj.data   # v86: QA 可能整体替换 mesh 数据块(择优保留), 重新绑定
+            # [AB18b] 深度尖点限幅前置: 先清掉环上深度尖点再进重标定(否则尖点虚高周长把 N 算大 →
+            #   焊接点数校验失败 → S1b 回滚)。幂等; 收尾处仍保留最终一次调用。
+            try:
+                _ab18_clamp_ring_y(obj, center, side, 1.5)
+            except Exception as _ceB:
+                print(f"make_eye_socket {side}: [AB18-CLAMP] 前置调用异常 {_ceB}")
             # 2026-09-30 AB17E(S1b): rim 环点距重标定(默认关: EYE_RIM_RING_RECAL=1 开启; 
             #   EYE_RIM_RING_RECAL_MM 可用 mm 值显式覆盖步长)。位置: QA 之后、任何环使用之前。
             #   根因/规格: logs/_ab17/c2/AB17C_REPORT.txt §4.1; 算法与沙箱验证版 resample_ring.py dec 同款。
@@ -3105,6 +3302,11 @@ def make_eye_socket(obj, center, side, k_override=None):
             _left = sum(1 for f in bm.faces if _in_eye_zone(f) and f.normal.y > 0.0)
             print(f"make_eye_socket {side}: 眼区最终定向 翻转 {_nfix} 面, 复核残留朝后 {_left} "
                   f"(活性窗口 半径{_rmax*1000:.1f}×1.2mm, y[{_y_lo*1000:.1f},{_y_hi*1000:.1f}]mm)")
+            # [AB18-CLAMP] 最终 rim 环深度尖点限幅(print+修正; 无超限=零动作, 规则两眼一致)
+            try:
+                _ab18_clamp_ring_y(obj, center, side, 1.5)
+            except Exception as _ce:
+                print(f"make_eye_socket {side}: [AB18-CLAMP] 异常 {_ce}")
             bpy.ops.object.mode_set(mode='EDIT')
             return _band_ok      # 2026-09-22 门控: 把"rim带重建是否得到单一闭环"上抛给调用方
         # ③b v63: 保留 boolean 切出的眼窝 pit(竖直壁+平底), 按材质槽【精确】识别这些新面 → 打 tag=2.

@@ -99,11 +99,13 @@ if os.path.exists(_axis_src):
     bpy.ops.wm.open_mainfile(filepath=MARKERS)            # → 回打点文件(文档已切换, 下面全部重取引用)
     r_coll = bpy.data.collections.get("LM_R")
     r_objs = sorted([o for o in r_coll.objects if o.type == 'EMPTY'], key=lambda o: o.name)
-    for _cname in ("LM_L", "LM_VIS"):                     # 重载后磁盘上的旧 L 标记/旧顺序线又回来了, 再清一次
-        _cc = bpy.data.collections.get(_cname)
-        if _cc:
-            for _o in list(_cc.objects):
-                bpy.data.objects.remove(_o, do_unlink=True)
+    # 2026-10-08 修: 旧版这里把 LM_VIS 整个清空 → 连带把 place 步骤刚建的【眼裂顺序线_R】也删了
+    #   (现象: 镜像后"左眼有顺序线/右眼没有")。改为只清 L 侧对象与旧 L 曲线; R 线保留,
+    #   若缺失则由下方 _ensure_R_order_line() 保底重建。
+    _cc = bpy.data.collections.get("LM_L")
+    if _cc:
+        for _o in list(_cc.objects):
+            bpy.data.objects.remove(_o, do_unlink=True)
     _oc = bpy.data.objects.get("眼裂顺序线_L")
     if _oc:
         bpy.data.objects.remove(_oc, do_unlink=True)
@@ -145,6 +147,46 @@ for o in r_objs:
         if k in o: e[k] = o[k]
     l_coll.objects.link(e)
     l_objs.append(e)
+
+def _ensure_R_order_line():
+    """保底: 若 R 眼顺序线缺失(旧版镜像曾把它误删), 按 place_eyelid_markers 同款重建
+    (闭合 POLY 样条 + 每个点由对应 LM_R Empty 的 location 驱动)。已存在则原样保留。"""
+    if bpy.data.objects.get("眼裂顺序线_R"):
+        print("R眼顺序线: 已存在(保留)")
+        return
+    _rc = bpy.data.collections.get("LM_R")
+    _ro = sorted([o for o in _rc.objects if o.type == 'EMPTY'], key=lambda o: o.name) if _rc else []
+    if not _ro:
+        print("R眼顺序线: LM_R 为空, 无法重建")
+        return
+    _cu = bpy.data.curves.new("眼裂顺序线_R", type='CURVE')
+    _cu.dimensions = '3D'
+    _sp = _cu.splines.new('POLY')
+    _sp.points.add(len(_ro) - 1)
+    _sp.use_cyclic_u = True
+    for _i, _e in enumerate(_ro):
+        _sp.points[_i].co = (*_e.location, 1.0)
+    _cu_obj = bpy.data.objects.new("眼裂顺序线_R", _cu)
+    _cu_obj.show_in_front = True
+    _cu_obj.hide_select = True
+    _cu_obj.color = (1.0, 1.0, 1.0, 1.0)
+    vis.objects.link(_cu_obj)
+    _n = 0
+    for _i, _e in enumerate(_ro):
+        for _axis, _idx in (("x", 0), ("y", 1), ("z", 2)):
+            _drv = _sp.points[_i].driver_add("co", _idx)
+            _drv.driver.type = 'SCRIPTED'
+            _var = _drv.driver.variables.new()
+            _var.type = 'TRANSFORMS'
+            _var.targets[0].id = _e
+            _var.targets[0].transform_type = 'LOC_' + _axis.upper()
+            _var.targets[0].transform_space = 'WORLD_SPACE'
+            _drv.driver.expression = "var"
+            _n += 1
+    print(f"R眼顺序线: 缺失 → 已按 R 标记重建({len(_ro)}点 + {_n}驱动器)")
+
+
+_ensure_R_order_line()
 
 # L眼顺序线(闭合样条+驱动器)
 cu = bpy.data.curves.new("眼裂顺序线_L", type='CURVE')
