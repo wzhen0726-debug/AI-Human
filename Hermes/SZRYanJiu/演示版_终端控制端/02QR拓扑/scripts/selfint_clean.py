@@ -81,12 +81,24 @@ def _tri_array(me):
     co = np.empty(nv * 3, dtype=np.float64)
     me.vertices.foreach_get("co", co)
     co = co.reshape(-1, 3)
-    tris = []
-    for p in me.polygons:
-        vi = list(p.vertices)
-        for k in range(1, len(vi) - 1):
-            tris.append((vi[0], vi[k], vi[k + 1]))
-    return np.array(tris, dtype=np.int64), co
+    # AB17J P1(2026-10-08): 逐面 Python 循环 → numpy 扇形三角化(逐位等价):
+    #   面序/每面内 k 序与旧循环完全一致 → tris 数组逐元素相同; 161k 面 0.2s→~5ms,
+    #   而本函数在自交清理里被调用近百次(实测累计 19.4s)。
+    npo = len(me.polygons); nl = len(me.loops)
+    if npo == 0 or nl == 0:
+        return np.array([], dtype=np.int64), co
+    LS = np.empty(npo, dtype=np.int64); me.polygons.foreach_get("loop_start", LS)
+    LT = np.empty(npo, dtype=np.int64); me.polygons.foreach_get("loop_total", LT)
+    LV = np.empty(nl, dtype=np.int64); me.loops.foreach_get("vertex_index", LV)
+    F = np.repeat(np.arange(npo, dtype=np.int64), LT)
+    pos = np.arange(nl, dtype=np.int64) - LS[F]
+    m = (pos >= 1) & (pos <= (LT[F] - 2))
+    idx = np.where(m)[0]
+    if len(idx) == 0:
+        return np.array([], dtype=np.int64), co
+    v0 = LV[LS[F[idx]]]
+    tris = np.stack((v0, LV[idx], LV[idx + 1]), axis=1)
+    return tris.astype(np.int64), co
 
 
 def _self_pairs_from(tris, co):
@@ -203,7 +215,12 @@ def _local_count(obj, center, half):
     tris, co = _tri_array(me)
     c = np.array(center)
     inside = np.all(np.abs(co - c) < half, axis=1)
-    sel = [k for k, t in enumerate(tris) if any(inside[v] for v in t)]
+    # AB17J P1(2026-10-08): 逐面 any() Python 循环 → 布尔矩阵 any(axis=1)(逐位等价:
+    #   同一 inside 布尔向量 + 同一 tris 行 → 选中行集合与顺序相同; 0.2s→~3ms,
+    #   每簇每档都会调用(实测累计 35s 级)。
+    if len(tris) == 0:
+        return 0
+    sel = np.where(inside[tris].any(axis=1))[0]
     if len(sel) < 4:
         return 0
     return len(_self_pairs_from(tris[sel], co))

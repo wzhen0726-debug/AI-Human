@@ -45,11 +45,16 @@ def get_main_mesh():
 
 
 def get_bbox(obj):
-    xs = [v.co.x for v in obj.data.vertices]
-    ys = [v.co.y for v in obj.data.vertices]
-    zs = [v.co.z for v in obj.data.vertices]
-    return (min(xs), min(ys), min(zs)), (max(xs), max(ys), max(zs)), \
-           (max(xs)-min(xs), max(ys)-min(ys), max(zs)-min(zs))
+    # AB17J P0: numpy 一次取值取代 3 遍 Python 逐点遍历(值域 min/max 与旧版逐位相同;
+    #          dims=max-min 仍是同一对 float64 值相减 → 结果位同)
+    _n = len(obj.data.vertices)
+    _a = np.empty(_n * 3, dtype=np.float64)
+    obj.data.vertices.foreach_get('co', _a)
+    _v = _a.reshape(-1, 3)
+    _mn = _v.min(axis=0); _mx = _v.max(axis=0)
+    return ((float(_mn[0]), float(_mn[1]), float(_mn[2])),
+            (float(_mx[0]), float(_mx[1]), float(_mx[2])),
+            (float(_mx[0]-_mn[0]), float(_mx[1]-_mn[1]), float(_mx[2]-_mn[2])))
 
 
 def weld_dist(obj, ratio=1/18000.0):
@@ -332,25 +337,33 @@ def laplacian_smooth(obj, iterations=2, lambda_factor=0.3):
 def taubin_smooth(obj, lam=0.5, mu=-0.53, iterations=1):
     """难题11 (v19): Taubin 平滑 λ=0.5/μ=-0.53, 保体积不缩模型, 消除局部突起.
 
-    对每个顶点: v += λ*(邻域均值 - v), 再 v += μ*(邻域均值 - v)."""
-    bm = bmesh.new(); bm.from_mesh(obj.data)
-    bm.verts.ensure_lookup_table()
+    对每个顶点: v += λ*(邻域均值 - v), 再 v += μ*(邻域均值 - v).
+
+    AB17J P1: numpy float32 向量化(逐位等价, 探针 ab17j_probe_taubin 实测 maxdiff=0.0):
+      - 邻接和: np.add.at 按 [e0因, e0果, e1因, e1果, ...] 顺序累加 = bmesh link_edges
+        升序边序(实测 asc=4005/desc=0/other=0) → 累加次序一致;
+      - avg: 与 mathutils 一致用 ×(1/n) (mulrec 变体; 用除法就差 1ulp → 已排除);
+      - 每轮 lam/mu 与旧版同序, 隔离点(co 不变)单独回填."""
+    me = obj.data
+    nv = len(me.vertices); ne = len(me.edges)
+    V = np.empty(nv * 3, dtype=np.float32); me.vertices.foreach_get('co', V); V = V.reshape(-1, 3)
+    E = np.empty(ne * 2, dtype=np.int64); me.edges.foreach_get('vertices', E); E = E.reshape(-1, 2)
+    deg = np.bincount(E.reshape(-1), minlength=nv).astype(np.float32)
+    _idx3 = ((E.reshape(-1) * 3)[:, None] + np.arange(3)[None, :]).reshape(-1)
+    _val = V[E[:, ::-1]].reshape(-1)
+    _nsafe = np.where(deg == 0, np.float32(1), deg)[:, None]
+    _iso = (deg == 0)
     for _ in range(iterations):
         for factor in (lam, mu):
-            new_cos = []
-            for v in bm.verts:
-                nbs = [e.other_vert(v).co for e in v.link_edges]
-                if nbs:
-                    avg = Vector((0, 0, 0))
-                    for c in nbs:
-                        avg += c
-                    avg /= len(nbs)
-                    new_cos.append(v.co + factor * (avg - v.co))
-                else:
-                    new_cos.append(v.co.copy())
-            for v, c in zip(bm.verts, new_cos):
-                v.co = c
-    bm.to_mesh(obj.data); bm.free(); obj.data.update()
+            acc = np.zeros(nv * 3, dtype=np.float32)
+            np.add.at(acc, _idx3, _val)
+            avg = acc.reshape(-1, 3) * (np.float32(1.0) / _nsafe)
+            Vnew = V + (avg - V) * np.float32(factor)
+            if _iso.any():
+                Vnew[_iso] = V[_iso]
+            V = Vnew
+            _val = V[E[:, ::-1]].reshape(-1)
+    me.vertices.foreach_set('co', V.reshape(-1)); me.update()
     print(f"  Taubin smooth: lam={lam} mu={mu} iter={iterations}")
 
 

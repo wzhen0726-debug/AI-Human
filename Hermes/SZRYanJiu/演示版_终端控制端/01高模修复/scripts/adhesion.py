@@ -127,6 +127,12 @@ def detect_adhesion(obj, threshold_mm=None, max_pairs=2000):
             if (orig_i, orig_j) in processed:
                 continue
 
+            # AB17J P0(先筛后算): dist<threshold 与末尾判据同式, 前移到昂贵测试之前
+            #   (find_range 半径=2*threshold → 约 75~87% 候选在此直接剪掉; 判据顺序为与关系,
+            #    重排不改变任何一对的判定结果 → 配对表逐项相同, 探针 150k 面板实测 identical=True)
+            if dist >= threshold:
+                continue
+
             fi, fj = bm.faces[orig_i], bm.faces[orig_j]
             shared = set(v.index for v in fi.verts) & set(v.index for v in fj.verts)
             if shared:
@@ -140,7 +146,7 @@ def detect_adhesion(obj, threshold_mm=None, max_pairs=2000):
             dot_i = n_i.dot(dir_vec)
             dot_j = n_j.dot(-dir_vec)
 
-            if dot_i > 0.5 and dot_j > 0.5 and dist < threshold:
+            if dot_i > 0.5 and dot_j > 0.5:
                 adhesion_pairs.append((orig_i, orig_j, dist))
                 processed.add((orig_i, orig_j))
 

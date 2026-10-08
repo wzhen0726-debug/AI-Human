@@ -71,16 +71,27 @@ after_weld = len(bm.verts)
 # 填补小孔洞(开放边界是xremesh卡死的主因, 加上限防异常)
 filled = 0
 attempts = 0
-for e in list(bm.edges):
+# ---- AB17J P0 (2026-10-08) 等价改写: 逐条边 edgeloop_fill 实测【恒不建面】----
+#   该算子只在【传入的边集】内走路、成环才建面 → 单边无法成环: 永远返回 0 面、网格
+#   零改动; 但每调用一次都要付一份全网格算子开销(~250ms @1.9M 面), 实测 347 条边界
+#   边烧 85.7s。改为只数边界边(attempts 计数语义不变), 不发起调用(filled 恒 0)。
+#   证据: logs/_ab17/j1/fp/probe_fill.json (同一 bmesh 状态逐位同指纹: 旧85.7s/新0.3s)
+#         + probe_fill_single.json (4 种合成孔洞: 逐条调用 filled 恒 0; 批量调用才建面)。
+#   ⚠ 若将来真要补孔, 必须【批量】传入整圈边集; 单边循环纯属无效开销。
+_degen_loop = []
+for e in bm.edges:
     if len(e.link_faces) == 1:
         attempts += 1
         if attempts > 30000:
             break
-        try:
-            res = bmesh.ops.edgeloop_fill(bm, edges=[e])
-            filled += len(res.get("faces", []))
-        except Exception:
-            pass
+        if e.verts[0] == e.verts[1]:
+            _degen_loop.append(e)   # 理论不可达(退化自环); 保守保留旧路径
+for e in _degen_loop:
+    try:
+        res = bmesh.ops.edgeloop_fill(bm, edges=[e])
+        filled += len(res.get("faces", []))
+    except Exception:
+        pass
 bm.to_mesh(mesh.data)
 bm.free()
 mesh.data.update()

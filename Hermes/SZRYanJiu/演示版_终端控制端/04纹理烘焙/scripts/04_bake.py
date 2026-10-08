@@ -7,6 +7,10 @@ UV_BLEND = os.path.join(ROOT, "03自动UV", "输出", "03_auto_uv.blend")
 # 2026-09-22 用户定案: 烘焙源用01修复高模(眼睑闭合), 不用01a眼窝版.
 # 原因: 01a的眼窝碗是新切几何, 其UV在8K贴图上无有效texel → 碗内烘出暗青黑块;
 # 01眼睑闭合, 眼窝区烘到眼睑皮肤色, 眼球遮挡后整体自然(用户验收标准).
+# ⚠ AB17K (2026-10-08) 实测: 该高模在"recalc 朝向口径"下报 30.76% 翻转, 但那是扫描内部结构
+#   造成的口径假象 —— 原样烘焙实测正常(全图 98.65% texel B>0.7; 腿部 99.3% 正确; 与历史
+#   4K 产物 99.1% 交叉一致); 若按 recalc 结果把这批面"翻正", 反使 27.6% texel 反转(黑面)。
+#   结论: 保持原样, 禁止"翻正"; 证据 logs/_ab17/k1/AB17K_REPORT.txt §2/§3。
 HIGH_POLY = os.path.join(ROOT, "01高模修复", "输出", "01_highpoly_repair.blend")
 FIXED_TEX = os.path.join(ROOT, "01高模修复", "输出", "01_original_tex_fixed.png")
 OUT_04 = os.path.join(ROOT, "04纹理烘焙", "输出")
@@ -318,6 +322,20 @@ normal_img.filepath_raw = normal_path
 normal_img.file_format = 'PNG'
 normal_img.save()
 print(f"Normal贴图已保存")
+
+# ---- AB17K (2026-10-08) 法线体检哨兵: 廉价回归监视(只打印, 不改产物) ----
+# 基线: 现行高模原样烘焙反转占比 ≈0.5~0.7%(历史 6 份 4K 产物同为 0.5~0.6%); 若某次超过 5%,
+# 优先核对"高模朝向是否被人为翻动/烘焙射线是否打到背面", 禁止按 recalc 口径把高模翻正。
+try:
+    _G = int(normal_img.size[0])
+    _NB = np.array(normal_img.pixels[:], dtype=np.float32).reshape(_G, _G, 4)[:, :, :3]
+    _mK = _NB.max(axis=2); _bk = _mK >= 0.02
+    _inv = float((_NB[:, :, 2][_bk] < 0.3).mean()) if _bk.any() else 0.0
+    print(f'[AB17K] 法线体检: 已烘texel={int(_bk.sum())} 反转(B<0.3)占比={100 * _inv:.2f}% (基线≈0.5%)')
+    if _inv > 0.05:
+        print('[AB17K] ⚠ 反转占比>5%: 先核对高模朝向/烘焙射线, 勿按 recalc 口径翻正高模 (见 AB17K 报告)')
+except Exception as _eK:
+    print(f'[AB17K] 法线体检跳过: {_eK}')
 
 # ⚠ 2026-09-22 根因修正(实测): 原代码在这里【断开】两处连线, 但只恢复了其中一处,
 #   导致 image→NormalMap 那条线永久丢失 → 法线图成为孤立节点:
