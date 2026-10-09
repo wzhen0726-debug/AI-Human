@@ -163,6 +163,203 @@ def _pt2poly_dist(P, T):
     return d
 
 
+# ===================== AB18e(2026-10-09): S1b 点数校验失败 → 有界兜底重试 =====================
+#   背景: 原校验 |len(ring1)-N|>max(2,5%N) 直接回滚(S1b 不生效, 环保持 0.22mm 细密)。
+#   兜底(仅【原校验会回滚】的点数异常分支触发, 正常路径零改动): 以【可达点数】N'=初次焊后主环
+#   实际点数 为新目标, 在原(未焊)网格上重做一次"逐组归并"焊接 —— 分组=同一弧长槽的连续段
+#   (槽数=N', 同原算法公式), 再对分组做"按最大偏差分裂"修补(每轮在估计焊后环折线上取偏差最大
+#   且所在组可分裂的点为界分裂)使【组数恒等于 N'】(目标可达性由构造保证, 且偏差驱动 → 分裂
+#   优先落在尖点/高曲率区, 实测 5 个注入位置 dev<=0.03mm/周长<=0.16%);
+#   归并位置口径(组弧段中点线性插值, 落原环折线上)与原算法同款。
+#   复核(与现判定同口径, 更严): 单闭环=True / 周长变化≤0.5% / 合并位置偏差≤_AB18E_RETRY_DEV_MM /
+#   非流形不增 / 碎边签名不变 / 无退化边。任一不过 → 维持现有回滚。整体有界: 重试≤1 次, 修补≤N' 步。
+_AB18E_RETRY_DEV_MM = 0.060   # 合并位置偏差上限("0.04mm 级"; 正式路径实测 0.047~0.059mm 同档)
+
+
+def _ab18e_retry_band(N, A1):
+    """兜底带: N' 必须落在 [max(100, 0.7N), N+2]。返回 (N', lo, hi) 或 None。"""
+    lo = int(max(100, 0.7 * N))
+    hi = int(N + 2)
+    if A1 < lo or A1 > hi:
+        return None
+    return A1, lo, hi
+
+
+def _ab18e_p1_estimate(P, groups, cum):
+    """估计焊后环折线(与真实焊接同口径: 单点组原位; 多点组=组弧段中点插值, 落原折线上)。"""
+    m = len(P)
+    out = []
+    for g in groups:
+        if len(g) < 2:
+            out.append(P[g[0]])
+            continue
+        s0 = float(cum[g[0]]); s1 = float(cum[g[-1] + 1])
+        sm = 0.5 * (s0 + s1)
+        k = int(np.searchsorted(cum, sm, side="right") - 1)
+        k = max(0, min(m - 1, k))
+        f = 0.0 if cum[k + 1] <= cum[k] else (sm - cum[k]) / (cum[k + 1] - cum[k])
+        out.append(P[k] * (1.0 - f) + P[(k + 1) % m] * f)
+    return np.array(out)
+
+
+def _ab18e_point_group(groups, iw):
+    """组为连续区间, 二分定位点 iw 所在组号; 未找到返回 -1。"""
+    lo, hi = 0, len(groups) - 1
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        g = groups[mid]
+        if iw < g[0]:
+            hi = mid - 1
+        elif iw > g[-1]:
+            lo = mid + 1
+        else:
+            return mid
+    return -1
+
+
+def _ab18e_retry_groups(seg0, perim, M, target, P0):
+    """目标 target 槽分组(同原算法公式) + "按最大偏差分裂"修补至恰好 target 组:
+    每轮在【估计焊后环折线】上找偏差最大且所在组可分裂的原始点, 以其为界分裂该组。
+    有界: 每轮恰 +1 组, 总轮数 <= target(另加护栏); 返回 (groups, cum) 或 None。"""
+    cum = np.concatenate([[0.0], np.cumsum(seg0)])
+    slot = np.minimum(target - 1, (cum[:M] * target / perim).astype(np.int64))
+    starts = list(np.where(np.diff(slot) != 0)[0] + 1)
+    groups = [list(map(int, g)) for g in np.split(np.arange(M), starts)]
+    guard = 0
+    while len(groups) < target:
+        guard += 1
+        if guard > target:           # 护栏(理论不可达; 防死循环)
+            return None
+        P1e = _ab18e_p1_estimate(P0, groups, cum)
+        d = _pt2poly_dist(P0, P1e)
+        order = np.argsort(d)[::-1]
+        done = False
+        for iw in order[:64]:
+            iw = int(iw)
+            gi = _ab18e_point_group(groups, iw)
+            if gi < 0:
+                continue
+            g = groups[gi]
+            if len(g) < 2:
+                continue
+            pos = iw - g[0]
+            if pos == len(g) - 1:
+                pos = len(g) - 2     # 后半不得为空
+            groups[gi:gi + 1] = [g[:pos + 1], g[pos + 1:]]
+            done = True
+            break
+        if not done:
+            return None              # 无可分裂目标(不可达)
+    if len(groups) != target:
+        return None
+    return groups, cum
+
+
+def _ab18e_retry_attempt(obj, snap, me0, ring0, P0, st0, seg0, perim, M, N, A1, E0, tips, side, cv):
+    """兜底重试一次(有界)。成功 → obj.data 换成重试网格, 返回 dict(mesh, ring1, E1d, dev); 否则 None。"""
+    band = _ab18e_retry_band(N, A1)
+    if band is None:
+        print("[AB18e] rim_ring_recalibrate %s: 可达点数 %d 超出兜底带 [max(100,0.7N)=%d, N+2=%d] → 维持回滚" %
+              (side, A1, max(100, int(0.7 * N)), N + 2))
+        return None
+    target = band[0]
+    print("[AB18e] rim_ring_recalibrate %s: 初次点数校验失败(%d≠%d) → 以可达点数 N'=%d 兜底重试一次(上限1次)" %
+          (side, A1, N, target))
+    me2 = None
+    try:
+        rg = _ab18e_retry_groups(seg0, perim, M, target, P0)
+        if rg is None:
+            print("[AB18e] rim_ring_recalibrate %s: 重试分组不可达 N'=%d → 维持回滚" % (side, target))
+            return None
+        groups, cum = rg
+        me2 = snap.copy()          # 原(未焊)网格副本 → 重试焊接载体
+        bm = bmesh.new()
+        bm.from_mesh(me2)
+        bm.verts.ensure_lookup_table()
+        vs = [bm.verts[i] for i in ring0]
+        MWI = obj.matrix_world.inverted()
+        tmap = {}
+        for g in groups:
+            if len(g) < 2:
+                continue
+            s0 = float(cum[g[0]]); s1 = float(cum[g[-1] + 1])
+            sm = 0.5 * (s0 + s1)
+            k = int(np.searchsorted(cum, sm, side="right") - 1)
+            k = max(0, min(M - 1, k))
+            f = 0.0 if cum[k + 1] <= cum[k] else (sm - cum[k]) / (cum[k + 1] - cum[k])
+            tgt_w = P0[k] * (1.0 - f) + P0[(k + 1) % M] * f
+            tgt_l = MWI @ Vector((float(tgt_w[0]), float(tgt_w[1]), float(tgt_w[2])))
+            ks = int(g[int(np.argmin(np.abs(cum[g] - sm)))])
+            vs[ks].co = tgt_l
+            for i in g:
+                if int(i) != ks:
+                    tmap[vs[int(i)]] = vs[ks]
+        if not tmap:
+            bm.free()
+            bpy.data.meshes.remove(me2); me2 = None
+            print("[AB18e] rim_ring_recalibrate %s: 重试无需合并组 → 维持回滚" % side)
+            return None
+        bmesh.ops.weld_verts(bm, targetmap=tmap)
+        bm.to_mesh(me2)
+        bm.free()
+        me2.update()
+        # ---- 重试结果复核(同口径; 更严) ----
+        E1r = _extract_side_rings(me2, obj, cv, side)
+        ring1r = E1r["main"]
+        fr = []
+        if not ring1r:
+            fr.append("主环消失")
+        if not E1r["closed"]:
+            fr.append("主环非闭环")
+        if ring1r and abs(len(ring1r) - target) > max(2, int(0.05 * target)):
+            fr.append("环点数异常(%d≠%d)" % (len(ring1r), target))
+        if E1r["nm"] > E0["nm"]:
+            fr.append("非流形边数增 %d→%d" % (E0["nm"], E1r["nm"]))
+        if E1r["extras"] != E0["extras"]:
+            fr.append("碎边签名变化 %s→%s" % (E0["extras"], E1r["extras"]))
+        P1r = E1r["coW"][np.array(ring1r)] if ring1r else np.zeros((0, 3))
+        st1r, seg1r = _ring_stats(P1r, tips) if ring1r else ({}, np.zeros(0))
+        if len(seg1r) and float(seg1r.min()) <= 1e-6:
+            fr.append("存在退化边")
+        if st1r and abs(st1r["perim_mm"] - st0["perim_mm"]) / max(st0["perim_mm"], 1e-9) > 0.005:
+            fr.append("周长变化>0.5%")
+        devr = 0.0
+        if len(P1r):
+            devr = float(max(_pt2poly_dist(P0, P1r).max(), _pt2poly_dist(P1r, P0).max()))
+            if devr * 1000.0 > _AB18E_RETRY_DEV_MM:
+                fr.append("合并位置偏差%.3fmm>%.3fmm" % (devr * 1000.0, _AB18E_RETRY_DEV_MM))
+        if fr:
+            bpy.data.meshes.remove(me2); me2 = None
+            print("[AB18e] rim_ring_recalibrate %s: 兜底重试未通过(%s) → 维持回滚" % (side, "; ".join(fr)))
+            return None
+        # ---- 接管: obj.data=重试网格; 旧 attempt-1 网格改名腾位后移除 ----
+        _keepname = me0.name
+        me0.name = _keepname + "_ab18e_pre"
+        me2.name = _keepname
+        obj.data = me2
+        me2 = None                 # 已接管, 不再由本函数负责删除
+        try:
+            bpy.data.meshes.remove(me0)
+        except Exception:
+            pass
+        dper = (st1r["perim_mm"] - st0["perim_mm"]) / max(st0["perim_mm"], 1e-9) * 100.0
+        print("[AB18e] rim_ring_recalibrate %s: 兜底重试通过 → S1b 生效(点数 %d→%d, 周长 %.2f→%.2fmm(%+.2f%%), "
+              "合并位置偏差max %.3fmm, 非流形 %d→%d, 单闭环=%s, 碎边签名不变=%s)" %
+              (side, M, len(ring1r), st0["perim_mm"], st1r["perim_mm"], dper, devr * 1000.0,
+               E0["nm"], E1r["nm"], E1r["closed"], E1r["extras"] == E0["extras"]))
+        return dict(mesh=obj.data, ring1=ring1r, E1d=E1r, dev=devr)
+    except Exception as _e:
+        try:
+            if me2 is not None and obj.data is not me2:
+                bpy.data.meshes.remove(me2)
+        except Exception:
+            pass
+        import traceback as _tb
+        _tb.print_exc()
+        print("[AB18e] rim_ring_recalibrate %s: 兜底重试异常(%s) → 维持回滚" % (side, _e))
+        return None
+
+
 def recalibrate_rim_ring(obj, center, side, eye_w=None):
     """S1b: 该侧 rim 主环点距重标定。返回 info dict / None(未启用/跳过/回滚)。"""
     if not _env_on("EYE_RIM_RING_RECAL"):
@@ -262,15 +459,28 @@ def recalibrate_rim_ring(obj, center, side, eye_w=None):
     if st1 and abs(st1["perim_mm"] - st0["perim_mm"]) / max(st0["perim_mm"], 1e-9) > 0.01:
         fail.append("周长变化>1%")
     if fail:
-        _keep = me.name
-        obj.data = snap
-        snap.name = _keep
-        try:
-            bpy.data.meshes.remove(me)
-        except Exception:
-            pass
-        print("rim_ring_recalibrate %s: 自检失败 → 回滚(S1b不生效): %s" % (side, "; ".join(fail)))
-        return None
+        # [AB18e] 有界兜底: 仅"环点数异常"触发(其余失败原因静默走原回滚, 零日志变化)。
+        _ab18e_ok = None
+        if ring1 and any("环点数异常" in f for f in fail):
+            _ab18e_ok = _ab18e_retry_attempt(obj, snap, me, ring0, P0, st0, seg0, perim, M, N,
+                                             len(ring1), E0, tips, side, cv)
+        if _ab18e_ok is not None:
+            me = _ab18e_ok["mesh"]
+            ring1 = _ab18e_ok["ring1"]
+            E1d = _ab18e_ok["E1d"]
+            P1w = E1d["coW"][np.array(ring1)] if ring1 else np.zeros((0, 3))
+            st1, seg1 = _ring_stats(P1w, tips) if ring1 else ({}, np.zeros(0))
+            fail = []
+        else:
+            _keep = me.name
+            obj.data = snap
+            snap.name = _keep
+            try:
+                bpy.data.meshes.remove(me)
+            except Exception:
+                pass
+            print("rim_ring_recalibrate %s: 自检失败 → 回滚(S1b不生效): %s" % (side, "; ".join(fail)))
+            return None
     dev = 0.0
     if len(P1w):
         dev = float(max(_pt2poly_dist(P0, P1w).max(), _pt2poly_dist(P1w, P0).max()))

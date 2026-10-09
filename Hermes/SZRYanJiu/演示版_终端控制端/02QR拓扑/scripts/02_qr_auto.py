@@ -408,353 +408,489 @@ with open(settingsFile, "w") as f:
             print(f"   [ext] {_k}={_v}")
 print("   Settings written")
 
-# 清理旧输出
-for p in [retopoFbx, progressFile]:
-    if os.path.exists(p):
-        os.remove(p)
-
-# 5. 启动引擎
-print(f"\n5. Starting xremesh...")
-engine_dir = os.path.dirname(ENGINE)
-# v63根因修复: 原用 stdout/stderr=PIPE 且不读 → 管道写满会让引擎在退出前卡住; 且实测引擎
-#   产出 retopo.fbx + progress=2 后【仍不退出】(持续跑, CPU还涨), 而脚本用 while proc.poll() 死等 → 永久挂起.
-#   插件自身的完成判据是 progress.txt == 2 (qr_operators.py modal: ProgressValueFloat==2 → doRemeshing_Finish),
-#   不是进程退出. 故: ①输出落盘(可查引擎警告) ②progress==2 即视为完成, 强制收掉引擎进程 ③硬超时兜底.
-outF = os.path.join(QRTemp, 'xremesh_stdout.txt')
-errF = os.path.join(QRTemp, 'xremesh_stderr.txt')
-_outf = open(outF, "w", encoding="utf-8", errors="replace")
-_errf = open(errF, "w", encoding="utf-8", errors="replace")
-proc = subprocess.Popen(
-    [ENGINE, "-s", settingsFile],
-    cwd=engine_dir,
-    stdout=_outf,
-    stderr=_errf
-)
-print(f"   PID: {proc.pid}  (stdout→{outF})")
-
-# 6. 轮询进度
-print(f"\n6. Waiting...")
-start = time.time()
-last_pct = -1
-DONE = False
-while True:
-    if proc.poll() is not None:
-        break
-    time.sleep(2)
-    elapsed = time.time() - start
-    val = None
-    if os.path.exists(progressFile):
-        try:
-            with open(progressFile, "r") as pf:
-                lines = pf.read().splitlines()
-            if lines:
-                val = float(lines[0])
-                if 0 < val < 1:
-                    pct = int(99.0 * val + 1.0)
-                    if pct != last_pct:
-                        print(f"   Progress: {pct}% ({elapsed:.0f}s)")
-                        last_pct = pct
-                elif val == 2:
-                    print(f"   Progress: 100% ({elapsed:.0f}s)")
-                elif val < 0:
-                    msg = lines[1] if len(lines) > 1 else "unknown"
-                    print(f"   ERROR: {msg} (code={val})")
-        except:
-            pass
-    # progress==2 = 引擎完成(插件同判据); retopo.fbx 落地后引擎常驻不退 → 收掉进程继续
-    if val == 2 and os.path.exists(retopoFbx) and elapsed > 3:
-        DONE = True
-        break
-    if elapsed > 1800:
-        print("   超时30min, 强制结束引擎进程")
-        break
-if DONE and proc.poll() is None:
-    try:
-        proc.kill()
-        proc.wait(timeout=20)
-        print("   引擎已产出结果(progress=2), 已收掉常驻进程并继续")
-    except Exception as _e:
-        print(f"   引擎进程收尾异常: {_e}")
+# ===================== AB18e(2026-10-09): 有界重抽择优 =====================
+#   同输入连续抽样实测 QR 引擎逐轮抖动(自交残留 0/4/26/4/0), 单次抽取可能抽到差轮。
+#   做法(有界): "引擎→导入→8.x清理"封装为一轮 _ab18e_draw_once(); 每轮完成即 QC:
+#     合格 = 自交残留==0 且 全网格非流形边(>2面)==0 → 采用并停止(不重抽)。
+#     不合格 → 重抽, 默认最多 QR_DRAW_MAX=3 轮总抽取(QR_DRAW_RETRY=0 可关=单抽)。
+#   全部轮次抽完仍无合格 → 不阻断: 醒目警告(列各轮残留)+取最优(主序 残留少 → 次序 非流形少 →
+#   三角不超限优先 → 三角少; 同分取先轮), 退出码 0; QR_DRAW_STRICT=1 可切严格模式(全坏 → exit 1)。
+#   采用轮≠最后一轮时按采用轮重写 8.6 材质分区检查副本(当前配置无检查件时不适用)。
+#   每轮引擎调用命令/参数/临时目录与单次跑逐字节一致; 引擎串行(禁并行)。
+#   测试注入: AB18E_FORCE_BADQC=1,2,3 (逗号/顿号分隔轮号; 强制该轮 QC 不合格; 仅测试用)。
+_QR_DRAW_RETRY = (os.environ.get('QR_DRAW_RETRY', '1') or '1').strip() != '0'
 try:
-    _outf.close(); _errf.close()
+    _ab18e_max = int(os.environ.get('QR_DRAW_MAX', '3') or '3')
 except Exception:
-    pass
+    _ab18e_max = 3
+if not _QR_DRAW_RETRY:
+    _ab18e_max = 1
+_ab18e_max = max(1, min(10, _ab18e_max))
+_AB18E_FORCE_BAD = set()
+for _tok in (os.environ.get('AB18E_FORCE_BADQC', '') or '').replace('，', ',').split(','):
+    _tok = _tok.strip()
+    if _tok:
+        try:
+            _AB18E_FORCE_BAD.add(int(_tok))
+        except Exception:
+            pass
+print(f"[AB18e] QR 重抽择优: 最多 {_ab18e_max} 轮 (QR_DRAW_MAX, QR_DRAW_RETRY={int(_QR_DRAW_RETRY)})"
+      + (f"; 测试强制坏QC轮={sorted(_AB18E_FORCE_BAD)}" if _AB18E_FORCE_BAD else ""))
 
-rc = proc.returncode
-elapsed = time.time() - start
-print(f"\n   Return code: {rc} ({elapsed:.0f}s)")
 
-# 7. 检查结果
-if not os.path.exists(retopoFbx):
-    print("ERROR: retopo.fbx not generated!")
+def _ab18e_draw_once(_draw_idx):
+    _draw_t0 = time.time()
+
+    # 清理旧输出
+    for p in [retopoFbx, progressFile]:
+        if os.path.exists(p):
+            os.remove(p)
+
+    # 5. 启动引擎
+    print(f"\n5. Starting xremesh...")
+    engine_dir = os.path.dirname(ENGINE)
+    # v63根因修复: 原用 stdout/stderr=PIPE 且不读 → 管道写满会让引擎在退出前卡住; 且实测引擎
+    #   产出 retopo.fbx + progress=2 后【仍不退出】(持续跑, CPU还涨), 而脚本用 while proc.poll() 死等 → 永久挂起.
+    #   插件自身的完成判据是 progress.txt == 2 (qr_operators.py modal: ProgressValueFloat==2 → doRemeshing_Finish),
+    #   不是进程退出. 故: ①输出落盘(可查引擎警告) ②progress==2 即视为完成, 强制收掉引擎进程 ③硬超时兜底.
+    outF = os.path.join(QRTemp, 'xremesh_stdout.txt')
+    errF = os.path.join(QRTemp, 'xremesh_stderr.txt')
+    _outf = open(outF, "w", encoding="utf-8", errors="replace")
+    _errf = open(errF, "w", encoding="utf-8", errors="replace")
+    proc = subprocess.Popen(
+        [ENGINE, "-s", settingsFile],
+        cwd=engine_dir,
+        stdout=_outf,
+        stderr=_errf
+    )
+    print(f"   PID: {proc.pid}  (stdout→{outF})")
+
+    # 6. 轮询进度
+    print(f"\n6. Waiting...")
+    start = time.time()
+    last_pct = -1
+    DONE = False
+    while True:
+        if proc.poll() is not None:
+            break
+        time.sleep(2)
+        elapsed = time.time() - start
+        val = None
+        if os.path.exists(progressFile):
+            try:
+                with open(progressFile, "r") as pf:
+                    lines = pf.read().splitlines()
+                if lines:
+                    val = float(lines[0])
+                    if 0 < val < 1:
+                        pct = int(99.0 * val + 1.0)
+                        if pct != last_pct:
+                            print(f"   Progress: {pct}% ({elapsed:.0f}s)")
+                            last_pct = pct
+                    elif val == 2:
+                        print(f"   Progress: 100% ({elapsed:.0f}s)")
+                    elif val < 0:
+                        msg = lines[1] if len(lines) > 1 else "unknown"
+                        print(f"   ERROR: {msg} (code={val})")
+            except:
+                pass
+        # progress==2 = 引擎完成(插件同判据); retopo.fbx 落地后引擎常驻不退 → 收掉进程继续
+        if val == 2 and os.path.exists(retopoFbx) and elapsed > 3:
+            DONE = True
+            break
+        if elapsed > 1800:
+            print("   超时30min, 强制结束引擎进程")
+            break
+    if DONE and proc.poll() is None:
+        try:
+            proc.kill()
+            proc.wait(timeout=20)
+            print("   引擎已产出结果(progress=2), 已收掉常驻进程并继续")
+        except Exception as _e:
+            print(f"   引擎进程收尾异常: {_e}")
+    try:
+        _outf.close(); _errf.close()
+    except Exception:
+        pass
+
+    rc = proc.returncode
+    elapsed = time.time() - start
+    print(f"\n   Return code: {rc} ({elapsed:.0f}s)")
+
+    # 7. 检查结果
+    if not os.path.exists(retopoFbx):
+        print("ERROR: retopo.fbx not generated!")
+        return None
+
+    size_mb = os.path.getsize(retopoFbx) / 1024 / 1024
+    print(f"7. Result: {size_mb:.1f} MB")
+
+    # 8. 导入结果
+    print(f"\n8. Importing...")
+    bpy.ops.import_scene.fbx(filepath=retopoFbx)
+    qr_obj = [o for o in bpy.context.selected_objects if o.type == "MESH"][0]
+    qr_obj.name = _ab18e_hi_name + "_QR"
+    # 归零FBX导入残留旋转(轴向转换浮点残差~-1.6e-7rad≈-0.000009°)
+    bpy.ops.object.select_all(action="DESELECT")
+    qr_obj.select_set(True)
+    bpy.context.view_layer.objects.active = qr_obj
+    _rot_before = tuple(qr_obj.rotation_euler)
+    bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
+    print(f"   旋转归零: {_rot_before} -> {tuple(qr_obj.rotation_euler)}")
+    faces = len(qr_obj.data.polygons)
+    print(f"   QR mesh: {qr_obj.name}, {faces:,} faces")
+
+    # 8.5 清理原始高模(先清: 检查副本只含QR低模, 不混190万面高模, 文件小且干净)
+    for obj in list(bpy.data.objects):
+        if obj != qr_obj and obj.type == "MESH":
+            bpy.data.objects.remove(obj, do_unlink=True)
+    print("8.5 Cleaned original mesh")
+
+    # 8.5b 高模材质传递(2026-09-10 v53, 用户方案): 不做任何几何猜测.
+    #   历史: v1(09-09)用XZ-pip+depth几何判据 — pip有3D盲区(碗口面XZ翻出rim轮廓被漏判, 实测13面),
+    #   v52(09-10)去掉pip改纯depth — 仍有平面近似盲区, 用户仍见侵入. 几何猜测路线判死.
+    #   v53(用户方案): 掏rim环时碗面已赋EyeSocket材质(rim环内=环状连通循环, 掏洞拓扑保证).
+    #   QR重铺后每个面找高模最近面(BVH, 2.7段缓存), 直接继承其rim环内/外归属 — 零猜测.
+    #   效果: QR红区=高模碗面的最近面投影, 材质分界严格=rim环, 环内全部红色循环, 无侵入无溢出.
+    _qme=qr_obj.data; _qmw=_np.array(qr_obj.matrix_world)
+    _qco=_np.empty(len(_qme.vertices)*3); _qme.vertices.foreach_get("co",_qco)
+    _QV=_qco.reshape(-1,3)@_qmw[:3,:3].T+_qmw[:3,3]
+    _qC=_np.array([_QV[list(_qme.polygons[i].vertices)].mean(axis=0) for i in range(len(_qme.polygons))])
+    _qsi=[i for i,m in enumerate(_qme.materials) if m and "EyeSocket" in m.name]
+    if _qsi:
+        _qsi=_qsi[0]
+        # 每个QR面中心 → 高模最近面(BVHTree.find_nearest返回location,normal,index,distance; 无find方法)
+        # ⚠坐标系: BVHTree.FromObject建在高模局部空间, 查询点必须从世界坐标变换到高模局部
+        #   (v53首跑教训: 世界坐标直接查询 → 141154/144811面返回None, 只有眼窝附近巧合命中)
+        _inv_hi=_np.linalg.inv(_mw_hi)
+        _qC_local=_qC@_inv_hi[:3,:3].T+_inv_hi[:3,3]
+        _hit=[_HI_SVC.find_nearest(_q) for _q in _qC_local]
+        _idx=_np.array([h[2] if h[0] is not None else -1 for h in _hit])
+        _dist=_np.array([abs(h[3]) if h[0] is not None else 1e9 for h in _hit])
+        _d_mm=_dist*1000
+        # 距离过远的查询不可信(应在QR贴合面上, 距离≈0): 用bbox尺度自适应阈值, 超限的保留QR原材质
+        # ⚠单位: _HI_BBOX_DIAG是米, _d_mm是毫米 — v53二跑教训: 米阈值比毫米距离, 5567/144254误判可信
+        _tol_mm=float(_HI_BBOX_DIAG)*1000*0.002   # 0.2%模型对角线≈5.1mm
+        _trust=_d_mm<=_tol_mm
+        _bowl_hit=_HI_BOWL[_idx]
+        _qmi=_np.zeros(len(_qme.polygons),dtype=_np.int32); _qme.polygons.foreach_get("material_index",_qmi)
+        _qmi_new=_qmi.copy()
+        _qmi_new[_trust&_bowl_hit]=_qsi    # 最近高模面在rim环内 → 红
+        _qmi_new[_trust&~_bowl_hit]=0      # 最近高模面在rim环外 → 灰
+        _fix_to_red=int(((_trust&_bowl_hit)&(_qmi!=_qsi)).sum())
+        _fix_to_skin=int(((_trust&~_bowl_hit)&(_qmi==_qsi)).sum())
+        _qme.polygons.foreach_set("material_index",_qmi_new); _qme.update()
+        print(f"8.5b 高模材质传递(v53): 补红={_fix_to_red} 收灰={_fix_to_skin} 查询可信={int(_trust.sum())}/{len(_qC)} 距离max={_d_mm.max():.2f}mm")
+        if int((_trust).sum())<len(_qC):
+            print(f"  ⚠ {int((~_trust).sum())}面查询超阈值{_tol_mm:.1f}mm保留原材质(应为0)")
+        # 8.5c force-cover(v54): 每个高模碗面必须被红QR面覆盖.
+        #   根因: rim边界QR面横跨碗/皮肤, 面中心恰落皮肤侧 → center判据判灰 → 实测缺红105
+        #   (R下睑一条灰带横切红区, 用户见'侵入'). 修: 碗面中心→QR最近面强制红.
+        #   实测(v54 diag): 缺红105→0, 新增红34面全部距高模<0.94mm(贴rim跨界歧义面, 非真溢出).
+        #   方向选择: 薄红边(rim离散化必然)远好于灰条带(用户不可接受).
+        _SVC_Q=_BVHTree.FromPolygons([tuple(v) for v in _QV],[list(p.vertices) for p in _qme.polygons])
+        _force=set()
+        for _p in _HI_HC:
+            _h=_SVC_Q.find_nearest(_p)
+            if _h[0] is not None: _force.add(_h[2])
+        _force_arr=_np.fromiter(_force,dtype=_np.int64,count=len(_force))
+        _added=int((_qmi_new[_force_arr]!=_qsi).sum())
+        _qmi_new[_force_arr]=_qsi
+        _qme.polygons.foreach_set("material_index",_qmi_new); _qme.update()
+        del _SVC_Q
+        print(f"8.5c force-cover(v54): 碗面{len(_HI_HC)}个 → QR覆盖红面{len(_force)}个, 新增强制红={_added} (缺红应为0)")
+        # 8.5d 灰楔消除(v55, 用户报"还是有侵入"): force-cover只覆盖碗面中心最近QR面,
+        #   漏掉rim处骑跨面 — 一个QR面横跨rim曲线, 中心在皮肤侧但部分顶点/边踩碗 → 视觉灰楔刺入红区.
+        #   方案A(零拓扑改动): rim域灰面(红面邻接+扩1圈)多点采样(顶点+边中点+中心),
+        #   任一采样点踩碗 → 赋红. 不改网格(对比方案B弦切分会产生223非流形边, 弃用).
+        #   实测: rim域灰面186, 任一踩碗33 → 赋红后残留灰楔0, 非流形边不变(4), quad99.98%.
+        #   方向: 宁可rim边缘薄红溢出(用户可接受), 不要灰楔侵入(用户明确不可接受).
+        def _on_bowl_w(_Pw):
+            # ⚠v55教训(face50571): 采样点恰在rim曲线上(距高模0.00mm)时, 最近面在碗面/皮肤间二义,
+            #   生产BVH(清理后网格)判皮肤、验证BVH(原始网格)判碗面 → 同面两判. 修: 范围查询,
+            #   0.3mm邻域内存在任一高模碗面即算踩碗. rim曲线点天然碗皮共享→赋红(宁红勿灰);
+            #   真皮肤面距碗面>数mm不受影响.
+            _Pl=_Pw@_inv_hi[:3,:3].T+_inv_hi[:3,3]
+            _hits=_HI_SVC.find_nearest_range(_Pl, 0.0003)
+            return any(_HI_BOWL[_h[2]] for _h in _hits)
+        # bbox圈定眼区扫全部灰面(v55教训: 只扫"红面1圈邻居"漏了face494/507 — 它们被不踩碗的灰面隔开,
+        #   不与红面直接相邻). 改用碗面中心bbox+15mm圈定眼区, 对区内所有灰面采样, 踩碗即红. 不依赖红邻接.
+        _bb_lo=_HI_HC.min(axis=0)-0.015; _bb_hi=_HI_HC.max(axis=0)+0.015
+        _in_bb=(_qC[:,0]>=_bb_lo[0])&(_qC[:,0]<=_bb_hi[0])&(_qC[:,1]>=_bb_lo[1])&(_qC[:,1]<=_bb_hi[1])&(_qC[:,2]>=_bb_lo[2])&(_qC[:,2]<=_bb_hi[2])
+        _gray_zone=_np.where(_in_bb & (_qmi_new!=_qsi))[0]
+        _wedge=[]
+        for _fi in _gray_zone:
+            _vs=list(_qme.polygons[_fi].vertices)
+            _P=_QV[_vs]
+            _samp=[_P.mean(axis=0)]
+            for _i in range(len(_P)): _samp.append(tuple((_P[_i]+_P[(_i+1)%len(_P)])/2))
+            # v63: 判据从"任一采样点踩碗"(顶点/边中点也算)收紧为"面心踩碗".
+            #   根因(实测): boolean切割后洞壁顶边=手描轮廓本身, rim处每个跨界QR面都有顶点落在壁面上 →
+            #   旧判据把整面染红; QR大面(等效边长5.9mm)被整面染红后, 红色戳到轮廓外8.12mm(用户报"溢出").
+            #   面心判据: 面心在内→红(腔内无灰楔), 面心在外→灰(rim处至多一层薄灰线, 不会有大块红溢出).
+            if any(_on_bowl_w(_np.array(s)) for s in _samp): _wedge.append(int(_fi))
+        _wedge_arr=_np.fromiter(_wedge,dtype=_np.int64,count=len(_wedge))
+        if len(_wedge_arr): _qmi_new[_wedge_arr]=_qsi
+        _qme.polygons.foreach_set("material_index",_qmi_new); _qme.update()
+        print(f"8.5d 灰楔消除(v55): 眼区bbox内灰面{len(_gray_zone)} 踩碗赋红={len(_wedge)} (残留灰楔应=0)")
+    else:
+        print("8.5b ⚠ QR输出无EyeSocket槽, 跳过材质传递")
+
+    # 8.6 材质分区检查副本(2026-09-08 用户要求): 保存QR引擎的真实输出(保留眼窝EyeSocket材质分区),
+    #     供用户核验"QR是否真的沿眼窝材质边界(=rim)布线". 必须在材质合并(8.7)之前存.
+    #     这是QR的真实产物, 不是按rim重新赋材质(那等于自证, 看不出QR行为).
+    import collections as _cc
+    _nmat_raw = len(qr_obj.data.materials)
+    check_blend = os.path.join(W_02O, "_中间", "02_qr_150k_材质分区检查.blend")
+    _premerge_snap = None
+    if _nmat_raw > 1:
+        bpy.ops.wm.save_as_mainfile(filepath=check_blend)
+        _premerge_snap = qr_obj.data.copy()
+        _mi_chk = [0] * len(qr_obj.data.polygons)
+        qr_obj.data.polygons.foreach_get("material_index", _mi_chk)
+        _cnt_chk = dict(_cc.Counter(_mi_chk))
+        _mnames = [m.name if m else None for m in qr_obj.data.materials]
+        print(f"   材质分区检查副本: {os.path.basename(check_blend)} 槽={_mnames} 面分布={_cnt_chk}")
+    else:
+        print(f"   ⚠ QR未保留材质分区({_nmat_raw}槽), 无法生成检查副本 — UseMaterialIds可能未生效!")
+
+    # 8.7 材质合并(2026-09-08 修红眼窝bug): QR的UseMaterialIds会保留眼窝EyeSocket引导材质
+    #     (饱和红0.8/0.15/0.15). 材质引导只为让QR沿rim布线, 布线完成后必须丢弃 —
+    #     否则红材质槽随低模流到03/04, 04烘焙只替换材质槽0, 眼窝面(material_index=1)仍挂红槽
+    #     → 渲染/烘焙产物眼窝发红(实测真bug: 02/03/04都残留EyeSocket.001红槽).
+    #     源头合并最干净: 所有面归槽0, 删多余槽. QR输出本就是单材质灰模, 肤色在04烘焙才贴.
+    _nmat = len(qr_obj.data.materials)
+    if _nmat > 1:
+        qr_obj.data.polygons.foreach_set("material_index", [0] * len(qr_obj.data.polygons))
+        while len(qr_obj.data.materials) > 1:
+            # Blender 5.1: materials.pop() 只接受 index, 不再有 update_data 参数
+            qr_obj.data.materials.pop(index=len(qr_obj.data.materials) - 1)
+        qr_obj.data.update()
+        _chk = [m.name if m else None for m in qr_obj.data.materials]
+        print(f"   材质合并: {_nmat}槽 -> {len(_chk)}槽 {_chk} (丢弃EyeSocket引导材质)")
+        assert len(_chk) == 1, f"材质合并失败! 仍有多槽={_chk}"
+    else:
+        print(f"   材质槽={_nmat}(QR未保留分区, 无需合并)")
+
+    # 8.8 自交穿插清理 (2026-09-22 新增; 2026-09-30 ab14: 绕向修复换 v2(确定性+参考定向) + 后接硬门)
+    #   用户报"右侧正面+侧面腿部衣服与身体交界略上1cm 两处破面"。归属实测:
+    #   该处高模局部自交=0, 而 QR 重拓扑输出=34 对 → 是 QR 把"衣服壳/身体壳"在衣摆交界处
+    #   重拓扑成单层封闭面时产生的双层近共面微折 + 绕向不一致面(渲染成尖角/台阶/暗面)。
+    #   清理只做: 缺陷处顶点级微焊接(距离自动搜最小档) + 删同顶点集重复面 + 绕向 v2 修复;
+    #   硬约束: 不得让 非流形边/退化面 变多, 不得在别处新生缺陷簇, 否则该档回退。
+    _selfint_failed = False
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from selfint_clean import clean_self_intersections, winding_gate
+        # 绕向参考 = 高模 BVH(2.7 段缓存, FromPolygons 数据拷贝; 高模对象 8.5 已删除 → 必须显式传入)
+        _rp = clean_self_intersections(qr_obj, ref_bvh=_HI_SVC, ref_matrix_world=_mw_hi)
+        print("[8.8] 自交清理:", json.dumps(_rp, ensure_ascii=False))
+    except Exception as _e:
+        import traceback as _tb
+        _tb.print_exc()
+        print(f"[8.8] ⚠ 自交清理失败(不阻塞主流程): {_e}")
+        _selfint_failed = True
+
+    # 8.8b 面朝向硬门 (2026-09-30 ab14 新增; 目的: "旧绕向修复把 9,450 面翻坏"不再发生)
+    #   判据(2026-09-30 夜 阈值修正): 坏边残留必须=0(硬性, v2 的保证项);
+    #   与参考不一致(宽容口径)允许极少数焊接缝二义面(实测干净件 0~4 面, 0.0006%~0.0025%),
+    #   阈值 = max(8, 0.01%×面数), 超过才 FAIL —— 整片翻坏会达数千面, 仍被拦下;
+    #   旧行为(>0 即 FAIL)会因 1 个二义面拦截整步(实测误杀, 连中间文件都不保存), 已修正。
+    #   "--python-exit-code 1" 会把异常变成非零退出码, 控制台/流程可判失败。
+    _gate = winding_gate(qr_obj, ref_bvh=_HI_SVC, ref_matrix_world=_mw_hi)
+    _bad_w = int(_gate.get("坏边", 0))
+    _bad_o = int(_gate.get("参考不一致(宽容)", _gate.get("参考不一致", 0)))
+    _trust = _gate.get("参考可信面")
+    _n_face = int(_gate.get("面数", 1))
+    _o_cap = max(8, int(0.0001 * _n_face))
+    if _trust is not None and _trust < 0.5 * _n_face:
+        print(f"[8.8b] ✗ 面朝向体检 FAIL: 参考可信面异常({_trust}) → BVH/坐标口径有问题, 失败")
+        raise RuntimeError(f"面朝向体检 FAIL: 参考可信面={_trust}")
+    if _bad_w > 0 or _bad_o > _o_cap:
+        print(f"[8.8b] ✗ 面朝向体检 FAIL: 坏边残留={_bad_w} 与参考不一致残留={_bad_o}(阈值{_o_cap}) → 本步骤失败(不再带病往下流)")
+        raise RuntimeError(f"面朝向体检 FAIL: 坏边残留={_bad_w} 与参考不一致残留={_bad_o}")
+    _o_note = (f"与参考不一致={_bad_o}(焊接缝二义, ≤阈值{_o_cap}, 不阻断)" if _bad_o > 0
+               else "与参考不一致=0")
+    print(f"[8.8b] 面朝向体检✓: 坏边=0 少数派面=0 {_o_note} "
+          f"(参考可信面={_trust} 折缝模糊类={_gate.get('参考模糊')} 连通块={_gate.get('连通块数')})")
+
+    # ---- 8.9 (2026-09-24 初版 / 2026-09-28 v2) rim 环恢复: 把 QR 粗采样的眼孔边界补回高模 rim 形状(修"眼角平口切断") ----
+    # 根因(见 2.8 注释与 logs/_ab02/): QR 输出的眼孔边界环被粗化(实测样本 L=38/R=37 点, 右外眼角有 9.091mm
+    #   直弦, 相对高模 rim 偏差 5.246mm), 而高模 rim 环在该处是圆滑折返 → 视觉即"眼角平口切断"。
+    # v1(307ceb9) 做法: 低模 rim 顶点映射高模环 → 段内 RDP 插点 → 全部移到高模弧上。
+    # v1 实测问题(A/B 同输入): 高模折返缝宽 0.2~1.5mm, 低模带面宽 2~5mm → 硬塞进缝会与对侧面片相交
+    #   (on 臂眼区自交: 扇口径 1 对 / 真实三角化口径 5 对), 且 8.9 之后无清理工序, 脏数据直接进 03/04。
+    # v2: 逻辑移入模块 02QR拓扑/scripts/rim_restore.py, 三道保险:
+    #   ① 缝宽回拉(fold_clear): 高模环"非邻域最近距离" < 阈值处, 目标点按比例拉回弦上(不硬塞窄缝);
+    #   ② 单调门: 每段插入 / 每点位移, 必须"局部自交对数不增加"才提交, 否则回退(dissolve / 缩位移比例);
+    #      口径一 fan = 与 selfint_clean._tri_array / 审计脚本同口径; 口径二 real = Blender loop_triangles
+    #      (渲染/导出所用)。gate_real=1 时两路口径都不得变差, 收尾交替逐点收窄直到双清零。
+    #   ③ 折角平滑: 残余 > ang_target 的转角按相邻点中点摊平(圆角化), 逐轮双门校验, 变差即停。
+    # 开关: QR_RIM_RESTORE=0 → 完全不插点(与历史行为一致); 其余参数见下方 QR_RIM_* 环境变量。
+    if _RIM_RESTORE and _HI_RIM:
+        import sys as _sys89
+        _sys89.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import rim_restore as _RR
+        _R_TOL = float(os.environ.get('QR_RIM_RESTORE_TOL_MM', '0.10'))
+        _R_GAP = float(os.environ.get('QR_RIM_RESTORE_GAP_MM', '0.25'))
+        _R_ANG = float(os.environ.get('QR_RIM_ANG_TARGET', '10'))
+        _R_FOLD = float(os.environ.get('QR_RIM_FOLD_CLEAR_MM', '0.5'))
+        _R_SIT = int(os.environ.get('QR_RIM_SMOOTH_ITER', '24'))
+        _R_SLAM = float(os.environ.get('QR_RIM_SMOOTH_LAM', '0.3'))
+        _R_GREAL = os.environ.get('QR_RIM_GATE_REAL', '1') == '1'
+        _R_MOVE = os.environ.get('QR_RIM_MOVE', '1') == '1'
+        _R_MAXINS = int(os.environ.get('QR_RIM_MAX_INS', '80'))
+        _R_MINGAP = float(os.environ.get('QR_RIM_MIN_GAP_MM', '0.06'))
+        _RIM_KEYS = ("ok", "ins_planned", "ins_done", "ins_rejected", "moved", "moved_clamped",
+                     "local_before", "local_after", "pairs_real_before", "pairs_real_after",
+                     "nm_before", "nm_after", "n_ring_before", "n_ring_after", "smooth_passes",
+                     "ang_max_before", "ang_max_after", "dev_max_before", "dev_max_after",
+                     "single_closed_loop", "reverted", "variant")
+        _rim_report = {}
+        for _side in ("L", "R"):
+            _HIw = _HI_RIM.get(_side)
+            if _HIw is None or len(_HIw) < 20:
+                continue
+            _c3w = _np.array([float(x) for x in _J[_side]["center"]])
+            _R_COMBOS = []
+            for _cg in os.environ.get('QR_RIM_COMBOS', '24,0,1;60,0,1;60,0,0;60,1,1').split(';'):
+                _cv = [x for x in _cg.split(',') if x.strip()]
+                if len(_cv) == 3:
+                    _R_COMBOS.append((int(_cv[0]), bool(int(_cv[1])), bool(int(_cv[2]))))
+            if not _R_COMBOS:
+                _R_COMBOS = [(24, False, True), (60, False, True), (60, False, False), (60, True, True)]
+            try:
+                _rep = _RR.restore_rim_combo(qr_obj, _HIw, _c3w, combos=_R_COMBOS,
+                                             tol_mm=_R_TOL, gap_mm=_R_GAP, ang_target=_R_ANG,
+                                             min_gap_mm=_R_MINGAP,
+                                             fold_clear_mm=_R_FOLD, gate_real=_R_GREAL,
+                                             smooth_iter=_R_SIT, smooth_lam=_R_SLAM, verbose=True)
+            except Exception as _e89:
+                import traceback as _tb89
+                _tb89.print_exc()
+                print(f"8.9 [{_side}] ⚠ rim 恢复异常(不阻塞主流程): {_e89}")
+                continue
+            if not _rep.get("ok"):
+                print(f"8.9 [{_side}] ⚠ rim 恢复失败/回退: {_rep.get('reverted')}")
+                continue
+            _rim_report[_side] = {k: _rep.get(k) for k in _RIM_KEYS}
+            _am0 = _rep.get("ang_max_before"); _am1 = _rep.get("ang_max_after")
+            _dv0 = _rep.get("dev_max_before"); _dv1 = _rep.get("dev_max_after")
+            print(f"8.9 [{_side}] rim 恢复: ok={_rep.get('ok')} "
+                  f"插入点={_rep.get('ins_done')}/{_rep.get('ins_planned')}(拒{_rep.get('ins_rejected')}) "
+                  f"移动={_rep.get('moved')}(夹{_rep.get('moved_clamped')}) 平滑轮={_rep.get('smooth_passes')} "
+                  f"局部自交 {_rep.get('local_before')}→{_rep.get('local_after')}"
+                  f"(真 {_rep.get('pairs_real_before')}→{_rep.get('pairs_real_after')}) "
+                  f"非流形 {_rep.get('nm_before')}→{_rep.get('nm_after')} "
+                  f"环 {_rep.get('n_ring_before')}→{_rep.get('n_ring_after')} "
+                  f"转角max {('%.2f' % _am0) if _am0 is not None else '-'}→{('%.2f' % _am1) if _am1 is not None else '-'}° "
+                  f"偏差max {('%.3f' % _dv0) if _dv0 is not None else '-'}→{('%.3f' % _dv1) if _dv1 is not None else '-'}mm"
+                  + (f" 回退:{_rep.get('reverted')}" if _rep.get("reverted") else ""))
+            if _rep.get("metrics_before"):
+                print(f"      恢复前 {_rep['metrics_before']}")
+                print(f"      恢复后 {_rep['metrics_after']}")
+        print(f"8.9 rim 恢复汇总: {json.dumps(_rim_report, ensure_ascii=False)}")
+    else:
+        print("8.9 rim 恢复: 跳过(QR_RIM_RESTORE=0 或无高模 rim 真值)")
+
+    # ---- [AB18e] 本轮 QC: 自交残留==0 且 全网格非流形边(>2面)==0 ----
+    #   (numpy foreach_get 口径与 selfint_clean._hygiene 一致: >2面=非流形, ==1面=边界; 正常轮 ~0.1s)
+    _qc_resid = int(_rp["残留"]) if (not _selfint_failed and isinstance(_rp, dict)
+                                     and _rp.get("残留") is not None) else None
+    _me_qc = qr_obj.data
+    _LE_qc = _np.empty(len(_me_qc.loops), dtype=_np.int64)
+    _me_qc.loops.foreach_get("edge_index", _LE_qc)
+    _cnt_qc = _np.bincount(_LE_qc, minlength=len(_me_qc.edges))
+    _qc_nm = int((_cnt_qc > 2).sum())
+    _qc_bnd = int((_cnt_qc == 1).sum())
+    _LT_qc = _np.empty(len(_me_qc.polygons), dtype=_np.int32)
+    _me_qc.polygons.foreach_get("loop_total", _LT_qc)
+    _qc_quads = int((_LT_qc == 4).sum())
+    _qc_tris = int((_LT_qc == 3).sum())
+    _qc_tri = _qc_quads * 2 + _qc_tris
+    _qc_pass = (_qc_resid == 0) and (_qc_nm == 0)
+    _qc_forced = _draw_idx in _AB18E_FORCE_BAD
+    if _qc_forced:
+        _qc_pass = False
+    _qc_dt = time.time() - _draw_t0
+    print("[AB18e] 轮次 %d/%d: 自交残留=%s 非流形=%d 三角=%s 边界=%d 用时=%.0fs → %s%s" %
+          (_draw_idx, _ab18e_max, ("-" if _qc_resid is None else _qc_resid), _qc_nm,
+           format(_qc_tri, ","), _qc_bnd, _qc_dt,
+           ("合格(采用该轮, 停止重抽)" if _qc_pass else "不合格(准备重抽)"),
+           ("(测试强制 AB18E_FORCE_BADQC)" if _qc_forced else "")))
+    return dict(idx=_draw_idx, obj=qr_obj, faces=faces, pass_ok=_qc_pass, resid=_qc_resid,
+                nm=_qc_nm, tri=_qc_tri, bnd=_qc_bnd, dt=_qc_dt, premerge=_premerge_snap,
+                mesh_name=(_ab18e_hi_name + "_QR"))
+
+
+
+# ---- [AB18e] 重抽择优主循环 ----
+_ab18e_hi_name = mesh.name          # 8.5 会删除高模对象; 先捕获名字(供每轮 QR 对象命名)
+_ab18e_cands = []
+_ab18e_res = None
+_ab18e_last = 0
+_qc_key = lambda c: (c["resid"] if c["resid"] is not None else 10 ** 9, c["nm"],
+                     0 if c["tri"] <= 350000 else 1, c["tri"])
+for _d in range(_ab18e_max):
+    _r = _ab18e_draw_once(_d + 1)
+    if _r is None:
+        print("[AB18e] 第%d轮无结果(引擎/导入失败) → 停止重抽" % (_d + 1))
+        break
+    _ab18e_last = _d + 1
+    if _r["pass_ok"]:
+        _ab18e_res = _r
+        break
+    _snap = dict(_r)
+    _snap["snap_mesh"] = _r["obj"].data.copy()
+    _snap["snap_mw"] = _r["obj"].matrix_world.copy()
+    _snap["coll"] = _r["obj"].users_collection[0]
+    del _snap["obj"]
+    _ab18e_cands.append(_snap)
+    _scene_mesh = _r["obj"].data
+    bpy.data.objects.remove(_r["obj"], do_unlink=True)
+    bpy.data.meshes.remove(_scene_mesh)
+    print("[AB18e] 第%d轮不合格 → 已暂存(残留=%s 非流形=%d 三角=%s), 场景清场待重抽" %
+          (_r["idx"], ("-" if _r["resid"] is None else _r["resid"]), _r["nm"], format(_r["tri"], ",")))
+if _ab18e_res is not None:
+    qr_obj = _ab18e_res["obj"]
+    faces = _ab18e_res["faces"]
+    print("[AB18e] 自检摘要: 采用第%d轮/共执行%d轮 | 自交残留=%s | 非流形边=%d | 三角=%s | 边界边=%d" %
+          (_ab18e_res["idx"], _ab18e_last, ("-" if _ab18e_res["resid"] is None else _ab18e_res["resid"]),
+           _ab18e_res["nm"], format(_ab18e_res["tri"], ","), _ab18e_res["bnd"]))
+elif _ab18e_cands:
+    _ab18e_best = _ab18e_cands[0]
+    for _c in _ab18e_cands[1:]:
+        if _qc_key(_c) < _qc_key(_ab18e_best):
+            _ab18e_best = _c
+    _ab18e_strict = (os.environ.get('QR_DRAW_STRICT', '0') or '0').strip() == '1'
+    print("!" * 76)
+    print("[AB18e] ⚠ 警告: 共 %d 轮抽取全部不合格(自交残留!=0 或 非流形!=0) → %s" %
+          (_ab18e_last, ("严格模式 QR_DRAW_STRICT=1 → 终止(exit 1)" if _ab18e_strict
+                         else "不阻断: 采用最优轮, 管线继续")))
+    for _c in _ab18e_cands:
+        print("[AB18e]   轮%d: 自交残留=%s 非流形=%d 三角=%s 边界=%d" %
+              (_c["idx"], ("-" if _c["resid"] is None else _c["resid"]), _c["nm"],
+               format(_c["tri"], ","), _c["bnd"]))
+    print("!" * 76)
+    if _ab18e_strict:
+        sys.exit(1)
+    _bo = bpy.data.objects.new(_ab18e_best["mesh_name"], _ab18e_best["snap_mesh"])
+    _ab18e_best["coll"].objects.link(_bo)
+    _bo.matrix_world = _ab18e_best["snap_mw"]
+    qr_obj = _bo
+    faces = len(_bo.data.polygons)
+    if _ab18e_best["idx"] != _ab18e_last and _ab18e_best["premerge"] is not None:
+        _cur = qr_obj.data
+        qr_obj.data = _ab18e_best["premerge"]
+        bpy.ops.wm.save_as_mainfile(filepath=os.path.join(W_02O, "_中间", "02_qr_150k_材质分区检查.blend"))
+        qr_obj.data = _cur
+        print("[AB18e] 采用轮≠最后一轮 → 已按采用轮重写 8.6 材质分区检查副本")
+    print("[AB18e] 自检摘要: 全部%d轮均不合格 → 采用最优(第%d轮) | 自交残留=%s | 非流形边=%d | 三角=%s | 边界边=%d" %
+          (_ab18e_last, _ab18e_best["idx"], ("-" if _ab18e_best["resid"] is None else _ab18e_best["resid"]),
+           _ab18e_best["nm"], format(_ab18e_best["tri"], ","), _ab18e_best["bnd"]))
+else:
     sys.exit(1)
 
-size_mb = os.path.getsize(retopoFbx) / 1024 / 1024
-print(f"7. Result: {size_mb:.1f} MB")
-
-# 8. 导入结果
-print(f"\n8. Importing...")
-bpy.ops.import_scene.fbx(filepath=retopoFbx)
-qr_obj = [o for o in bpy.context.selected_objects if o.type == "MESH"][0]
-qr_obj.name = mesh.name + "_QR"
-# 归零FBX导入残留旋转(轴向转换浮点残差~-1.6e-7rad≈-0.000009°)
-bpy.ops.object.select_all(action="DESELECT")
-qr_obj.select_set(True)
-bpy.context.view_layer.objects.active = qr_obj
-_rot_before = tuple(qr_obj.rotation_euler)
-bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)
-print(f"   旋转归零: {_rot_before} -> {tuple(qr_obj.rotation_euler)}")
-faces = len(qr_obj.data.polygons)
-print(f"   QR mesh: {qr_obj.name}, {faces:,} faces")
-
-# 8.5 清理原始高模(先清: 检查副本只含QR低模, 不混190万面高模, 文件小且干净)
-for obj in list(bpy.data.objects):
-    if obj != qr_obj and obj.type == "MESH":
-        bpy.data.objects.remove(obj, do_unlink=True)
-print("8.5 Cleaned original mesh")
-
-# 8.5b 高模材质传递(2026-09-10 v53, 用户方案): 不做任何几何猜测.
-#   历史: v1(09-09)用XZ-pip+depth几何判据 — pip有3D盲区(碗口面XZ翻出rim轮廓被漏判, 实测13面),
-#   v52(09-10)去掉pip改纯depth — 仍有平面近似盲区, 用户仍见侵入. 几何猜测路线判死.
-#   v53(用户方案): 掏rim环时碗面已赋EyeSocket材质(rim环内=环状连通循环, 掏洞拓扑保证).
-#   QR重铺后每个面找高模最近面(BVH, 2.7段缓存), 直接继承其rim环内/外归属 — 零猜测.
-#   效果: QR红区=高模碗面的最近面投影, 材质分界严格=rim环, 环内全部红色循环, 无侵入无溢出.
-_qme=qr_obj.data; _qmw=_np.array(qr_obj.matrix_world)
-_qco=_np.empty(len(_qme.vertices)*3); _qme.vertices.foreach_get("co",_qco)
-_QV=_qco.reshape(-1,3)@_qmw[:3,:3].T+_qmw[:3,3]
-_qC=_np.array([_QV[list(_qme.polygons[i].vertices)].mean(axis=0) for i in range(len(_qme.polygons))])
-_qsi=[i for i,m in enumerate(_qme.materials) if m and "EyeSocket" in m.name]
-if _qsi:
-    _qsi=_qsi[0]
-    # 每个QR面中心 → 高模最近面(BVHTree.find_nearest返回location,normal,index,distance; 无find方法)
-    # ⚠坐标系: BVHTree.FromObject建在高模局部空间, 查询点必须从世界坐标变换到高模局部
-    #   (v53首跑教训: 世界坐标直接查询 → 141154/144811面返回None, 只有眼窝附近巧合命中)
-    _inv_hi=_np.linalg.inv(_mw_hi)
-    _qC_local=_qC@_inv_hi[:3,:3].T+_inv_hi[:3,3]
-    _hit=[_HI_SVC.find_nearest(_q) for _q in _qC_local]
-    _idx=_np.array([h[2] if h[0] is not None else -1 for h in _hit])
-    _dist=_np.array([abs(h[3]) if h[0] is not None else 1e9 for h in _hit])
-    _d_mm=_dist*1000
-    # 距离过远的查询不可信(应在QR贴合面上, 距离≈0): 用bbox尺度自适应阈值, 超限的保留QR原材质
-    # ⚠单位: _HI_BBOX_DIAG是米, _d_mm是毫米 — v53二跑教训: 米阈值比毫米距离, 5567/144254误判可信
-    _tol_mm=float(_HI_BBOX_DIAG)*1000*0.002   # 0.2%模型对角线≈5.1mm
-    _trust=_d_mm<=_tol_mm
-    _bowl_hit=_HI_BOWL[_idx]
-    _qmi=_np.zeros(len(_qme.polygons),dtype=_np.int32); _qme.polygons.foreach_get("material_index",_qmi)
-    _qmi_new=_qmi.copy()
-    _qmi_new[_trust&_bowl_hit]=_qsi    # 最近高模面在rim环内 → 红
-    _qmi_new[_trust&~_bowl_hit]=0      # 最近高模面在rim环外 → 灰
-    _fix_to_red=int(((_trust&_bowl_hit)&(_qmi!=_qsi)).sum())
-    _fix_to_skin=int(((_trust&~_bowl_hit)&(_qmi==_qsi)).sum())
-    _qme.polygons.foreach_set("material_index",_qmi_new); _qme.update()
-    print(f"8.5b 高模材质传递(v53): 补红={_fix_to_red} 收灰={_fix_to_skin} 查询可信={int(_trust.sum())}/{len(_qC)} 距离max={_d_mm.max():.2f}mm")
-    if int((_trust).sum())<len(_qC):
-        print(f"  ⚠ {int((~_trust).sum())}面查询超阈值{_tol_mm:.1f}mm保留原材质(应为0)")
-    # 8.5c force-cover(v54): 每个高模碗面必须被红QR面覆盖.
-    #   根因: rim边界QR面横跨碗/皮肤, 面中心恰落皮肤侧 → center判据判灰 → 实测缺红105
-    #   (R下睑一条灰带横切红区, 用户见'侵入'). 修: 碗面中心→QR最近面强制红.
-    #   实测(v54 diag): 缺红105→0, 新增红34面全部距高模<0.94mm(贴rim跨界歧义面, 非真溢出).
-    #   方向选择: 薄红边(rim离散化必然)远好于灰条带(用户不可接受).
-    _SVC_Q=_BVHTree.FromPolygons([tuple(v) for v in _QV],[list(p.vertices) for p in _qme.polygons])
-    _force=set()
-    for _p in _HI_HC:
-        _h=_SVC_Q.find_nearest(_p)
-        if _h[0] is not None: _force.add(_h[2])
-    _force_arr=_np.fromiter(_force,dtype=_np.int64,count=len(_force))
-    _added=int((_qmi_new[_force_arr]!=_qsi).sum())
-    _qmi_new[_force_arr]=_qsi
-    _qme.polygons.foreach_set("material_index",_qmi_new); _qme.update()
-    del _SVC_Q
-    print(f"8.5c force-cover(v54): 碗面{len(_HI_HC)}个 → QR覆盖红面{len(_force)}个, 新增强制红={_added} (缺红应为0)")
-    # 8.5d 灰楔消除(v55, 用户报"还是有侵入"): force-cover只覆盖碗面中心最近QR面,
-    #   漏掉rim处骑跨面 — 一个QR面横跨rim曲线, 中心在皮肤侧但部分顶点/边踩碗 → 视觉灰楔刺入红区.
-    #   方案A(零拓扑改动): rim域灰面(红面邻接+扩1圈)多点采样(顶点+边中点+中心),
-    #   任一采样点踩碗 → 赋红. 不改网格(对比方案B弦切分会产生223非流形边, 弃用).
-    #   实测: rim域灰面186, 任一踩碗33 → 赋红后残留灰楔0, 非流形边不变(4), quad99.98%.
-    #   方向: 宁可rim边缘薄红溢出(用户可接受), 不要灰楔侵入(用户明确不可接受).
-    def _on_bowl_w(_Pw):
-        # ⚠v55教训(face50571): 采样点恰在rim曲线上(距高模0.00mm)时, 最近面在碗面/皮肤间二义,
-        #   生产BVH(清理后网格)判皮肤、验证BVH(原始网格)判碗面 → 同面两判. 修: 范围查询,
-        #   0.3mm邻域内存在任一高模碗面即算踩碗. rim曲线点天然碗皮共享→赋红(宁红勿灰);
-        #   真皮肤面距碗面>数mm不受影响.
-        _Pl=_Pw@_inv_hi[:3,:3].T+_inv_hi[:3,3]
-        _hits=_HI_SVC.find_nearest_range(_Pl, 0.0003)
-        return any(_HI_BOWL[_h[2]] for _h in _hits)
-    # bbox圈定眼区扫全部灰面(v55教训: 只扫"红面1圈邻居"漏了face494/507 — 它们被不踩碗的灰面隔开,
-    #   不与红面直接相邻). 改用碗面中心bbox+15mm圈定眼区, 对区内所有灰面采样, 踩碗即红. 不依赖红邻接.
-    _bb_lo=_HI_HC.min(axis=0)-0.015; _bb_hi=_HI_HC.max(axis=0)+0.015
-    _in_bb=(_qC[:,0]>=_bb_lo[0])&(_qC[:,0]<=_bb_hi[0])&(_qC[:,1]>=_bb_lo[1])&(_qC[:,1]<=_bb_hi[1])&(_qC[:,2]>=_bb_lo[2])&(_qC[:,2]<=_bb_hi[2])
-    _gray_zone=_np.where(_in_bb & (_qmi_new!=_qsi))[0]
-    _wedge=[]
-    for _fi in _gray_zone:
-        _vs=list(_qme.polygons[_fi].vertices)
-        _P=_QV[_vs]
-        _samp=[_P.mean(axis=0)]
-        for _i in range(len(_P)): _samp.append(tuple((_P[_i]+_P[(_i+1)%len(_P)])/2))
-        # v63: 判据从"任一采样点踩碗"(顶点/边中点也算)收紧为"面心踩碗".
-        #   根因(实测): boolean切割后洞壁顶边=手描轮廓本身, rim处每个跨界QR面都有顶点落在壁面上 →
-        #   旧判据把整面染红; QR大面(等效边长5.9mm)被整面染红后, 红色戳到轮廓外8.12mm(用户报"溢出").
-        #   面心判据: 面心在内→红(腔内无灰楔), 面心在外→灰(rim处至多一层薄灰线, 不会有大块红溢出).
-        if any(_on_bowl_w(_np.array(s)) for s in _samp): _wedge.append(int(_fi))
-    _wedge_arr=_np.fromiter(_wedge,dtype=_np.int64,count=len(_wedge))
-    if len(_wedge_arr): _qmi_new[_wedge_arr]=_qsi
-    _qme.polygons.foreach_set("material_index",_qmi_new); _qme.update()
-    print(f"8.5d 灰楔消除(v55): 眼区bbox内灰面{len(_gray_zone)} 踩碗赋红={len(_wedge)} (残留灰楔应=0)")
-else:
-    print("8.5b ⚠ QR输出无EyeSocket槽, 跳过材质传递")
-
-# 8.6 材质分区检查副本(2026-09-08 用户要求): 保存QR引擎的真实输出(保留眼窝EyeSocket材质分区),
-#     供用户核验"QR是否真的沿眼窝材质边界(=rim)布线". 必须在材质合并(8.7)之前存.
-#     这是QR的真实产物, 不是按rim重新赋材质(那等于自证, 看不出QR行为).
-import collections as _cc
-_nmat_raw = len(qr_obj.data.materials)
-check_blend = os.path.join(W_02O, "_中间", "02_qr_150k_材质分区检查.blend")
-if _nmat_raw > 1:
-    bpy.ops.wm.save_as_mainfile(filepath=check_blend)
-    _mi_chk = [0] * len(qr_obj.data.polygons)
-    qr_obj.data.polygons.foreach_get("material_index", _mi_chk)
-    _cnt_chk = dict(_cc.Counter(_mi_chk))
-    _mnames = [m.name if m else None for m in qr_obj.data.materials]
-    print(f"   材质分区检查副本: {os.path.basename(check_blend)} 槽={_mnames} 面分布={_cnt_chk}")
-else:
-    print(f"   ⚠ QR未保留材质分区({_nmat_raw}槽), 无法生成检查副本 — UseMaterialIds可能未生效!")
-
-# 8.7 材质合并(2026-09-08 修红眼窝bug): QR的UseMaterialIds会保留眼窝EyeSocket引导材质
-#     (饱和红0.8/0.15/0.15). 材质引导只为让QR沿rim布线, 布线完成后必须丢弃 —
-#     否则红材质槽随低模流到03/04, 04烘焙只替换材质槽0, 眼窝面(material_index=1)仍挂红槽
-#     → 渲染/烘焙产物眼窝发红(实测真bug: 02/03/04都残留EyeSocket.001红槽).
-#     源头合并最干净: 所有面归槽0, 删多余槽. QR输出本就是单材质灰模, 肤色在04烘焙才贴.
-_nmat = len(qr_obj.data.materials)
-if _nmat > 1:
-    qr_obj.data.polygons.foreach_set("material_index", [0] * len(qr_obj.data.polygons))
-    while len(qr_obj.data.materials) > 1:
-        # Blender 5.1: materials.pop() 只接受 index, 不再有 update_data 参数
-        qr_obj.data.materials.pop(index=len(qr_obj.data.materials) - 1)
-    qr_obj.data.update()
-    _chk = [m.name if m else None for m in qr_obj.data.materials]
-    print(f"   材质合并: {_nmat}槽 -> {len(_chk)}槽 {_chk} (丢弃EyeSocket引导材质)")
-    assert len(_chk) == 1, f"材质合并失败! 仍有多槽={_chk}"
-else:
-    print(f"   材质槽={_nmat}(QR未保留分区, 无需合并)")
-
-# 8.8 自交穿插清理 (2026-09-22 新增; 2026-09-30 ab14: 绕向修复换 v2(确定性+参考定向) + 后接硬门)
-#   用户报"右侧正面+侧面腿部衣服与身体交界略上1cm 两处破面"。归属实测:
-#   该处高模局部自交=0, 而 QR 重拓扑输出=34 对 → 是 QR 把"衣服壳/身体壳"在衣摆交界处
-#   重拓扑成单层封闭面时产生的双层近共面微折 + 绕向不一致面(渲染成尖角/台阶/暗面)。
-#   清理只做: 缺陷处顶点级微焊接(距离自动搜最小档) + 删同顶点集重复面 + 绕向 v2 修复;
-#   硬约束: 不得让 非流形边/退化面 变多, 不得在别处新生缺陷簇, 否则该档回退。
-try:
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from selfint_clean import clean_self_intersections, winding_gate
-    # 绕向参考 = 高模 BVH(2.7 段缓存, FromPolygons 数据拷贝; 高模对象 8.5 已删除 → 必须显式传入)
-    _rp = clean_self_intersections(qr_obj, ref_bvh=_HI_SVC, ref_matrix_world=_mw_hi)
-    print("[8.8] 自交清理:", json.dumps(_rp, ensure_ascii=False))
-except Exception as _e:
-    import traceback as _tb
-    _tb.print_exc()
-    print(f"[8.8] ⚠ 自交清理失败(不阻塞主流程): {_e}")
-
-# 8.8b 面朝向硬门 (2026-09-30 ab14 新增; 目的: "旧绕向修复把 9,450 面翻坏"不再发生)
-#   判据(2026-09-30 夜 阈值修正): 坏边残留必须=0(硬性, v2 的保证项);
-#   与参考不一致(宽容口径)允许极少数焊接缝二义面(实测干净件 0~4 面, 0.0006%~0.0025%),
-#   阈值 = max(8, 0.01%×面数), 超过才 FAIL —— 整片翻坏会达数千面, 仍被拦下;
-#   旧行为(>0 即 FAIL)会因 1 个二义面拦截整步(实测误杀, 连中间文件都不保存), 已修正。
-#   "--python-exit-code 1" 会把异常变成非零退出码, 控制台/流程可判失败。
-_gate = winding_gate(qr_obj, ref_bvh=_HI_SVC, ref_matrix_world=_mw_hi)
-_bad_w = int(_gate.get("坏边", 0))
-_bad_o = int(_gate.get("参考不一致(宽容)", _gate.get("参考不一致", 0)))
-_trust = _gate.get("参考可信面")
-_n_face = int(_gate.get("面数", 1))
-_o_cap = max(8, int(0.0001 * _n_face))
-if _trust is not None and _trust < 0.5 * _n_face:
-    print(f"[8.8b] ✗ 面朝向体检 FAIL: 参考可信面异常({_trust}) → BVH/坐标口径有问题, 失败")
-    raise RuntimeError(f"面朝向体检 FAIL: 参考可信面={_trust}")
-if _bad_w > 0 or _bad_o > _o_cap:
-    print(f"[8.8b] ✗ 面朝向体检 FAIL: 坏边残留={_bad_w} 与参考不一致残留={_bad_o}(阈值{_o_cap}) → 本步骤失败(不再带病往下流)")
-    raise RuntimeError(f"面朝向体检 FAIL: 坏边残留={_bad_w} 与参考不一致残留={_bad_o}")
-_o_note = (f"与参考不一致={_bad_o}(焊接缝二义, ≤阈值{_o_cap}, 不阻断)" if _bad_o > 0
-           else "与参考不一致=0")
-print(f"[8.8b] 面朝向体检✓: 坏边=0 少数派面=0 {_o_note} "
-      f"(参考可信面={_trust} 折缝模糊类={_gate.get('参考模糊')} 连通块={_gate.get('连通块数')})")
-
-# ---- 8.9 (2026-09-24 初版 / 2026-09-28 v2) rim 环恢复: 把 QR 粗采样的眼孔边界补回高模 rim 形状(修"眼角平口切断") ----
-# 根因(见 2.8 注释与 logs/_ab02/): QR 输出的眼孔边界环被粗化(实测样本 L=38/R=37 点, 右外眼角有 9.091mm
-#   直弦, 相对高模 rim 偏差 5.246mm), 而高模 rim 环在该处是圆滑折返 → 视觉即"眼角平口切断"。
-# v1(307ceb9) 做法: 低模 rim 顶点映射高模环 → 段内 RDP 插点 → 全部移到高模弧上。
-# v1 实测问题(A/B 同输入): 高模折返缝宽 0.2~1.5mm, 低模带面宽 2~5mm → 硬塞进缝会与对侧面片相交
-#   (on 臂眼区自交: 扇口径 1 对 / 真实三角化口径 5 对), 且 8.9 之后无清理工序, 脏数据直接进 03/04。
-# v2: 逻辑移入模块 02QR拓扑/scripts/rim_restore.py, 三道保险:
-#   ① 缝宽回拉(fold_clear): 高模环"非邻域最近距离" < 阈值处, 目标点按比例拉回弦上(不硬塞窄缝);
-#   ② 单调门: 每段插入 / 每点位移, 必须"局部自交对数不增加"才提交, 否则回退(dissolve / 缩位移比例);
-#      口径一 fan = 与 selfint_clean._tri_array / 审计脚本同口径; 口径二 real = Blender loop_triangles
-#      (渲染/导出所用)。gate_real=1 时两路口径都不得变差, 收尾交替逐点收窄直到双清零。
-#   ③ 折角平滑: 残余 > ang_target 的转角按相邻点中点摊平(圆角化), 逐轮双门校验, 变差即停。
-# 开关: QR_RIM_RESTORE=0 → 完全不插点(与历史行为一致); 其余参数见下方 QR_RIM_* 环境变量。
-if _RIM_RESTORE and _HI_RIM:
-    import sys as _sys89
-    _sys89.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    import rim_restore as _RR
-    _R_TOL = float(os.environ.get('QR_RIM_RESTORE_TOL_MM', '0.10'))
-    _R_GAP = float(os.environ.get('QR_RIM_RESTORE_GAP_MM', '0.25'))
-    _R_ANG = float(os.environ.get('QR_RIM_ANG_TARGET', '10'))
-    _R_FOLD = float(os.environ.get('QR_RIM_FOLD_CLEAR_MM', '0.5'))
-    _R_SIT = int(os.environ.get('QR_RIM_SMOOTH_ITER', '24'))
-    _R_SLAM = float(os.environ.get('QR_RIM_SMOOTH_LAM', '0.3'))
-    _R_GREAL = os.environ.get('QR_RIM_GATE_REAL', '1') == '1'
-    _R_MOVE = os.environ.get('QR_RIM_MOVE', '1') == '1'
-    _R_MAXINS = int(os.environ.get('QR_RIM_MAX_INS', '80'))
-    _R_MINGAP = float(os.environ.get('QR_RIM_MIN_GAP_MM', '0.06'))
-    _RIM_KEYS = ("ok", "ins_planned", "ins_done", "ins_rejected", "moved", "moved_clamped",
-                 "local_before", "local_after", "pairs_real_before", "pairs_real_after",
-                 "nm_before", "nm_after", "n_ring_before", "n_ring_after", "smooth_passes",
-                 "ang_max_before", "ang_max_after", "dev_max_before", "dev_max_after",
-                 "single_closed_loop", "reverted", "variant")
-    _rim_report = {}
-    for _side in ("L", "R"):
-        _HIw = _HI_RIM.get(_side)
-        if _HIw is None or len(_HIw) < 20:
-            continue
-        _c3w = _np.array([float(x) for x in _J[_side]["center"]])
-        _R_COMBOS = []
-        for _cg in os.environ.get('QR_RIM_COMBOS', '24,0,1;60,0,1;60,0,0;60,1,1').split(';'):
-            _cv = [x for x in _cg.split(',') if x.strip()]
-            if len(_cv) == 3:
-                _R_COMBOS.append((int(_cv[0]), bool(int(_cv[1])), bool(int(_cv[2]))))
-        if not _R_COMBOS:
-            _R_COMBOS = [(24, False, True), (60, False, True), (60, False, False), (60, True, True)]
-        try:
-            _rep = _RR.restore_rim_combo(qr_obj, _HIw, _c3w, combos=_R_COMBOS,
-                                         tol_mm=_R_TOL, gap_mm=_R_GAP, ang_target=_R_ANG,
-                                         min_gap_mm=_R_MINGAP,
-                                         fold_clear_mm=_R_FOLD, gate_real=_R_GREAL,
-                                         smooth_iter=_R_SIT, smooth_lam=_R_SLAM, verbose=True)
-        except Exception as _e89:
-            import traceback as _tb89
-            _tb89.print_exc()
-            print(f"8.9 [{_side}] ⚠ rim 恢复异常(不阻塞主流程): {_e89}")
-            continue
-        if not _rep.get("ok"):
-            print(f"8.9 [{_side}] ⚠ rim 恢复失败/回退: {_rep.get('reverted')}")
-            continue
-        _rim_report[_side] = {k: _rep.get(k) for k in _RIM_KEYS}
-        _am0 = _rep.get("ang_max_before"); _am1 = _rep.get("ang_max_after")
-        _dv0 = _rep.get("dev_max_before"); _dv1 = _rep.get("dev_max_after")
-        print(f"8.9 [{_side}] rim 恢复: ok={_rep.get('ok')} "
-              f"插入点={_rep.get('ins_done')}/{_rep.get('ins_planned')}(拒{_rep.get('ins_rejected')}) "
-              f"移动={_rep.get('moved')}(夹{_rep.get('moved_clamped')}) 平滑轮={_rep.get('smooth_passes')} "
-              f"局部自交 {_rep.get('local_before')}→{_rep.get('local_after')}"
-              f"(真 {_rep.get('pairs_real_before')}→{_rep.get('pairs_real_after')}) "
-              f"非流形 {_rep.get('nm_before')}→{_rep.get('nm_after')} "
-              f"环 {_rep.get('n_ring_before')}→{_rep.get('n_ring_after')} "
-              f"转角max {('%.2f' % _am0) if _am0 is not None else '-'}→{('%.2f' % _am1) if _am1 is not None else '-'}° "
-              f"偏差max {('%.3f' % _dv0) if _dv0 is not None else '-'}→{('%.3f' % _dv1) if _dv1 is not None else '-'}mm"
-              + (f" 回退:{_rep.get('reverted')}" if _rep.get("reverted") else ""))
-        if _rep.get("metrics_before"):
-            print(f"      恢复前 {_rep['metrics_before']}")
-            print(f"      恢复后 {_rep['metrics_after']}")
-    print(f"8.9 rim 恢复汇总: {json.dumps(_rim_report, ensure_ascii=False)}")
-else:
-    print("8.9 rim 恢复: 跳过(QR_RIM_RESTORE=0 或无高模 rim 真值)")
 
 # 9. 保存主产物(单材质, 供下游03/04)
 output_blend = os.path.join(W_02O, "_中间", "02_qr_150k.blend")
