@@ -522,6 +522,7 @@ def clean_self_intersections(obj, verbose=True, ref_bvh=None, ref_matrix_world=N
     rep = {"对象": obj.name, "簇": [], "残留": None}
     rep["清理前"] = dict(面数=len(obj.data.polygons), 顶点数=len(obj.data.vertices), **_hygiene(obj))
     hy0 = rep["清理前"]
+    _prev_sig = None   # 20261010 perf: 上一轮 (自交对数, 簇中心集合) 签名 — 无进展早停用
 
     for rnd in range(1, MAX_ROUNDS + 1):
         me = obj.data
@@ -534,6 +535,16 @@ def clean_self_intersections(obj, verbose=True, ref_bvh=None, ref_matrix_world=N
         cl = _clusters(tris, co, pairs)
         if verbose:
             print(f"[自交清理] 第{rnd}轮: 聚类 {len(cl)} 处", flush=True)
+        # 20261010 perf: 无进展早停 — 本轮(对数+簇中心签名)与上一轮完全相同, 说明上一轮对这些簇的
+        #   焊接阶梯/兜底平滑已全部确定性失败并回退(过程无随机性, 重试结果必然相同, 网格未变)。
+        #   实测该空转白花 2 轮×(全模型自交扫描+逐簇snap副本+焊接阶梯)≈30-60s/抽; 早停不改变最终几何,
+        #   仅少了 rep["簇"] 里重复的失败记录(日志字段, 门控只读 rep["残留"], 语义不变)。
+        _sig = (len(pairs), tuple(sorted(tuple(np.round(np.asarray(c["center"]), 6)) for c in cl)))
+        if _sig == _prev_sig:
+            if verbose:
+                print(f"[自交清理] 第{rnd}轮: 签名与上一轮一致(对数{len(pairs)}/{len(cl)}簇, 上一轮已全部失败回退) → 无进展早停", flush=True)
+            break
+        _prev_sig = _sig
         for k, c in enumerate(cl):
             sub = tris[c["tris"]]
             pts = co[sub.reshape(-1)]
@@ -596,7 +607,8 @@ def clean_self_intersections(obj, verbose=True, ref_bvh=None, ref_matrix_world=N
             except Exception:
                 pass
 
-    rep["残留"] = len(_self_pairs(obj.data))
+    # 20261010 perf: 此处原有一次 rep["残留"]=len(_self_pairs(...)) 全模型扫描 — 其结果在绕向修复后
+    #   立即被重新赋值覆盖且中间无人读取(_fix_winding 不消费该字段), 纯浪费一次 10-15s 的扫描, 已删。
     # ④ 绕向修复 v2 (2026-09-30 ab14): 奇偶解 + 参考/多数定向 → 收敛且坏边残留必=0。
     #   旧字段"翻转面数"保持(现=实际改变面数); 新增"绕向报告"字段(坏边残留/参考不一致等)。
     _wrep = {}

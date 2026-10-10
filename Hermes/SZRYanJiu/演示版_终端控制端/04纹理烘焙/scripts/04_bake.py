@@ -18,6 +18,13 @@ os.makedirs(OUT_04, exist_ok=True)
 
 print("=== Step 4: Bake 4K (修复贴图) ===")
 
+# 20261010 perf: 4K图 pixels[:] = 6700万 float 走 Python 序列搬运(~20-40s/处, 全脚本6处);
+#   foreach_get 直填 float32 (~0.3s), 数值逐位一致(图像内部本就是 float32 存储)。
+def _px(_im):
+    _a = np.empty(_im.size[0] * _im.size[1] * 4, np.float32)
+    _im.pixels.foreach_get(_a)
+    return _a.reshape(_im.size[1], _im.size[0], 4)
+
 # 加载低模(UV已展开)
 bpy.ops.wm.open_mainfile(filepath=UV_BLEND)
 # 明确选带_QR后缀的低模(避免选到高模残留)
@@ -89,7 +96,31 @@ if tex_replaced == 0:
 bpy.context.scene.render.engine = 'CYCLES'
 bpy.context.scene.cycles.samples = 16
 bpy.context.scene.cycles.use_denoising = False
-bpy.context.scene.cycles.device = 'CPU'
+# 20261010 perf: BAKE_DEVICE=GPU/OPTIX/CUDA → GPU烘焙(本机 RTX 4070 实测在位), 4K双面 ~5min→~1min。
+# 默认 CPU = 与全部历史产物同口径(GPU/CPU 采样噪声序列不同, 像素会有噪声级差异);
+# 只在明确要加速迭代时设置该 env, 交付定版建议仍用 CPU。失败自动回退 CPU, 不阻断。
+_BDEV = os.environ.get("BAKE_DEVICE", "CPU").strip().upper()
+if _BDEV in ("GPU", "OPTIX", "CUDA"):
+    try:
+        _cpref = bpy.context.preferences.addons['cycles'].preferences
+        _ctype = 'CUDA' if _BDEV == 'CUDA' else 'OPTIX'
+        try:
+            _cpref.compute_device_type = _ctype
+        except Exception:
+            _cpref.compute_device_type = 'CUDA'
+        _n = 0
+        for _d in _cpref.get_devices_for_type(_cpref.compute_device_type):
+            if _d.type != 'CPU':
+                _d.use = True; _n += 1
+        if _n == 0:
+            raise RuntimeError("无可用GPU计算设备")
+        bpy.context.scene.cycles.device = 'GPU'
+        print(f"烘焙设备: GPU ({_cpref.compute_device_type}, 启用{_n}设备) ⚠ 像素与CPU版有噪声级差异")
+    except Exception as _ge:
+        bpy.context.scene.cycles.device = 'CPU'
+        print(f"⚠ GPU 不可用({_ge}) → 回退 CPU 烘焙")
+else:
+    bpy.context.scene.cycles.device = 'CPU'
 
 # 低模材质
 mat = bpy.data.materials.new(name='MVP_Material')
@@ -133,7 +164,7 @@ print(f'烘焙Diffuse passA (cage={CAGE_BODY:.4f} 身体主体)...')
 bpy.context.scene.render.bake.cage_extrusion = CAGE_BODY
 bpy.context.scene.render.bake.max_ray_distance = 0.0
 bpy.ops.object.bake(type='DIFFUSE')
-pA = np.array(img.pixels[:]).reshape(4096, 4096, 4).copy()
+pA = _px(img)
 
 # 眼窝碗区mask: 眼球球心0.95r内的低模面 → UV三角形光栅(+2px膨胀盖缝)
 eye_objs = [o for o in bpy.data.objects if o.type == 'MESH' and 'Eye' in o.name]
@@ -179,7 +210,7 @@ imgB.colorspace_settings.name = 'sRGB'
 tex.image = imgB
 bpy.context.scene.render.bake.cage_extrusion = CAGE_EYE
 bpy.ops.object.bake(type='DIFFUSE')
-pB = np.array(imgB.pixels[:]).reshape(4096, 4096, 4).copy()
+pB = _px(imgB)
 tex.image = img
 comp = np.where(bowl_mask[:, :, None], pB, pA)
 img.pixels.foreach_set(comp.ravel().astype(np.float32))
@@ -204,7 +235,7 @@ img.unpack(method='WRITE_ORIGINAL')
 img.filepath_raw = tex_path
 print(f"纯烘焙态已存: {raw_blend} (贴图 {raw_tex} 已打包)")
 
-pixels = np.array(img.pixels[:])
+pixels = _px(img).astype(np.float64)   # 统计口径与旧 float64 序列一致
 print(f"Diffuse贴图: min={pixels.min():.3f}, max={pixels.max():.3f}, mean={pixels.mean():.3f}")
 
 # 2026-09-17 用户要求: 烘焙后【贴图溢出处理】— 暗色衣物渗出到皮肤的区域 → 替换回皮肤色
@@ -288,7 +319,7 @@ _bm = globals().get('bowl_mask')
 bpy.context.scene.render.bake.cage_extrusion = CAGE_BODY
 print(f'烘焙Normal passA (cage={CAGE_BODY:.4f} 身体主体)...')
 bpy.ops.object.bake(type='NORMAL')
-_nA = np.array(normal_img.pixels[:]).reshape(4096, 4096, 4).copy()
+_nA = _px(normal_img)
 if _bm is not None and bool(_bm.any()):
     nimgB = bpy.data.images.new('MVP_Normal_4K_eye', width=4096, height=4096, alpha=False)
     nimgB.colorspace_settings.name = 'Non-Color'
@@ -296,7 +327,7 @@ if _bm is not None and bool(_bm.any()):
     bpy.context.scene.render.bake.cage_extrusion = CAGE_EYE
     print(f'烘焙Normal passB (cage={CAGE_EYE:.4f} 眼窝碗区)...')
     bpy.ops.object.bake(type='NORMAL')
-    _nB = np.array(nimgB.pixels[:]).reshape(4096, 4096, 4).copy()
+    _nB = _px(nimgB)
     normal_tex.image = normal_img
     normal_img.pixels.foreach_set(np.where(_bm[:, :, None], _nB, _nA).ravel().astype(np.float32))
     normal_img.update()
@@ -328,7 +359,7 @@ print(f"Normal贴图已保存")
 # 优先核对"高模朝向是否被人为翻动/烘焙射线是否打到背面", 禁止按 recalc 口径把高模翻正。
 try:
     _G = int(normal_img.size[0])
-    _NB = np.array(normal_img.pixels[:], dtype=np.float32).reshape(_G, _G, 4)[:, :, :3]
+    _NB = _px(normal_img)[:, :, :3]
     _mK = _NB.max(axis=2); _bk = _mK >= 0.02
     _inv = float((_NB[:, :, 2][_bk] < 0.3).mean()) if _bk.any() else 0.0
     print(f'[AB17K] 法线体检: 已烘texel={int(_bk.sum())} 反转(B<0.3)占比={100 * _inv:.2f}% (基线≈0.5%)')

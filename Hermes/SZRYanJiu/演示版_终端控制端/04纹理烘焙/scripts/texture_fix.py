@@ -691,7 +691,12 @@ def fix_diffuse_cloth_faces(png_path, mesh_objects, high_blend, tol_mm_frac=0.00
     if hi_img is None:
         return dict(note="高模无贴图, 跳过 v5")
     hw, hh = hi_img.size
-    hp = np.array(hi_img.pixels[:]).reshape(hh, hw, 4)[:, :, :3]
+    # 20261010 perf: 8K贴图 pixels[:] = 2.68亿 float 走 Python 序列搬运(分钟级 + >2GB内存) →
+    #   foreach_get 直填 float32(秒级); 采样处再 widen 到 float64, 数值与旧路径逐位一致
+    #   (像素本就 float32 存储, pixels[:] 返回的正是这些 float32 值的 double 表示)。
+    _hpx = np.empty(hw * hh * 4, np.float32)
+    hi_img.pixels.foreach_get(_hpx)
+    hp = _hpx.reshape(hh, hw, 4)[:, :, :3]
     hM = np.array(hi.matrix_world)
     hme = hi.data
     hn = len(hme.polygons)
@@ -710,12 +715,37 @@ def fix_diffuse_cloth_faces(png_path, mesh_objects, high_blend, tol_mm_frac=0.00
             xi = int(np.clip(p[0] * hw, 0, hw - 1)); yi = int(np.clip(p[1] * hh, 0, hh - 1))
             cs.append(hp[yi, xi] * 255)
         return np.median(np.array(cs), axis=0)
-    htri = [hluv[hls[i]:hls[i] + hlt[i]] for i in range(hn)]
-    hcol = np.array([_uv_med(t) for t in htri])
+    # 20261010 perf: hcol = 1.93M面 Python 逐面7点中位(~1-2min) → numpy 分块批量。
+    #   奇数7点的 np.median = 取第4小(无取均值分支), 批量与逐面结果逐位一致。
+    #   仅全三角网格走快路径(高模实测全三角); 否则保留旧循环。
+    if bool((hlt == 3).all()):
+        _tuv = hluv[hls[:, None] + np.arange(3)[None, :]]                  # (hn,3,2)
+        _p7 = np.stack([_tuv[:, 0], _tuv[:, 1], _tuv[:, 2],
+                        (_tuv[:, 0] + _tuv[:, 1]) / 2, (_tuv[:, 1] + _tuv[:, 2]) / 2,
+                        (_tuv[:, 2] + _tuv[:, 0]) / 2, _tuv.mean(axis=1)], axis=1)  # (hn,7,2)
+        hcol = np.empty((hn, 3), np.float64)
+        _CH = 262144
+        for _s in range(0, hn, _CH):
+            _e = min(hn, _s + _CH)
+            _q = _p7[_s:_e]
+            _xi = np.clip(_q[..., 0] * hw, 0, hw - 1).astype(np.int64)
+            _yi = np.clip(_q[..., 1] * hh, 0, hh - 1).astype(np.int64)
+            hcol[_s:_e] = np.median(hp[_yi, _xi].astype(np.float64) * 255.0, axis=1)
+    else:
+        htri = [hluv[hls[i]:hls[i] + hlt[i]] for i in range(hn)]
+        hcol = np.array([_uv_med(t) for t in htri])
     # 高模BVH(世界空间)
     hverts = np.empty(len(hme.vertices) * 3); hme.vertices.foreach_get("co", hverts)
     HV = hverts.reshape(-1, 3) @ hM[:3, :3].T + hM[:3, 3]
-    bvh = BVHTree.FromPolygons([tuple(v) for v in HV], [list(p.vertices) for p in hme.polygons])
+    # 20261010 perf: 面索引表 1.93M面 Python 逐面 p.vertices 取属性(~30-60s) → loops 批量 foreach_get;
+    #   全三角时 面i顶点 = loops[hls[i]..hls[i]+2], 与 p.vertices 顺序内容完全一致 → BVH 逐位相同。
+    if bool((hlt == 3).all()):
+        _lv = np.empty(len(hme.loops), np.int32)
+        hme.loops.foreach_get("vertex_index", _lv)
+        _faces = _lv[hls[:, None] + np.arange(3)[None, :]].tolist()
+    else:
+        _faces = [list(p.vertices) for p in hme.polygons]
+    bvh = BVHTree.FromPolygons(HV.tolist(), _faces)
     hdiag = float(np.linalg.norm(HV.max(axis=0) - HV.min(axis=0)))
     tol = hdiag * tol_mm_frac
     # --- 低模面 ---
@@ -746,7 +776,22 @@ def fix_diffuse_cloth_faces(png_path, mesh_objects, high_blend, tol_mm_frac=0.00
             xi = int(np.clip(p[0] * W, 0, W - 1)); yi = int(np.clip((1 - p[1]) * H, 0, H - 1))
             cs.append(a0[yi, xi].astype(np.float64))
         return np.median(np.array(cs), axis=0)
-    col = np.array([_uv_med_low(f[1]) for f in F])
+    # 20261010 perf: 低模逐面7点中位 Python 循环(~10-20s) → numpy 批量(混合三角/四边按实际点数求均值),
+    #   数值与旧 _uv_med_low 逐位一致; 若出现 lt<3 的退化面则回退旧循环(与旧行为完全一致)。
+    _lens = np.fromiter((len(_f[1]) for _f in F), np.int64, len(F))
+    if len(F) and int(_lens.min()) >= 3:
+        _mlt = int(_lens.max())
+        _PU = np.zeros((len(F), _mlt, 2))
+        for _i, _f in enumerate(F):
+            _PU[_i, :len(_f[1])] = _f[1]
+        _p0 = _PU[:, 0]; _p1 = _PU[:, 1]; _p2 = _PU[:, 2]
+        _pm = _PU.sum(axis=1) / _lens[:, None].astype(np.float64)
+        _q7 = np.stack([_p0, _p1, _p2, (_p0 + _p1) / 2, (_p1 + _p2) / 2, (_p2 + _p0) / 2, _pm], axis=1)
+        _lxi = np.clip(_q7[..., 0] * W, 0, W - 1).astype(np.int64)
+        _lyi = np.clip((1 - _q7[..., 1]) * H, 0, H - 1).astype(np.int64)
+        col = np.median(a0[_lyi, _lxi].astype(np.float64), axis=1)
+    else:
+        col = np.array([_uv_med_low(f[1]) for f in F])
     lum = 0.30 * col[:, 0] + 0.59 * col[:, 1] + 0.11 * col[:, 2]
     empty = (col[:, 0] <= 2) & (col[:, 1] <= 2) & (col[:, 2] <= 2)
     def _is_cloth(cc):
