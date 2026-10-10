@@ -11,7 +11,7 @@ import bpy, os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from eye_socket_config import *
 
-MARKERS = os.path.join(S01A, "输出", "01A_markers_eyelid.blend")
+MARKERS = os.environ.get("EYE_MARKERS_BLEND") or os.path.join(S01A, "输出", "01A_markers_eyelid.blend")   # 20261010: env覆盖(沙箱验证)
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.wm.open_mainfile(filepath=MARKERS)
 
@@ -93,9 +93,16 @@ def _mirror_axis_x(ref_pts):
 # 实测让左眼轮廓整体偏 0.594mm(用户对 0.16mm 都不接受, 这个必须修)。
 _ref_pts = [tuple(o.location) for o in r_objs]
 _axis_src = IN_BLEND if "IN_BLEND" in globals() else os.path.join(ROOT, "01高模修复", "输出", "01_highpoly_repair.blend")
+_snap_bvh = None   # 20261010: L眼Y吸附用的表面BVH(权威模型打开期间顺手建好)
 if os.path.exists(_axis_src):
     bpy.ops.wm.open_mainfile(filepath=_axis_src)          # → 权威模型
     AXIS_X = _mirror_axis_x(_ref_pts)
+    try:
+        from mathutils.bvhtree import BVHTree as _BVT
+        _mo = max([o for o in bpy.data.objects if o.type == 'MESH'], key=lambda o: len(o.data.polygons))
+        _snap_bvh = _BVT.FromObject(_mo, bpy.context.evaluated_depsgraph_get())
+    except Exception as _eb:
+        print(f"⚠ 权威模型表面BVH建立失败({_eb}) → L眼Y吸附改用打点文件内嵌模型")
     bpy.ops.wm.open_mainfile(filepath=MARKERS)            # → 回打点文件(文档已切换, 下面全部重取引用)
     r_coll = bpy.data.collections.get("LM_R")
     r_objs = sorted([o for o in r_coll.objects if o.type == 'EMPTY'], key=lambda o: o.name)
@@ -147,6 +154,40 @@ for o in r_objs:
         if k in o: e[k] = o[k]
     l_coll.objects.link(e)
     l_objs.append(e)
+
+# ---- 20261010 修复: L眼标记 Y 吸附 ----
+# 旧行为: L=(2a-R_x, R_y, R_z) 直接沿用 R 眼 y。高模并非绝对左右对称 → 左眼表面深度≠右眼,
+#   L 标记在 Y 向悬浮/陷入 0.44~0.82mm(用户实测"镜像的另一半没吸附"), GUI 顺序线与模型表面脱开;
+#   且未设 EYE_EYE_AXIS_MM 覆盖时, read 会把这个 y 直接读进轮廓。
+# 现在: x,z 保持镜像值(形状意图不变), y 从整体最前方沿 +Y 射线打回表面第一命中点。
+if _snap_bvh is None:
+    try:
+        from mathutils.bvhtree import BVHTree as _BVT2
+        _cand = [o for o in bpy.data.objects if o.type == 'MESH' and len(o.data.polygons) > 1000]
+        if _cand:
+            _mo2 = max(_cand, key=lambda o: len(o.data.polygons))
+            _snap_bvh = _BVT2.FromObject(_mo2, bpy.context.evaluated_depsgraph_get())
+    except Exception as _eb2:
+        print(f"⚠ 内嵌模型BVH失败({_eb2}) → L眼Y吸附跳过(保持旧行为)")
+if _snap_bvh is not None:
+    from mathutils import Vector as _Vec
+    _dy = []
+    _nray = 0
+    for _e in l_objs:
+        _x, _y, _z = _e.location
+        _hit = _snap_bvh.ray_cast(_Vec((_x, _y - 0.06, _z)), _Vec((0.0, 1.0, 0.0)))
+        if _hit[0] is not None:
+            _ny = float(_hit[0].y); _nray += 1
+        else:
+            _hn = _snap_bvh.find_nearest(_Vec((_x, _y, _z)))
+            _ny = float(_hn[0].y) if _hn[0] is not None else _y
+        _dy.append(abs(_ny - _y) * 1000.0)
+        _e.location = (_x, _ny, _z)
+    import statistics as _stat
+    print(f"L眼Y吸附: {len(l_objs)}点 (射线命中{_nray}) | 修正 中位{_stat.median(_dy):.3f}mm "
+          f"最大{max(_dy):.3f}mm — x,z 保持镜像值, 形状不变")
+else:
+    print("⚠ 无可用表面BVH → L眼Y吸附跳过(旧行为: y沿用R眼)")
 
 def _ensure_R_order_line():
     """保底: 若 R 眼顺序线缺失(旧版镜像曾把它误删), 按 place_eyelid_markers 同款重建

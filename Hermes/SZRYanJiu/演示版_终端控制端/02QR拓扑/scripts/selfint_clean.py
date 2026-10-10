@@ -515,6 +515,7 @@ def clean_self_intersections(obj, verbose=True, ref_bvh=None, ref_matrix_world=N
     ref_bvh/ref_matrix_world: 可选的高模参考(BVHTree.FromPolygons 数据拷贝 + 其 matrix_world)
       —— 传给绕向修复 v2 做"整体朝向"判据; 不传 = 按修复前原朝向多数表决(兼容旧调用)。"""
     sc = _apply_size(obj)
+    _me_orig = obj.data   # 20261010 P1: 记录原网格 — 回退时若被整体替换为副本, 它会变 0-user 孤儿块, 返回前清掉
     if verbose:
         print(f"[selfint_clean] 尺寸活性: bbox_max/基准={sc:.4f} → 聚类{CLUSTER_MM:.2f}mm 焊接上限{WELD_LADDER[-1]*1000:.2f}mm 兜底{RELAX_CAP_MM:.3f}mm")
     """就地清理 obj 的自交穿插 + 绕向不一致; 返回统计(中文键, 便于直接打印)"""
@@ -543,6 +544,7 @@ def clean_self_intersections(obj, verbose=True, ref_bvh=None, ref_matrix_world=N
             vid = sorted(int(i) for i in np.where(_in)[0])
             before = _local_count(obj, c["center"], half)
             snap = obj.data.copy()
+            snap.name = "_selfint_snap"   # 20261010 P1: 命名标记 → 簇处理完即清孤儿副本, 不再存进文件传染下游
             keys0 = _cluster_keys(pairs, tris, co)          # 修复前的缺陷地点集合
             how, dist_used, rem = "未成功", None, before
             for d in WELD_LADDER:
@@ -584,6 +586,15 @@ def clean_self_intersections(obj, verbose=True, ref_bvh=None, ref_matrix_world=N
                       f"{before}→{rem} 方式={how}"
                       f"{'' if dist_used is None else '('+str(round(dist_used*1000,2))+'mm)'} "
                       f"{'✓' if rem == 0 else '✗未清零'}", flush=True)
+            # 20261010 P1: 清掉本簇快照及回退产生的 _selfint_snap* 孤儿网格块(每个~16万面)。
+            #   此前它们随 .blend 保存并传染到 03/04(文件膨胀 + outliner 污染)。
+            try:
+                import bpy as _bpy
+                for _m in list(_bpy.data.meshes):
+                    if _m.users == 0 and _m.name.startswith("_selfint_snap"):
+                        _bpy.data.meshes.remove(_m)
+            except Exception:
+                pass
 
     rep["残留"] = len(_self_pairs(obj.data))
     # ④ 绕向修复 v2 (2026-09-30 ab14): 奇偶解 + 参考/多数定向 → 收敛且坏边残留必=0。
@@ -599,4 +610,14 @@ def clean_self_intersections(obj, verbose=True, ref_bvh=None, ref_matrix_world=N
               f"面 {rep['清理前']['面数']:,}→{rep['清理后']['面数']:,} "
               f"顶点 {rep['清理前']['顶点数']:,}→{rep['清理后']['顶点数']:,}", flush=True)
         print(f"[自交清理] 卫生 前={hy0} 后={rep['清理后']}", flush=True)
+    # 20261010 P1: 清掉被回退替换下来的原网格(若已 0-user)与任何残留 _selfint_snap* 孤儿块
+    try:
+        import bpy as _bpy
+        if _me_orig.users == 0:
+            _bpy.data.meshes.remove(_me_orig)
+        for _m in list(_bpy.data.meshes):
+            if _m.users == 0 and _m.name.startswith("_selfint_snap"):
+                _bpy.data.meshes.remove(_m)
+    except Exception:
+        pass
     return rep

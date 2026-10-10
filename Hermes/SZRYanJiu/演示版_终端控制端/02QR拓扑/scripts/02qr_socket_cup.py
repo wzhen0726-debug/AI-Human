@@ -59,8 +59,10 @@ for side in ("L", "R"):
         dg.setdefault(b.index, []).append(a.index)
     st = [k for k in dg if len(dg[k]) == 2]
     if len(st) < 20:
-        print(f"[{side}] 未找到孔环(边界边{len(oe)}), 跳过")
-        continue
+        # 20261010 P1修复: 原为"跳过该眼"继续 → 末尾 holes_fill 会把该眼洞用 n-gon 封平,
+        #   且照常打印 SAVED: → 控制台判成功但产物错误(缺碗/眼洞被封)。改为硬失败: 非零退出、不保存。
+        print(f"[{side}] ✗ 未找到孔环(边界边{len(oe)}, degree-2点{len(st)}<20) → 硬失败, 不建碗不保存")
+        sys.exit(1)
     ring0 = [st[0]]; pv, cu = -1, st[0]
     while True:
         cand = [q for q in dg[cu] if q != pv]

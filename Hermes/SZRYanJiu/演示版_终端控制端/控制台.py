@@ -9,7 +9,7 @@
   ⑥ (骨骼断开经诊断=Mixamo标准布局, 非bug, 见日志)
   ⑦ (2026-09-17) 眼球摆入在02的【碗之后】(QR → 碗(纯rim) → 眼球摆入并并入输出)
   ⑧ (2026-09-17) 用户: 无交付概念; 测试期产物一律写各stage的 输出/, 中间件收各stage的 _中间/
-命令: 01 / 01a / 02 / 03 / 04 / 05 / 06 / all / clean / status / help / quit
+命令: 01 / 01a / 01r(眼窝重建,跳过GUI手调) / 02 / 03 / 04 / 05 / 06 / all / clean / status / help / quit
 """
 import os, sys, time, shutil, subprocess, io, re, threading, queue
 
@@ -57,7 +57,7 @@ NOISE = ("register_class", "Registered", "register()", "WARN", "Warning", "bpy_t
          "blender.exe", "ModuleNotFound", "    ~~~", "import bpy", "self.", "mod.register")
 
 # ============ 命令提示常驻 ============
-CMD_HINT = (f"{D}命令:{W} {G}01{W}修复 {G}01a{W}眼窝 {G}02{W}拓扑+碗+眼球 {G}03{W}UV {G}04{W}烘焙 {G}05{W}绑定 {G}06{W}GLB "
+CMD_HINT = (f"{D}命令:{W} {G}01{W}修复 {G}01a{W}眼窝 {G}01r{W}眼窝重建(免手调) {G}02{W}拓扑+碗+眼球 {G}03{W}UV {G}04{W}烘焙 {G}05{W}绑定 {G}06{W}GLB "
             f"{G}all{W}全流程 {G}clean{W}清理 {G}status{W}状态 {G}quit{W}退出")
 
 def show_hint():
@@ -145,9 +145,28 @@ def run_bg(cmd, tag, label, cwd=None, done_mark=None):
     return ok
 
 def run_blender(script, tag, label, done_mark=None, args=None, cwd=None):
-    cmd = [BLENDER, '-b', '--python', script]
+    # 20261010 P0修复: 加 --python-exit-code 1 —— 此前脚本内未捕获异常时 Blender 仍返回退出码0
+    #   (Blender 5.1 实测), 控制台会把崩溃误判为成功; sys.exit(1) 路径本就传播, 不受影响。
+    #   注意: 不加 --factory-startup —— 05 步 ARP 等用户插件需照常加载。
+    cmd = [BLENDER, '-b', '--python-exit-code', '1', '--python', script]
     if args: cmd += ['--'] + args
     return run_bg(cmd, tag, label, cwd=cwd or os.path.dirname(script), done_mark=done_mark)
+
+def rm_stale(*rels):
+    """20261010 P0修复: 运行前删除本步将产出的旧文件 → 上游失败后, 下游无法再消费陈旧产物。
+    (此前事故链: 02_QR崩溃→退出码0被判成功→碗步骤拿上次残留的 _中间/02_qr_150k.blend 建碗→全绿但产物是旧拓扑)
+    任一文件被占用删不掉 → 返回 False, 调用方应中止本步(宁可失败也不混用旧件)。"""
+    ok = True
+    for r in rels:
+        p = os.path.join(BASE, r)
+        if os.path.exists(p):
+            try:
+                os.remove(p)
+                print(f"  {D}已删陈旧产物{W} {r}")
+            except Exception as e:
+                print(f"  {R}✗ 陈旧产物删除失败 {r}: {e}{W}")
+                ok = False
+    return ok
 
 # ============ GUI 手动调整 ============
 def gui_adjust(blend, prompt, md=None, setup=None):
@@ -232,7 +251,9 @@ def step_01():
         print(f"{R}✗ 缺少原始文件 raw_model.glb{W}"); return False
     out = os.path.join(BASE, "01高模修复", "输出", "01_highpoly_repair.blend")
     script = os.path.join(BASE, "01高模修复", "scripts", "run_repair.py")
-    ok = run_blender(script, "01", f"高模修复+黏连检测", args=[glb, out])
+    if not rm_stale("01高模修复/输出/01_highpoly_repair.blend"):
+        print(f"{R}✗ 陈旧产物被占用, 中止(防旧件混用){W}"); return False
+    ok = run_blender(script, "01", f"高模修复+黏连检测", done_mark="REPAIR_DONE", args=[glb, out])
     lines = []
     if ok:
         nobj, rows = stat_blend(out)
@@ -241,32 +262,52 @@ def step_01():
     summary("环节 01 高模修复", ok, t0, lines)
     return ok
 
-def step_01a():
+def step_01a(rebuild_only=False):
+    """rebuild_only=True (命令 01r): 跳过①放点+GUI手调, 直接用现有手调markers跑②③④⑤ —
+    适用于"手调已完成, 只想用新代码重新生成轮廓/眼窝"的场景, 无需重做GUI。"""
     divider()
-    print(f"{Y}{BOLD}▶ 环节 01a · 眼窝重建 (半自动打点; 眼球在02摆入){W}")
-    print(f"{D}  细分: 放点→GUI手调→镜像→读取→眼窝→赋材质{W}\n")
+    _tag = "01r" if rebuild_only else "01a"
+    _mode = " (重建: 跳过放点/GUI, 用现有手调markers)" if rebuild_only else " (半自动打点; 眼球在02摆入)"
+    print(f"{Y}{BOLD}▶ 环节 {_tag} · 眼窝重建{_mode}{W}")
+    print(f"{D}  细分: {'镜像→读取→眼窝→赋材质' if rebuild_only else '放点→GUI手调→镜像→读取→眼窝→赋材质'}{W}\n")
     t0 = time.time()
     if not check("01高模修复/输出/01_highpoly_repair.blend"):
         print(f"{R}✗ 缺少输入, 先运行 01{W}"); return False
-    # 1. 放点
-    if not run_blender(os.path.join(S01A, "place_eyelid_markers.py"), "01a_1", "① 放置眼睑缘标记点(右眼12点)"):
-        summary("环节 01a", False, t0, []); return False
-    # 2. GUI手调(自动: 正视图对准眼部+Material Preview显纹理+面捕捉, 无约束回弹)
     markers_blend = os.path.join(M01A, "01A_markers_eyelid.blend")
-    gui_adjust(markers_blend, "手动微调眼裂轮廓标记点(右眼12点, 拖动时面捕捉吸附表面)",
-               setup=os.path.join(S01A, "setup_marker_gui.py"))
+    if rebuild_only:
+        if not os.path.exists(markers_blend):
+            print(f"{R}✗ 缺少手调markers件(输出/01A_markers_eyelid.blend), 请用 01a (含GUI手调){W}")
+            return False
+    else:
+        # 1. 放点 (20261010 P0修复: done_mark → 失败不再能伪装成功)
+        # 20261010改: 不再 rm_stale markers件 — 它承载用户GUI手调成果, place脚本覆盖前自会做带时间戳备份;
+        #   预先删除会让重跑01a直接丢手调成果。
+        if not run_blender(os.path.join(S01A, "place_eyelid_markers.py"), "01a_1", "① 放置眼睑缘标记点(右眼12点)",
+                           done_mark="saved:"):
+            summary("环节 01a", False, t0, []); return False
+        # 2. GUI手调(自动: 正视图对准眼部+Material Preview显纹理+面捕捉, 无约束回弹)
+        if not gui_adjust(markers_blend, "手动微调眼裂轮廓标记点(右眼12点, 拖动时面捕捉吸附表面)",
+                   setup=os.path.join(S01A, "setup_marker_gui.py")):
+            summary("环节 01a", False, t0, []); return False
     # 3. 镜像
-    if not run_blender(os.path.join(S01A, "mirror_markers.py"), "01a_2", "② 镜像标记点 右眼→左眼"):
+    if not run_blender(os.path.join(S01A, "mirror_markers.py"), "01a_2", "② 镜像标记点 右眼→左眼",
+                       done_mark="镜像完成"):
         summary("环节 01a", False, t0, []); return False
     # 4. 读取生成轮廓
-    if not run_blender(os.path.join(S01A, "read_eyelid_markers.py"), "01a_3", "③ 读取标记点→样条加密72点轮廓"):
+    if not run_blender(os.path.join(S01A, "read_eyelid_markers.py"), "01a_3", "③ 读取标记点→样条加密72点轮廓",
+                       done_mark="saved:"):
         summary("环节 01a", False, t0, []); return False
-    # 5. 眼窝
-    if not run_blender(os.path.join(S01A, "run_eye_socket.py"), "01a_4", "④ 眼窝开孔+封碗+内圆角(v48)"):
+    # 5. 眼窝 (20261010 P0修复: 先删旧 01_1/_qr → ④⑤失败后 02 无法消费旧版高模)
+    if not rm_stale("01a眼窝眼球/输出/01_1_eye_socket.blend",
+                    "01a眼窝眼球/_中间/01_1_eye_socket_qr.blend"):
+        summary("环节 01a", False, t0, []); return False
+    if not run_blender(os.path.join(S01A, "run_eye_socket.py"), "01a_4", "④ 眼窝开孔+封碗+内圆角(v48)",
+                       done_mark="=== Done ==="):
         summary("环节 01a", False, t0, []); return False
     # 2026-09-17 用户新流程: 01a 不加眼球 — 眼球摆入在02的【碗之后】(QR→碗→眼球)
     # 6. 眼窝独立材质(2026-09-08): 供02 QR沿材质边界布线保住眼窝结构; 输出_qr.blend, 不动烘焙源文件
-    if not run_blender(os.path.join(S01A, "assign_socket_material.py"), "01a_6", "⑤ 眼窝碗面赋独立材质(供QR沿rim布线)"):
+    if not run_blender(os.path.join(S01A, "assign_socket_material.py"), "01a_6", "⑤ 眼窝碗面赋独立材质(供QR沿rim布线)",
+                       done_mark="SOCKET_MAT_DONE"):
         summary("环节 01a", False, t0, []); return False
     lines = [f"{D}眼窝{W} inward_fillet 内圆角定案",
              f"{D}材质{W} EyeSocket碗面分区 → QR沿rim布线",
@@ -283,15 +324,21 @@ def step_02():
     t0 = time.time()
     if not check("01a眼窝眼球/_中间/01_1_eye_socket_qr.blend"):
         print(f"{R}✗ 缺少输入(带材质分区版), 先运行 01a{W}"); return False
+    # 20261010 P0修复: 删陈旧中间件/产物 → QR崩溃后碗步骤无法再拿旧拓扑建碗"成功"
+    if not rm_stale("02QR拓扑/_中间/02_qr_150k.blend",
+                    "02QR拓扑/输出/02_qr_150k_socket.blend",
+                    "02QR拓扑/输出/02_qr_150k_未补洞_拓扑后.blend",
+                    "01a眼窝眼球/输出/01_2_eyeball_placed.blend"):
+        summary("环节 02", False, t0, []); return False
     if not run_blender(os.path.join(BASE, "02QR拓扑", "scripts", "02_qr_auto.py"),
-                       "02_QR", "QuadRemesher 自动拓扑(目标15万quad)"):
+                       "02_QR", "QuadRemesher 自动拓扑(目标15万quad)", done_mark="\nDONE"):
         summary("环节 02", False, t0, []); return False
     # 2026-09-17 用户新流程: 碗=纯 rim 几何(不看眼球) → 眼球在碗之后摆入, 并并入碗输出
     if not run_blender(os.path.join(BASE, "02QR拓扑", "scripts", "02qr_socket_cup.py"),
                        "02_碗", "眼窝碗重建(纯rim: 深度/环数自算)", done_mark="SAVED:"):
         summary("环节 02", False, t0, []); return False
     if not run_blender(os.path.join(S01A, "run_eyeball_v2.py"), "02_眼球",
-                       "眼球摆入(角膜自动测量, 并并入碗输出)"):
+                       "眼球摆入(角膜自动测量, 并并入碗输出)", done_mark="=== Done ==="):
         summary("环节 02", False, t0, []); return False
     qr = os.path.join(BASE, "02QR拓扑", "输出", "02_qr_150k_socket.blend")
     # 2026-09-17 用户要求: 02 每次也产出"拓扑完、未补洞"的中间件(QR输出, 眼洞开放)供检查/手工处理
@@ -520,7 +567,8 @@ def status():
             print(f"  {D}○ {label:<12} 未生成{W}")
     show_hint()
 
-STEPS = {"01": step_01, "01a": step_01a, "02": step_02, "03": step_03, "04": step_04, "05": step_05, "06": step_06}
+STEPS = {"01": step_01, "01a": step_01a, "01r": lambda: step_01a(rebuild_only=True),
+         "02": step_02, "03": step_03, "04": step_04, "05": step_05, "06": step_06}
 
 def main():
     banner()

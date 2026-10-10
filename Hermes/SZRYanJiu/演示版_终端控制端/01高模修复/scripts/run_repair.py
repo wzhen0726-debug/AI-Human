@@ -50,11 +50,12 @@ adhesion_result = adhesion.adhesion_pipeline(
     smooth_iter=5, smooth_factor=0.2, max_pairs=5000)
 print(f"[0] 黏连修复完成 ({__import__('time').time()-t0:.1f}s)")
 
-# 5. 最终质量检查
-final_check = repair.verify_mesh(obj)
-
-# 5.5 最终焊接 (v17): 保证 QR-ready, 解决 xremesh 卡 21%
+# 5. 最终焊接 (v17): 保证 QR-ready, 解决 xremesh 卡 21%
 weld_result = repair.final_weld_for_qr(obj)
+
+# 5.5 最终质量检查 (20261010 P1修复: 原在焊接【前】执行 → 日志打印的水密/非流形数字描述的是
+#     焊前状态, 与随后保存的焊后文件不符; 现改为焊后检查, 数字如实反映交付产物)
+final_check = repair.verify_mesh(obj)
 
 # 6. 保存
 os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
@@ -67,3 +68,4 @@ print(f"尺寸: {final_check['dimensions']}")
 print(f"最终焊接: 焊掉 {weld_result['welded']} 顶点, 补 {weld_result['filled']} 孔面, "
       f"焊后非流形={weld_result['non_manifold']} 边界={weld_result['boundary']}")
 print("=" * 60)
+print("REPAIR_DONE")   # 20261010 P0: 控制台 done_mark(脚本正常跑完才有此标记)
