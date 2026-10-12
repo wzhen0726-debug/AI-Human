@@ -5,11 +5,14 @@ description: Automated pipeline for converting raw high-poly meshes to rigged di
 
 # Blender Digital Human Pipeline
 
-Workflows: prepare/clean/retopo/rig high-poly meshes (Tripo AI, scans) into digital humans. Sub-workflows — pick by goal:
+高模(Tripo/扫描) → 清理/重拓扑/绑骨的数字人管线, 按目标选子流程:
 
-## A. Decimate + Rig pipeline (preserve AI mesh, add skeleton)
-**Goal**: Take a raw high-poly AI/scan mesh, clean it, reduce face count, bind a rig. Keeps the original topology (decimated). Use when the AI mesh topology is acceptable.
-**Entry points**: `scripts/pipeline[23]*.py`. 产物路径/备份/交付核验约定: `references/working-conventions.md`.
+## 0. 通用铁律
+- 重跑某阶段须照抄 `控制台.py` 该 step **全部脚本**(一环节常 2-3 个), 跑完按时戳核对每个下游输入都刷新了(blender 脚本异常也返回 0 → `--python-exit-code 1`); 几何验收分维度(横向/深度/3D)且验证量不与修复量同源 → `references/partial-rerun-stale-intermediate.md` + `references/eye-rim-k-gate.md`
+
+## A. Decimate+Rig 管线(保留 AI 网格+加骨架)
+**Goal**: 原始高模 → 清理+降面+绑骨, 保留原拓扑(AI 拓扑可接受时).
+**Entry points**: `scripts/pipeline[23]*.py`. 产物/备份/交付核验: `references/working-conventions.md`.
 **QR headless**: `qremesher.remesh()` is MODAL — call `xremesh.exe` via subprocess (`references/quad-remesher-headless-xremesh.md`; `qr-input-mesh-cleanup.md`, `rotation-correction-footscore.md`；`references/qr-socket-bowl.md`) **Eyes**: 01A眼窝 `references/eye-socket-*.md`(整合/法线/圆角/v45轮廓) —— **「左/右眼」= 屏幕左右**(非解剖; 渲染/汇报/选区同此, 勿再问) + `references/eye-rim-band-rebuild.md`(深度用原边界真值非 ray_cast; 脚本 `scripts/eye_rim_diagnostics.py`/`face_orientation_overlay.py`/`mesh_health_check.py`[QR前置: 开放边/n-gon/细长面/重复顶点/环闭合]) + `references/rim-band-qa.md`(缝合带坏面归因→参数化择优: 自参照/窗口随推导带宽缩放/不阻断). **眼窝碗面材质分区+rim边界贴合(QR沿rim布线)**: `references/qr-eye-socket-material-partition.md`(用v44tag拓扑标记识别碗面不用几何投影; xremesh非确定须QR后几何校正; rim环贴手描轮廓). **眼球摆位规律+微调面板**: `references/eyeball-placement-laws-and-finetune-panel.md`. **眼窝rim锐化(死路+正路)**: `references/qr-rim-sharpness-eye-socket.md` — GuidesFile和锐边标记都无效, 先试法线图修复. **rim环重构/边界重建**: `references/boundary-loop-repair.md`(折返=XZ自交; 整圈皮肤带重建; 四判据核验; 存盘前切OBJECT). v59细节: `references/eye-socket-rim-reconstruct-v59.md(含碗深反推+形状/装配态判读)` — 改既有逻辑前必先跑基线对比(曾误删松弛致前视转角恶化11倍); 前视锯齿判据用转角XZ不是3D; 三根因=触rim的sliver溶解改道边界/全局三角化误伤别侧碗底ngon盖/碗底单极点放射扇; 7条否决路线(knife/boolean/洪泛/XZ投影全实测失败, 非流形网格一切切割算子不可用); QR红区锯齿有下限(1.5mm网格逐面赋材质=阶梯); ⚠边线全过≠宏观形状对: 必测碗vs脸面基准(太阳穴)深度+清开口前漂浮碎片, 前视渲染看不出凹凸(宏观形状判据节) **给外行的零安装交互blend**: `references/demo-blend-for-laypeople.md`. **录屏汇报用终端控制端**(独立目录复刻管线, 命令真跑各环节+实时刷数据): `references/demo-terminal-control-end.md`. **Repair**: diagnose first (`references/geometric-anomaly-diagnosis.md`, `references/chest-bump-flattening.md`); headless sculpt-brush automation unreliable (`references/blender51-sculpt-brush-headless.md`). **ARP Smart on T-pose models** (`references/arp-tpose-ref-skeleton-extraction.md`): go_detect's deform skeleton is intrinsically wrong (A-pose template); rescue by extracting the correct `*_ref` skeleton → Mixamo names → `align_roll` ONLY (never rewrite tails) → Mixamo-walk harness verify; includes guess_markers headless screenshot-patch rules (256px, self write-back, no body_temp rename) and Blender 5.1 API pitfalls.
 **Steps**: Import & analysis → auto-orient (Z-up, -Y forward via vertex data) → geometry cleanup (remove doubles, fix normals, delete loose) → decimate to <500K → partial tris→quads → auto-align MetaRig / Auto-Rig Pro → parent w/ auto-weights → generate Rigify control rig → organize Collections (Character, RigWidgets) → export .blend/.glb.
 **Pitfalls**:

@@ -194,7 +194,10 @@ below.
     Area-uniformity / island-count metrics are completely blind to it. Detect
     with `bpy.ops.uv.select_overlap`; repair by locally re-unwrapping the fold
     region (SLIM) + `average_islands_scale()` + repack — recipe, convergence
-    numbers and texel-ownership verification in `references/uv-fold-repair.md`.
+    numbers, texel-ownership verification, AND the three failure modes of the
+    repair itself (density-CV blowup hidden by WARN branch, oscillating
+    non-convergence, log-vs-artifact timestamp mismatch) in
+    `references/uv-fold-repair.md`.
 
 ### Recommended production workflow
 
@@ -356,11 +359,17 @@ Do NOT use `nt.links.remove(node1.outputs['X'], node2.inputs['Y'])` — that API
 
 **⚠️ Blender 5.1: `colorspace_settings.name` clears baked pixel data**: Setting `tex_node.image.colorspace_settings.name = 'Non-Color'` on a Normal map image that ALREADY has baked pixel data DESTROYS the data — the image becomes all zeros. Set colorspace BEFORE `bpy.ops.object.bake(type='NORMAL')`, never after. In `connect_textures()`, only create node connections; do NOT modify image properties.
 
+**⚠️ Normal map left at the sRGB default = 成片脏斑 (2026-09-23, user-reported)**: `bpy.data.images.new()` creates images with colorspace **sRGB**; if the script never sets it, the saved .blend ships a normal map read as sRGB → the renderer gamma-warps the normal vectors → **blotchy/patchy shading across skin and clothing** (and eye detail looks "closed"/smeared). Symptom is easy to misattribute to the texture: the diffuse is fine and the albedo PNG is a clean 8-bit sRGB file. A/B evidence: same scene, only that one setting changed → **45.9% of pixels differ**. Rules: (1) set `'Non-Color'` on the normal image (and `'sRGB'` on the diffuse) **before** baking — a later setting change only fixes interpretation, the baked PNG values are already gamma-encoded and must be re-baked; (2) do not report "normal chain OK" from link checks alone — link integrity says nothing about colorspace; (3) FBX export is unaffected (the FBX importer re-guesses Non-Color from the filename), so this bug hides in the .blend the user opens and shows up only there.
+
+**⚠️ 验收渲染必须对齐用户视口口径（2026-09-23）**: Strong temporary lights (e.g. 1600/900/1200W area lights) + `view_transform='Standard'` blow the model out to near-white and **wash out exactly the kind of shading artifact the user is complaining about** — a verification render in that setup reported "looks consistent" while the user saw blotches. Before accepting/rejecting any texture-or-shading defect, render with a **soft, even setup**: world background ≈ (0.55,0.55,0.58) strength 1.0 + two low-power area lights (≈260W / 120W at ~2m) + the scene's default view transform (AgX/Filmic). Keep a reusable script for this (see `~/…/logs/_render_viewport.py` pattern: open blend → self-check max face count → hide other meshes → ortho front camera → render full/upper/legs/head crops). If your render and the user's screenshot disagree, suspect the *render setup* before doubting the user.
+
 **⚠️ Reconnect the bake-target node before saving the .blend (export-time temporary disconnects)**: The normal bake requires a TexImage→NormalMap→BSDF chain wired; scripts commonly wire it, bake, then disconnect it "so the FBX export isn't affected" — and never reconnect. The saved blend then ships BaseColor-only: the normal map file exists on disk, but every render/viewport (including the user's) shows a flat, detail-less surface. Rule: any node disconnected for an export must be reconnected after the export call and before `save_as_mainfile`; verify by programmatically dumping the BSDF's Base Color / Normal / Roughness link status on the SAVED file. Measure the visible impact with a single-variable A/B (disconnect/reconnect in one session) before attributing any visual defect to it — the effect can be small, so reconnect for correctness, not as a headline fix.
 
 **⚠️ Blender 5.1: `pass_filter` does NOT accept 'NORMAL'**: `bake(type='NORMAL', pass_filter={'NORMAL'})` raises `TypeError`. Valid values: 'NONE', 'EMIT', 'DIRECT', 'INDIRECT', 'COLOR', 'DIFFUSE', 'GLOSSY', 'TRANSMISSION'. Use `bake(type='NORMAL')` without pass_filter.
 
 **⚠️ Adaptive bake distance**: Fixed small distance causes black patches on large models. Compute: `max(0.1, model_max_bbox * 0.15)`.
+
+**⚠️ Bake parameter比例化风险（2026-09-20）**: 把固定参数(cage=0.01, ray=0.05)改成bbox比例(0.011×bbox, 0.056×bbox)后，实际值随模型尺寸翻倍(1.8m模型→0.02/0.10)，导致交界处射线穿透过度产生锯齿。**用户定案：cage/ray/margin用固定值，不按bbox比例**。若需跨体型自适应，应基于「固定值在标准体型上的实测效果」反推比例，而非直接乘bbox。
 
 **⚠️ Bake orientation mismatch — the #1 cause of broken textures (2026-07-17)**: When low-poly and high-poly are in different orientations (e.g., low-poly rotated 90° in repair stage, high-poly imported from original GLB without rotation), bake rays miss entirely. This produces 55-95% black pixels — the single most destructive bake failure. **Fix**: After importing the high-poly source, detect orientation via `dim_y > dim_x * 2` (arms along Y) and rotate to match low-poly via bmesh (`new_x = old_y; new_y = -old_x`). Verify both meshes have the same bbox orientation before baking. The user rated the result of this mismatch as "基本上完全不对" (basically completely wrong) — 10/100 quality score. **Always check high/low bbox alignment before baking** — it takes 2 lines of Python and prevents the worst bake failure mode.
 
@@ -564,6 +573,28 @@ Then after rig stage, BEFORE export: verify material has exactly 1 BSDF + 1 Outp
 2. **Execution**: `bpy.ops.qremesher.remesh()` uses `RUNNING_MODAL` + `window_manager.event_timer_add` + `modal_handler_add`, which requires a window. In `--background` mode, the operator's `cancel()` is called immediately — it exports FBX to temp dir but never runs the external engine. **Workaround**: call the external engine directly via `subprocess.Popen([xremesh_path, "-s", settings_file])`. Write a `RetopoSettings.txt` with `HostApp=Blender`, `FileIn`, `FileOut`, `ProgressFile`, `TargetQuadCount=90000`, `CurvatureAdaptivness=50`. Monitor progress via the progress file. Engine path: `<addon_dir>/EngineWin/xremesh.exe`. See `test02/mvp_pipeline/scripts/02_qr_remesh.py` for the complete working script.
 
 **⚠️ Deleting objects while iterating crashes (StructRNA removed)**: `for o in objects: bpy.data.objects.remove(o, do_unlink=True); print(o.name)` raises `ReferenceError: StructRNA of type Object has been removed` — the loop variable holds a dead reference after removal. Collect names first, then delete by name lookup: `names = [o.name for o in objects]; for n in names: obj = bpy.data.objects.get(n); if obj: bpy.data.objects.remove(obj, do_unlink=True)`.
+
+**⚠️ 领口/腋下锯齿根因（2026-09-20）**: 渲染时领口/腋下出现浅色皮肤色锯齿状碎点，根因是**02 QR低模领口边缘与高模有1-2mm系统性偏差**，导致烘焙射线打到皮肤而非衣物。非UV布局或烘焙参数问题。老版v3（8月25日）无锯齿但脚本已丢失。修复方向：02 QR阶段让领口更精确，或04烘焙时领口区域强制皮肤采样。
+
+**⚠️ 用户要求"重写"时的铁律（2026-09-20）**: 当用户明确要求"重写"某个环节时，**禁止参考旧脚本/旧文档/旧思路**——复制旧代码会重复同样错误。必须独立调研当前最佳实践，从输入数据开始重新设计。语义分块（头/颈/躯干/四肢分别投影）比Smart UV Project更可控，但需正确实现（Angle Based对大区域仍会切多岛）。**重写≠复制旧代码改参数**，而是基于对问题的理解重新设计算法。
+
+**⚠️ 03/04脚本对象选择陷阱（2026-09-20）**: 从02 QR blend加载时，必须**按名字后缀(_QR)选低模**，不能按顶点数选（`max(..., key=len(o.data.vertices))`）——03_auto_uv.blend可能因历史残留包含高模（96万顶点>低模16万），导致04把材质赋给高模、低模无贴图显示紫色。**03脚本保存前必须显式删除非低模对象**：`for o in bpy.data.objects: if o != low_poly: bpy.data.objects.remove(o, do_unlink=True)`。同样，04脚本保存前也必须删除高模和眼球，只留低模。
+
+**⚠️ margin过大导致texture_fix过度处理（2026-09-20）**: 04烘焙margin=32时，texture_fix.py的溢出处理误判（64032→123000像素，越处理越多），产生大片粉色斑块。**margin必须保持16**，reach_px=20。增大margin不能解决锯齿问题，反而引入新问题。
+
+**⚠️ 02 QR后处理污染（2026-09-20）**: 02 QR后处理脚本（如领口收缩）保存时必须**显式删除非低模对象**（高模、眼球），否则高模被写回02 blend，03 UV选错对象导致UV布局崩坏（161K→966K面，岛数498→5090）。**任何修改02 blend的脚本，保存前必须清理场景**。
+
+**⚠️ UV布局与几何偏差的独立验证（2026-09-20）**: 领口锯齿的UV岛数（48个）和几何偏差（0.59mm mean）是两个独立维度。减少UV岛数不能解决几何偏差导致的锯齿——必须分别验证：UV岛数用`select_overlap`+连通分量统计，几何偏差用`cKDTree`最近距离。**只修UV不修几何=锯齿依旧**。
+
+**⚠️ 02 QR法线翻转陷阱（2026-09-20）**: 眼窝/鼻孔区域法线朝内（76.2%朝下）是02 QR拓扑质量问题，**不能简单翻转法线**——翻转后产生红色面朝向错误（face orientation overlay），且破坏UV连续性。正确做法：02 QR阶段提高目标面数或手动修复拓扑，或接受现状用04后处理遮盖。
+
+**⚠️ 高模贴图眼窝黑色区域（2026-09-20）**: 高模原始贴图在右眼窝区域本身就是黑色（RGB≈0.15），这是模型绘制问题，不是烘焙问题。修复：精确UV范围（左眼窝u=0.40-0.48, 右眼窝u=0.52-0.60, 鼻孔u=0.48-0.52）内替换为皮肤色。注意：眉毛区域（u≈0.42/0.58, v≈0.88）也是黑色，**不能误替换**。
+
+**⚠️ 04保存前必须重新连接Normal Map（2026-09-20）**: 04_bake.py在FBX导出前断开Normal Map连接（避免影响导出），但保存blend后Normal Map断开导致渲染无细节。必须在保存前重新连接：`nt.links.new(normal_map.outputs['Normal'], bsdf.inputs['Normal'])`。
+
+**⚠️ 04烘焙后处理修复领口锯齿（2026-09-20，部分有效）**: 对领口区域做图像后处理（检测皮肤色碎点→替换为衣物色）可改善但不能根除。脚本：检测`lum>140`且`邻近深色`的像素→连通块<50px→替换为周围衣物色中位数。实测修复63,500像素，锯齿明显减少但仍存在。**这是补救措施，不是根治**。
+
+**⚠️ 眼窝黑面与耳后纹理（2026-09-20）**: 眼窝黑面（3.9%暗色像素）和耳后纹理映射问题与领口锯齿同属**02 QR几何偏差**的连锁反应。修复02 QR领口后，眼窝/耳后问题可能同时改善。不要单独处理眼窝/耳后——先修领口几何，再验证其他区域。
 
 **⚠️ Bake produces 100% BLACK on first attempt (2026-07-29)**: Common causes and fixes for all-black bake output: (1) **Missing explicit `use_selected_to_active=True`** — without it, Cycles bakes from the active object to itself (no high-poly target), producing black. (2) **GPU device failure** — `cycles.device='GPU'` may fail silently on some systems; fall back to `cycles.device='CPU'`. (3) **Missing pixel-stat verification** — always check `np.array(img.pixels[:]).max() < 0.01` after bake; if true, the bake failed. (4) **Circular dependency info message** — harmless, caused by high-poly material referencing the same image name as the new bake target; can be ignored. Working fix: explicitly set `use_selected_to_active=True`, use CPU, and verify with pixel stats before declaring success.
 

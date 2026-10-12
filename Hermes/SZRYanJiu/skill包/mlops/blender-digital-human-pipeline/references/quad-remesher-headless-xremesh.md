@@ -147,6 +147,8 @@ qr_obj = bpy.context.active_object
 - **Result deviation & triangle ceiling**: TargetQuadCount=140000 produced 134,674 quads (269,334 triangles) on a resized (1.81m) Tripo model. **Always verify `quads*2+tris ≤ 300000`** — the user's ceiling is 30万三角面 (Mixamo safe limit). If the model was resized/scaled, QR allocates more faces — tune TargetQuadCount down accordingly. ExactQuadCount=0 (adaptive) is recommended; exact mode is slower and less robust. **Tuning history**: 250000→470K tri (too many), 150000→307K tri (still over on resized model), 140000→269K tri (correct).
 
 - **ZED camera conflict (2026-07-30)**: ZED.exe blocks xremesh startup — kill ZED before QR (`taskkill /F /T /IM Zed.exe`). ZED auto-restarts; kill repeatedly during long runs. See `zed-camera-xremesh-conflict.md`.
+- **串行铁律：同一时刻只跑一个 QR 实例**——引擎共用全局临时目录（QRTemp），并行跑会互踩串产物（产物混轮次、面数对不上，污染会一路带进下游交付）；跑前确认无其它 blender/QR 进程。
+- **QR 的临时/工作目录必须纯 ASCII**：原生 xremesh.exe 对非 ASCII 路径不稳（实测在中文 temp 目录下秒级 `BadInput`；同一份 FBX 走 ASCII 目录即正常）——settings/FileIn/FileOut 都落在一个私有 ASCII temp 目录里，别直接复用全局 QRTemp（官方链路平安是因为其 QRTemp 在 `%TEMP%` 的 ASCII 路径）。
 
 - **~~Hermes/background-session stall at ~21% (2026-07-30)~~** — **DISPROVEN (2026-07-31)**: The ~21% stall is caused by **input mesh fragmentation** (unwelded duplicate vertices + open boundary edges), NOT by Qt/session/window-station issues. `subprocess.Popen([engine, "-s", settings], cwd=engine_dir)` works perfectly from Hermes `--background` Blender. The same engine, same session, same settings succeeds when given a clean (welded) mesh. The earlier "Qt GUI needs interactive session" hypothesis was wrong — xremesh's batch path (`-s` flag) does not depend on interactive Window Station. **Correct fix**: always weld the mesh before exporting FBX (see next bullet).
 
@@ -172,6 +174,18 @@ qr_obj = bpy.context.active_object
   孔缘 3 圈内四边面长宽比中位 ~1.4、超 3 的 0 个; 非流形边 0。
 - 改了 02 驱动脚本后**先实跑一遍再谈结果**: 变量定义可能在历次编辑中丢失(只留引用处)而脚本 exit 0。
 - **QR 之后的低模眼窝碗重建**（在低模上给眼孔补碗面, 眼球坐进去）见 `qr-lowpoly-eye-socket.md`（现行完整做法；`post-qr-socket-bowl.md` 已改为指向它）。
+
+## 引擎能力边界与隐藏旋钮（实测；这些硬试没用）
+
+枚举键：dump `xremeshlib.dll` 字符串块（引擎侧）+ `qr_operators.py`（插件写盘 11 键）/`__init__.py`（面板）。手写注入通道：settings 文件内 `QR_SET_<键>=<值>`（本管线环境变量）。
+
+- **开放边界采样与全局面尺寸硬耦合**：没有“只在局部细分”的旋钮。`FreezeBorders=1`（+Coef）是唯一能锁真值边界的键，但边界点距会被当成全局面尺寸目标——0.22mm 的精细边界 → ~4770 万面（预算 295×）、导入 24 分钟不完；边界先粗化到 ~1mm 再冻结 → 3 秒 `Remeshing failed (BadInput)`（FreezeBorders=0 对照同错）。「锁边界」与「压预算」不可兼得。
+- **顶点色密度图只影响内部**：官方画笔上限 ×4（`painted_quad_density ∈ [0.25,4.0]`；红=(1,1-n,1-n)/青=(1+n,1,1)；`UseVertexColorMap=1` + `QR_SET_VarDensityRatio=4`）。实测（r=10mm、plateau 0.5）眼周 4mm 带 100% 四边、0 扇/0 n-gon、全模面数持平，但**边界只弱响应**（rim 边长中位 2.166→1.956 / 1.762→1.780mm、转角 max 68.7→44.1 / 83.1→53.0°）。
+- **面数换锐度不划算**：全模 ~604k（TargetQuadCount 650k）时 rim 才到 1.08/1.35mm，仍解决不了内眼角（≈50.7°），且眼周细长面 49/31（≈10×）、极点 364→500。
+- **比目标四边尺寸更细的特征解析不了**：眼角 3D 曲率半径 ~2.1mm < 眼周目标边长 2.4mm 时引擎在该处拥挤/碎片/自交——修法在**输入侧**（倒圆/带行重建），见 `qr-input-crowding.md`。
+- **面板未暴露可注入键**：TargetEdgeLength、TargetQuadCountAsInputPercentage、FreezeBorders(-Coef)、FollowBorders、VarDensityRatio、NumPointCirc、MaxQuadRatio、DenoiseStrength、UsePolygonGroups、UseSmoothingGroups、UseHardEdgeFlags、UseFacesSelections、UseEdgesSelections、AutoDetectHardEdges_Angle、SymTopo、MaxNumThread、PreProcess_WeldPoints、PostProcess_SplitPointsOnCreasedNormals 等；引擎与 ZBrush ZRemesher 同源。**无 Guides/Curves** → 曲线/边引导此版本不可用。
+- **运行间非确定**：同输入两跑，面数/边界采样点（实测 50 vs 31）/自交对数（0 vs 5）/原始输出翻转面数（实测 0 ↔ 70 万+）都不同——验收要连跑两次并给出差异（先跑基线两次定噪声，实测两跑差 60%），单次运行不构成证据。
+- **跑次比选（本轮制）**：原始翻转面数抽风的轮次直接弃用留档，采用“成品全网格面朝向体检=0”的合格轮；自交清理有不收敛轮（连跑数轮仍残留数对，集中背部）——不在验收门内的残留靠换轮绕开，别无限掷轮；在门内的（眼角盒严格口径）不合格必须换轮。日志翻转计数只是触发器，判生死看成品体检（`blender-face-orientation-audit` 及其脚本）。
 
 ## Working script
 
