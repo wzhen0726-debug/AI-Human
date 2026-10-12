@@ -273,6 +273,11 @@ def step_01a(rebuild_only=False):
     t0 = time.time()
     if not check("01高模修复/输出/01_highpoly_repair.blend"):
         print(f"{R}✗ 缺少输入, 先运行 01{W}"); return False
+    # 0. 3DDFA 眼区语义锚前置步(2026-10-12 集成): 渲染→3DDFA推理→反投影 动态生成 iris_3ddfa.json
+    #    按来源 blend md5 门控(匹配跳过); EYE_3DDFA_REGEN=0 关(回退离线json); 旧json自动备份 logs/_3ddfa_regen/
+    if not run_bg([sys.executable, os.path.join(S01A, "regen_iris_3ddfa.py")], "01a_0_3ddfa",
+                  "⓪ 3DDFA 眼区锚再生(md5门控)", done_mark="REGEN_DONE"):
+        summary("环节 01a", False, t0, []); return False
     markers_blend = os.path.join(M01A, "01A_markers_eyelid.blend")
     if rebuild_only:
         if not os.path.exists(markers_blend):
