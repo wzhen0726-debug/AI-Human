@@ -152,28 +152,34 @@ def fix_diffuse_png(path, mesh_objects=None, high_object=None, reach_mm=20.0, ca
     fixed = a0.copy(); fill_m = np.zeros((H, W), bool); done = 0
     for a_i, si in enumerate(idx_spill):
         donor = clean_idx[int(np.atleast_1d(iq)[a_i])]
-        tri_s = P[si][valid[si]][:3]
-        tri_d = P[donor][valid[donor]][:3]
-        if len(tri_s) < 3 or len(tri_d) < 3:
+        poly_s = P[si][valid[si]]        # V2.1 P0-1: 取全部有效UV(3或4), 四边形不再丢半个面
+        poly_d = P[donor][valid[donor]]
+        if len(poly_s) < 3 or len(poly_d) < 3:
             continue
-        res = _ras_uv_tri(tri_s, W, H)
-        if res is None:
-            continue
-        gy, gx, (w0, w1, w2) = res
-        du = w0[:, None] * tri_d[0] + w1[:, None] * tri_d[1] + w2[:, None] * tri_d[2]
-        dpx = np.clip((du[:, 0] * W).astype(np.int32), 0, W - 1)
-        dpy = np.clip(((1.0 - du[:, 1]) * H).astype(np.int32), 0, H - 1)
-        src = a0[dpy, dpx]
-        good = ~empty[dpy, dpx]
-        if int(good.sum()) < 4:
-            continue
-        if good.all():
-            fixed[gy, gx] = src
-        else:
-            med = np.median(src[good], axis=0).astype(np.uint8)
-            fixed[gy, gx] = np.where(good[:, None], src, med)
-        fill_m[gy, gx] = True
-        done += 1
+        _hit = False
+        for t in range(len(poly_s) - 2):     # 扇形三角化 (0,t+1,t+2), quad→2三角(同 loop_triangles)
+            tri_s = poly_s[[0, t + 1, t + 2]]
+            tri_d = poly_d[[0, t + 1, t + 2]] if len(poly_d) >= t + 3 else poly_d[:3]  # donor同扇形索引一一对应
+            res = _ras_uv_tri(tri_s, W, H)
+            if res is None:
+                continue
+            gy, gx, (w0, w1, w2) = res
+            du = w0[:, None] * tri_d[0] + w1[:, None] * tri_d[1] + w2[:, None] * tri_d[2]
+            dpx = np.clip((du[:, 0] * W).astype(np.int32), 0, W - 1)
+            dpy = np.clip(((1.0 - du[:, 1]) * H).astype(np.int32), 0, H - 1)
+            src = a0[dpy, dpx]
+            good = ~empty[dpy, dpx]
+            if int(good.sum()) < 4:
+                continue
+            if good.all():
+                fixed[gy, gx] = src
+            else:
+                med = np.median(src[good], axis=0).astype(np.uint8)
+                fixed[gy, gx] = np.where(good[:, None], src, med)
+            fill_m[gy, gx] = True
+            _hit = True
+        if _hit:
+            done += 1
     before = int(fill_m.sum())
     if before == 0:
         return dict(before=0, after=0, note="候选面栅格化无 texel, 跳过 v1")
@@ -359,15 +365,21 @@ def fix_diffuse_mesh_guided(png_path, mesh_objects, k_sigma=4.0, cluster_frac=0.
         if x1 <= x0 or y1 <= y0:
             continue
         gx, gy = np.meshgrid(np.arange(x0, x1 + 1) + 0.5, np.arange(y0, y1 + 1) + 0.5)
-        v0x, v0y = px[1] - px[0], py[1] - py[0]
-        v1x, v1y = px[2] - px[0], py[2] - py[0]
-        den = v0x * v1y - v1x * v0y
-        if abs(den) < 1e-12:
+        # V2.1 P0-1: quad 扇形拆分 (0,t+1,t+2) 两三角取并 — 旧版只填 px[0..2] 半面对角三角
+        m = np.zeros(gx.shape, bool)
+        for t in range(len(tri) - 2):
+            i0, i1, i2 = 0, t + 1, t + 2
+            v0x, v0y = px[i1] - px[i0], py[i1] - py[i0]
+            v1x, v1y = px[i2] - px[i0], py[i2] - py[i0]
+            den = v0x * v1y - v1x * v0y
+            if abs(den) < 1e-12:
+                continue
+            wx, wy = gx - px[i0], gy - py[i0]
+            u = (wx * v1y - v1x * wy) / den
+            v = (v0x * wy - wx * v0y) / den
+            m |= (u >= -0.02) & (v >= -0.02) & (u + v <= 1.02)
+        if not m.any():
             continue
-        wx, wy = gx - px[0], gy - py[0]
-        u = (wx * v1y - v1x * wy) / den
-        v = (v0x * wy - wx * v0y) / den
-        m = (u >= -0.02) & (v >= -0.02) & (u + v <= 1.02)
         fixed[y0:y1 + 1, x0:x1 + 1][m] = c.astype(np.uint8)
         fillm[y0:y1 + 1, x0:x1 + 1] |= m
     npx = int(fillm.sum())
@@ -535,15 +547,21 @@ def fix_diffuse_dark_streaks(png_path, mesh_objects, k_sigma=4.0, skin_frac=0.85
         if x1 <= x0 or y1 <= y0:
             continue
         gx, gy = np.meshgrid(np.arange(x0, x1 + 1) + 0.5, np.arange(y0, y1 + 1) + 0.5)
-        v0x, v0y = px[1] - px[0], py[1] - py[0]
-        v1x, v1y = px[2] - px[0], py[2] - py[0]
-        den = v0x * v1y - v1x * v0y
-        if abs(den) < 1e-12:
+        # V2.1 P0-1: quad 扇形拆分, 两三角 mask 取并(三角形路径与旧版逐位同)
+        m = np.zeros(gx.shape, bool)
+        for t in range(len(tri) - 2):
+            i0, i1, i2 = 0, t + 1, t + 2
+            v0x, v0y = px[i1] - px[i0], py[i1] - py[i0]
+            v1x, v1y = px[i2] - px[i0], py[i2] - py[i0]
+            den = v0x * v1y - v1x * v0y
+            if abs(den) < 1e-12:
+                continue
+            wx, wy = gx - px[i0], gy - py[i0]
+            u = (wx * v1y - v1x * wy) / den
+            v = (v0x * wy - wx * v0y) / den
+            m |= (u >= -0.02) & (v >= -0.02) & (u + v <= 1.02)
+        if not m.any():
             continue
-        wx, wy = gx - px[0], gy - py[0]
-        u = (wx * v1y - v1x * wy) / den
-        v = (v0x * wy - wx * v0y) / den
-        m = (u >= -0.02) & (v >= -0.02) & (u + v <= 1.02)
         fixed[y0:y1 + 1, x0:x1 + 1][m] = c.astype(np.uint8)
         fillm[y0:y1 + 1, x0:x1 + 1] |= m
     npx = int(fillm.sum())
@@ -861,15 +879,21 @@ def fix_diffuse_cloth_faces(png_path, mesh_objects, high_blend, tol_mm_frac=0.00
         if x1 <= x0 or y1 <= y0:
             continue
         gx, gy = np.meshgrid(np.arange(x0, x1 + 1) + 0.5, np.arange(y0, y1 + 1) + 0.5)
-        v0x, v0y = px[1] - px[0], py[1] - py[0]
-        v1x, v1y = px[2] - px[0], py[2] - py[0]
-        den = v0x * v1y - v1x * v0y
-        if abs(den) < 1e-12:
+        # V2.1 P0-1: quad 扇形拆分, 两三角 mask 取并(三角形路径与旧版逐位同)
+        m = np.zeros(gx.shape, bool)
+        for t in range(len(tri) - 2):
+            i0, i1, i2 = 0, t + 1, t + 2
+            v0x, v0y = px[i1] - px[i0], py[i1] - py[i0]
+            v1x, v1y = px[i2] - px[i0], py[i2] - py[i0]
+            den = v0x * v1y - v1x * v0y
+            if abs(den) < 1e-12:
+                continue
+            wx, wy = gx - px[i0], gy - py[i0]
+            u = (wx * v1y - v1x * wy) / den
+            v = (v0x * wy - wx * v0y) / den
+            m |= (u >= -0.02) & (v >= -0.02) & (u + v <= 1.02)
+        if not m.any():
             continue
-        wx, wy = gx - px[0], gy - py[0]
-        u = (wx * v1y - v1x * wy) / den
-        v = (v0x * wy - wx * v0y) / den
-        m = (u >= -0.02) & (v >= -0.02) & (u + v <= 1.02)
         sub = fixed[y0:y1 + 1, x0:x1 + 1]
         sr, sg, sb = sub[:, :, 0].astype(int), sub[:, :, 1].astype(int), sub[:, :, 2].astype(int)
         skin_px = (sr > 140) & (sg > 100) & (sb > 70) & (sr > sg)

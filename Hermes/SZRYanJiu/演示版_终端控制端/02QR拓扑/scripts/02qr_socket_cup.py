@@ -46,8 +46,10 @@ _tag = bm.faces.layers.int.new("qrbowl")
 # (旧版 make_eye_cup 验证: 单极点三角扇有放射条纹, n-gon 盖干净; 碗底被眼球挡住, 平整度不重要)
 # (SCALES 由 _SCALES 取代, 见下)
 
+_EYE_C3 = []   # V2.1 P1-4: 收集眼心(收尾封口限眼区用)
 for side in ("L", "R"):
     c3 = Vector(tuple(float(x) for x in J[side]['center']))
+    _EYE_C3.append(c3)
     # v19: 轴心 = 轮廓自身中心(x,z) — 不再依赖眼球
     bx, bz = float(c3.x), float(c3.z)
     # 找该眼孔的开放边界环
@@ -243,7 +245,11 @@ for side in ("L", "R"):
 
 # ---- 收尾: 关掉碗与孔环交界处残余的开放边(建面时个别quad异常被跳过) ----
 # ❌禁止全局 recalc_face_normals: 按连通岛整体重定向 → 会把腿等区域翻掉(实测245面翻转, 用户截图报过)
-_oe_left = [e for e in bm.edges if len(e.link_faces) == 1]
+# V2.1 P1-4: 收尾封口【限眼区邻域】(眼心XZ 50mm内) — 旧版抓全网格开放边, 衣领/袖口≤8边小开口会被误封
+_oe_all = [e for e in bm.edges if len(e.link_faces) == 1]
+_oe_left = [e for e in _oe_all
+            if min(((e.verts[0].co - _c).xz.length for _c in _EYE_C3), default=1e9) < 0.05]
+print(f"[P1-4] 收尾封口: 全网格开放边 {len(_oe_all)} → 限眼区 {len(_oe_left)} (眼区外 {len(_oe_all) - len(_oe_left)} 条不动)")
 if _oe_left:
     try:
         bmesh.ops.holes_fill(bm, edges=_oe_left, sides=8)
