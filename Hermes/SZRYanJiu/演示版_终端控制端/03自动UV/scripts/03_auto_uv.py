@@ -49,47 +49,60 @@ def P(*a): print(*a, flush=True)
 
 # ================= 测量 =================
 def uv_arrays(mesh):
+    # V2.1 向量化(等价实证 logs/_v21/sbox_eq/ab3_multi.py: 5个UV状态 pts/areas/islands/cv 全逐位bit同):
+    #   shoelace 面积按 loop 批量; next-loop 映射由 loop_start/loop_total 构造;
+    #   np.add.reduceat 复刻原 np.dot 的面内顺序求和 → 逐位等价, 16万面 2.69s→0.09s.
     me = mesh.data
     uvl = me.uv_layers.active.data
     pts = np.empty(len(uvl) * 2); uvl.foreach_get("uv", pts); pts = pts.reshape(-1, 2)
-    areas = np.empty(len(me.polygons))
-    for i, p in enumerate(me.polygons):
-        q = pts[np.array(p.loop_indices)]
-        x, y = q[:, 0], q[:, 1]
-        areas[i] = 0.5 * abs(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))
+    npoly = len(me.polygons)
+    ls = np.empty(npoly, np.int64); lt = np.empty(npoly, np.int64)
+    me.polygons.foreach_get("loop_start", ls); me.polygons.foreach_get("loop_total", lt)
+    li = np.arange(len(pts)); fol = np.repeat(np.arange(npoly), lt); k = li - ls[fol]
+    nxt = np.where(k == lt[fol] - 1, ls[fol], li + 1)   # 面内下一 loop(末尾回卷 loop_start)
+    S1 = np.add.reduceat(pts[:, 0] * pts[nxt, 1], ls)   # Σ x_l·y_next
+    S2 = np.add.reduceat(pts[:, 1] * pts[nxt, 0], ls)   # Σ y_l·x_next
+    areas = 0.5 * np.abs(S1 - S2)
     return pts, areas
 
 def uv_islands(mesh, pts, areas):
-    """UV连通分量(共享边且两端UV相等) → [(面数, 面积, bbox边长)] 按面积降序"""
+    """UV连通分量(共享边且两端UV相等) → [(面数, 面积, bbox边长)] 按面积降序.
+    V2.1 向量化: 边键/loop→vertex 批量取, union-find 与 UV 相等判定逻辑不变;
+      groups 按各分量最小面索引插入(与原版遍历序一致) → 输出逐位等价(ab3_multi 实证)."""
     me = mesh.data
-    parent = list(range(len(me.polygons)))
+    npoly = len(me.polygons)
+    ls = np.empty(npoly, np.int64); lt = np.empty(npoly, np.int64)
+    me.polygons.foreach_get("loop_start", ls); me.polygons.foreach_get("loop_total", lt)
+    nv = len(me.vertices)
+    lvi = np.empty(len(me.loops), np.int64); me.loops.foreach_get("vertex_index", lvi)
+    li = np.arange(len(lvi)); fol = np.repeat(np.arange(npoly), lt); k = li - ls[fol]
+    nxt = np.where(k == lt[fol] - 1, ls[fol], li + 1)
+    v1 = lvi[li]; v2 = lvi[nxt]; swap = v1 > v2
+    va = np.where(swap, v2, v1); vb = np.where(swap, v1, v2)
+    la = np.where(swap, nxt, li); lb = np.where(swap, li, nxt)   # 顶点序归一后的两端 loop
+    key = va.astype(np.int64) * (nv + 1) + vb.astype(np.int64)
+    order = np.argsort(key, kind="stable"); ks = key[order]
+    _uniq, start, cnt = np.unique(ks, return_index=True, return_counts=True)
+    parent = list(range(npoly))
     def find(a):
         while parent[a] != a:
             parent[a] = parent[parent[a]]; a = parent[a]
         return a
-    edge_map = {}
-    for i, p in enumerate(me.polygons):
-        idx = list(p.loop_indices)
-        for k in range(len(idx)):
-            l1, l2 = idx[k], idx[(k + 1) % len(idx)]
-            v1, v2 = me.loops[l1].vertex_index, me.loops[l2].vertex_index
-            key = (v1, v2) if v1 < v2 else (v2, v1)
-            ua, ub = pts[l1].copy(), pts[l2].copy()
-            if v1 > v2: ua, ub = ub, ua
-            edge_map.setdefault(key, []).append((i, ua, ub))
-    for lst in edge_map.values():
-        if len(lst) == 2:
-            (f1, a1, b1), (f2, a2, b2) = lst
-            if abs(a1[0]-a2[0]) < EPS and abs(a1[1]-a2[1]) < EPS and abs(b1[0]-b2[0]) < EPS and abs(b1[1]-b2[1]) < EPS:
-                r1, r2 = find(f1), find(f2)
-                if r1 != r2: parent[r2] = r1
+    for u0 in start[cnt == 2]:        # 恰好两面共享边(非流形>2 跳过, 同原版 len(lst)==2)
+        i1, i2 = order[u0], order[u0 + 1]
+        f1, f2 = fol[i1], fol[i2]
+        pa1, pb1, pa2, pb2 = pts[la[i1]], pts[lb[i1]], pts[la[i2]], pts[lb[i2]]
+        if (abs(pa1[0]-pa2[0]) < EPS and abs(pa1[1]-pa2[1]) < EPS
+                and abs(pb1[0]-pb2[0]) < EPS and abs(pb1[1]-pb2[1]) < EPS):
+            r1, r2 = find(int(f1)), find(int(f2))
+            if r1 != r2: parent[r2] = r1
     groups = {}
-    for i in range(len(me.polygons)):
+    for i in range(npoly):
         groups.setdefault(find(i), []).append(i)
     out = []
     for fs in groups.values():
         a = float(areas[np.array(fs)].sum())
-        idxs = np.concatenate([me.polygons[f].loop_indices[:] for f in fs])
+        idxs = np.concatenate([np.arange(ls[f], ls[f] + lt[f]) for f in fs])
         q = pts[idxs]
         side = float(max(q[:, 0].max() - q[:, 0].min(), q[:, 1].max() - q[:, 1].min()))
         out.append((len(fs), a, side))
@@ -120,7 +133,10 @@ def empty_square(pts):
     return side, side * side
 
 def density_cv(me, uva):
-    rat = np.array([uva[i] / p.area for i, p in enumerate(me.polygons) if uva[i] > 1e-12 and p.area > 1e-12])
+    # V2.1 向量化: foreach_get 取3D面积 + 布尔掩码(等价实证 ab3: cv bit同 0.10484874038570209)
+    a3d = np.empty(len(me.polygons)); me.polygons.foreach_get("area", a3d)
+    mask = (uva > 1e-12) & (a3d > 1e-12)
+    rat = uva[mask] / a3d[mask]
     return float(np.std(rat) / max(np.median(rat), 1e-12))
 
 # ================= 折叠(UV重叠)检测与修复 (v4, 2026-09-18晚间) =================
