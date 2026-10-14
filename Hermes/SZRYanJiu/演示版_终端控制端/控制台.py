@@ -57,7 +57,7 @@ NOISE = ("register_class", "Registered", "register()", "WARN", "Warning", "bpy_t
          "blender.exe", "ModuleNotFound", "    ~~~", "import bpy", "self.", "mod.register")
 
 # ============ 命令提示常驻 ============
-CMD_HINT = (f"{D}命令:{W} {G}01{W}修复 {G}01a{W}眼窝 {G}01r{W}眼窝重建(免手调) {G}02{W}拓扑+碗+眼球 {G}03{W}UV {G}04{W}烘焙 {G}05{W}绑定 {G}06{W}GLB "
+CMD_HINT = (f"{D}命令:{W} {G}01{W}修复 {G}01a{W}眼窝 {G}01r{W}眼窝重建(免手调) {G}02{W}拓扑+碗+眼球 {G}03{W}UV {G}04{W}烘焙 {G}05{W}绑定 {G}05r{W}绑定重建(免手调) {G}06{W}GLB "
             f"{G}all{W}全流程 {G}clean{W}清理 {G}status{W}状态 {G}quit{W}退出")
 
 def show_hint():
@@ -412,10 +412,14 @@ def step_04():
     summary("环节 04 纹理烘焙", ok, t0, [f"{D}贴图{W} 4096×4096 Diffuse + Normal"])
     return ok
 
-def step_05():
+def step_05(rebuild_only=False):
+    """rebuild_only=True (命令 05r): 跳过①AI打点+GUI手调, 直接用现有 01_AI打点.blend 跑 step2~retarget —
+    适用于"手调已完成, 只想用新代码重新生成绑定"的场景, 无需重做GUI。"""
     divider()
-    print(f"{Y}{BOLD}▶ 环节 05 · 骨骼绑定与动作重定向{W}")
-    print(f"{D}  细分: AI打点→GUI手调→go_detect→提取55骨+权重+眼球→rest补偿重定向{W}\n")
+    _tag = "05r" if rebuild_only else "05"
+    _mode = " (重建: 跳过AI打点/GUI, 用现有手调markers)" if rebuild_only else ""
+    print(f"{Y}{BOLD}▶ 环节 {_tag} · 骨骼绑定与动作重定向{_mode}{W}")
+    print(f"{D}  细分: {'go_detect→提取55骨+权重+眼球→rest补偿重定向' if rebuild_only else 'AI打点→GUI手调→go_detect→提取55骨+权重+眼球→rest补偿重定向'}{W}\n")
     t0 = time.time()
     if not check("04纹理烘焙/输出/04_bake.blend"):
         print(f"{R}✗ 缺少输入, 先运行 04{W}"); return False
@@ -426,14 +430,19 @@ def step_05():
                     "05骨骼绑定/ARP新版测试_20260831/03B_骨骼标准化.blend",
                     "05骨骼绑定/ARP新版测试_20260831/04_动作测试.blend"):
         summary("环节 05", False, t0, []); return False
-    # 1. AI打点
-    if not run_blender(os.path.join(S05, "step1_ai_markers.py"), "05_1",
-                       "① ARP AI 自动打点(17关节标记)", done_mark="STEP1_DONE"):
-        summary("环节 05", False, t0, []); return False
-    # 2. 弹指南+GUI手调
-    md = os.path.join(B05, "点位指南.md")
-    gui_adjust(os.path.join(B05, "01_AI打点.blend"),
-               "手动微调17个关节标记点 (镜像约束自动同步左右)", md=md)
+    # 1. AI打点 + 2. GUI手调 (05r 跳过: 直接用现有 01_AI打点.blend)
+    if not rebuild_only:
+        if not run_blender(os.path.join(S05, "step1_ai_markers.py"), "05_1",
+                           "① ARP AI 自动打点(17关节标记)", done_mark="STEP1_DONE"):
+            summary("环节 05", False, t0, []); return False
+        # 2. 弹指南+GUI手调
+        md = os.path.join(B05, "点位指南.md")
+        gui_adjust(os.path.join(B05, "01_AI打点.blend"),
+                   "手动微调17个关节标记点 (镜像约束自动同步左右)", md=md)
+    else:
+        if not os.path.exists(os.path.join(B05, "01_AI打点.blend")):
+            print(f"{R}✗ 缺少手调markers件(01_AI打点.blend), 请用 05 (含GUI手调){W}")
+            summary("环节 05r", False, t0, []); return False
     # 3. go_detect
     if not run_blender(os.path.join(S05, "step2_go_detect.py"), "05_2",
                        "② ARP go_detect 生成参考骨架", done_mark="STEP2_DONE"):
@@ -542,12 +551,12 @@ def clean_output(target=None):
         n += _wipe(targets[t])                                              # ① 输出/ 递归清空(保留手调文件)
         n += _wipe(os.path.join(os.path.dirname(targets[t]), "_中间"))       # ② _中间/ 一并清(防下游读旧件)
     n += _wipe(os.path.join(BASE, "01a眼窝眼球", "screenshots"))
-    # V2.1 P1-1(用户决定 2026-10-14): clean all 一并清 05 ARP 运行产物(含 01_AI打点.blend) —
-    #   此前只清 输出/ 与 *.blend1, ARP 目录 5 件运行产物残留 → clean 后 status 仍绿灯、06 吃旧件。
-    #   权威备份已在 _备份/正式基线V2_20261012/05骨骼绑定/(含手调 01_AI打点), 完整性已彻查(58件对账通过)。
+    # V2.1 P1-1(用户决定 2026-10-14, 10-14 补充): clean all 清 05 ARP 运行产物 —
+    #   此前只清 输出/ 与 *.blend1, ARP 目录 4 件运行产物残留 → clean 后 status 仍绿灯、06 吃旧件。
+    #   ⚠ 01_AI打点.blend 承载用户 GUI 手调17点 → **不删**(用户拍板保护; 权威备份另在 _备份/正式基线V2_20261012/05骨骼绑定/)。
     #   保留: scripts/、点位指南.md、*_手调权威备份.blend、历史带时间戳备份(用户数据)。
     _ARP = os.path.join(BASE, "05骨骼绑定", "ARP新版测试_20260831")
-    for _f in ("01_AI打点.blend", "02_go_detect骨架.blend", "03_骨骼绑定.blend",
+    for _f in ("02_go_detect骨架.blend", "03_骨骼绑定.blend",
                "03B_骨骼标准化.blend", "04_动作测试.blend"):
         n += _try_rm(os.path.join(_ARP, _f))
     import glob as _glob, shutil as _sh
@@ -598,7 +607,8 @@ def status():
     show_hint()
 
 STEPS = {"01": step_01, "01a": step_01a, "01r": lambda: step_01a(rebuild_only=True),
-         "02": step_02, "03": step_03, "04": step_04, "05": step_05, "06": step_06}
+         "02": step_02, "03": step_03, "04": step_04, "05": step_05,
+         "05r": lambda: step_05(rebuild_only=True), "06": step_06}
 
 def main():
     banner()
