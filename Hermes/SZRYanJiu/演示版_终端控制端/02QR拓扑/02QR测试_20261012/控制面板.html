@@ -1,0 +1,24 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  .qp{font-size:13px;color:var(--foreground);line-height:1.5}
+  .qp .t{font-weight:600;margin-bottom:6px}
+  .qp .st{color:var(--muted-foreground);margin-bottom:10px;white-space:pre-line}
+  .qp .btns{display:flex;gap:8px;flex-wrap:wrap}
+  .qp button{padding:6px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--foreground);cursor:pointer;font-size:13px}
+  .qp button:hover{border-color:var(--accent);color:var(--accent)}
+  .qp .hint{margin-top:9px;color:var(--muted-foreground);font-size:12px}
+</style>
+<div class="qp">
+  <div class="t">02QR 测试台 · 控制面板</div>
+  <div class="st">状态：沙箱跑通 ✓（10-12 16:04 · 75s）
+161,764 面 · 四边 99.96% · 非流形 0 · 自交对 0 · 三角 323,469 ✓
+10-13：按钮 .bat 已修复并实测通过，可双击 ✓
+正式产物零改动（md5 逐字节核验）。</div>
+  <div class="btns">
+    <button data-hermes-send="跑一次02QR沙箱测试（V2数据原样，只跑QR一步）">▶ 跑一次沙箱测试</button>
+    <button data-hermes-send="核验02QR沙箱最新一轮：给指标并与QR基线对比">📊 核验最新结果</button>
+    <button data-hermes-send="打开02QR测试台文件夹">📂 打开文件夹</button>
+  </div>
+  <div class="hint">产物只落 沙箱/，绝不碰正式产物 · 单跑约几分钟 · 别与正式管线同时跑（引擎全局串行）</div>
+</div>

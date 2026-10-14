@@ -1,0 +1,30 @@
+{
+ "object": "tripo_node_89f96507-4268-42bd-8c27-bf6892366069_QR",
+ "verts": 161772,
+ "faces": 161764,
+ "quads": 161705,
+ "tris": 59,
+ "ngons": 0,
+ "quad_pct": 99.96,
+ "non_manifold_edges": 0,
+ "boundary_edges": 81,
+ "degenerate_faces": 0,
+ "bbox_units": [
+  1.808395,
+  0.313049,
+  1.801359
+ ],
+ "bbox_mm_x1000": [
+  1808.395,
+  313.049,
+  1801.359
+ ],
+ "edge_len_mean": 0.003627,
+ "edge_len_median": 0.003669,
+ "edge_len_min": 0.000215,
+ "edge_len_max": 0.014395,
+ "selfint_pairs": 0,
+ "selfint_source": "selfint_clean.py",
+ "input": "E:/WangZhen_Project/AI/ShuZiRen/Hermes/SZRYanJiu/演示版_终端控制端/02QR拓扑/02QR测试_20261012/沙箱/run_20261012_160317/02QR拓扑/输出/02_qr_150k.fbx",
+ "quadriflow_target": null
+}

@@ -1,0 +1,117 @@
+Traceback (most recent call last):
+  File "D:\Program Files\Blender Foundation\Blender 5.1\5.1\scripts\modules\addon_utils.py", line 515, in enable
+    mod.register()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py", line 42, in register
+    from .exporter import register_exporter
+  File "C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\exporter.py", line 2, in <module>
+    import bpy_types
+ModuleNotFoundError: No module named 'bpy_types'
+00:01.843  blend            | Read blend: "E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端\01a眼窝眼球\_中间\01_1_eye_socket_qr.blend"
+00:02.234  blend            | Read blend: "E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端\01a眼窝眼球\_中间\01_1_eye_socket_qr.blend"
+Exception in module register(): C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\better_fbx\__init__.py
+Reloading external rigs...
+Reloading external metarigs...
+Extra Pies: Register built-in pies for use with non-standard Keymap.
+register_class(...):
+警告: 'List_View' 不包含带有前缀和后缀的 '_UL_'
+Registered B2RUVL 0.1.6.
+Registered MACHIN3tools 1.13.8.DeusEx with 2 tools, 0 pie menus
+ARP首选项已成功加载！
+更新骨架预设…
+Zen UV Library: REGISTERED.
+============================================================
+QR Auto - Blender 5.1
+============================================================
+Engine: C:\Users\Liyunzhong\AppData\Roaming\Blender Foundation\Blender\5.1\extensions\user_default\quadremesher\EngineWin\xremesh.exe
+Engine exists: True
+
+1. Loading: E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端\01a眼窝眼球\_中间\01_1_eye_socket_qr.blend
+信息: 已另存为 "02QR输入_眼窝材质分区_高模.blend"
+1.5 高模分区检查副本: E:/WangZhen_Project/AI/ShuZiRen/Hermes/SZRYanJiu/演示版_终端控制端/02QR拓扑/02QR测试_20261012/沙箱/run_20261012_160317\02QR拓扑\_中间\02QR输入_眼窝材质分区_高模.blend
+2. Selected: tripo_node_89f96507-4268-42bd-8c27-bf6892366069 (1,932,688 faces)
+  Adaptive weld dist: 0.000108 (height=1.801)
+2.5 Cleanup: 968,372 -> 968,368 verts (welded 4), filled 0 hole faces
+2.6 材质分区: 只有1种材质 — 空腔型眼窝无分区, 按 UseMaterialIds=0 运行(用户已验证参数)
+2.7 ⚠ 无EyeSocket槽(空腔型眼窝) — 内外真值缓存为空, 8.5系材质传递将自动跳过
+2.7 高模rim环内外真值缓存: 碗面(rim环内)=0面/1932681 BVH就绪 bbox对角线=2573mm
+2.8 rim 环恢复已关闭(QR_RIM_RESTORE=0) → 8.9 跳过
+2.85 输入级旋钮: 关闭(QR_DENSITY_MAP=0, QR_RIM_COARSEN_MM=0)
+
+3. Exporting FBX...
+
+FBX export starting... 'C:\\Users\\LIYUNZ~1\\AppData\\Local\\Temp\\Exoside\\QuadRemesher\\Blender\\inputMesh.fbx'
+export finished in 3.8144 sec.
+   FBX: 55.3 MB
+
+4. Writing settings...
+   Settings written
+[AB18e] QR 重抽择优: 最多 3 轮 (QR_DRAW_MAX, QR_DRAW_RETRY=1)
+
+5. Starting xremesh...
+   PID: 13060  (stdout→C:\Users\LIYUNZ~1\AppData\Local\Temp\Exoside\QuadRemesher\Blender\xremesh_stdout.txt)
+
+6. Waiting...
+   Progress: 17% (2s)
+   Progress: 20% (4s)
+   Progress: 22% (6s)
+   Progress: 25% (8s)
+   Progress: 34% (10s)
+   Progress: 39% (12s)
+   Progress: 40% (14s)
+   Progress: 41% (18s)
+   Progress: 46% (20s)
+   Progress: 47% (22s)
+   Progress: 100% (28s)
+
+   Return code: 0 (28s)
+7. Result: 2.9 MB
+
+8. Importing...
+FBX version: 7400
+   旋转归零: (-1.6292067073209182e-07, 0.0, 0.0) -> (0.0, 0.0, 0.0)
+   QR mesh: tripo_node_89f96507-4268-42bd-8c27-bf6892366069_QR, 161,817 faces
+8.5 Cleaned original mesh
+8.5b ⚠ QR输出无EyeSocket槽, 跳过材质传递
+   ⚠ QR未保留材质分区(1槽), 无法生成检查副本 — UseMaterialIds可能未生效!
+   材质槽=1(QR未保留分区, 无需合并)
+[selfint_clean] 尺寸活性: bbox_max/基准=1.0000 → 聚类6.00mm 焊接上限5.00mm 兜底0.300mm
+[自交清理] 第1轮: 全模型自交对=77
+[自交清理] 第1轮: 聚类 5 处
+   [1/5] 中心=[-87.6  92.6 691.4]mm 30→0 方式=微焊接(3.0mm) ✓
+   [2/5] 中心=[-210.4  101.1 1369.5]mm 22→0 方式=微焊接(1.5mm) ✓
+   [3/5] 中心=[-131.7   86.   692.6]mm 19→0 方式=微焊接(1.5mm) ✓
+   [4/5] 中心=[192.9 -18.4 692.5]mm 4→0 方式=微焊接(2.0mm) ✓
+   [5/5] 中心=[175.3  38.9 695.6]mm 2→0 方式=微焊接(0.8mm) ✓
+[自交清理] 第2轮: 全模型自交对=0
+[绕向v2] 面=161,764 坏边 0→0 改变面=0 依据=参考 参考不一致 67→67 ✓
+[自交清理] 完成: 残留自交对=0 翻转面=0 面 161,817→161,764 顶点 161,844→161,772
+[自交清理] 卫生 前={'面数': 161817, '顶点数': 161844, '边界边': 81, '非流形边': 1, '退化面': 0, '重复面': 0} 后={'面数': 161764, '顶点数': 161772, '边界边': 81, '非流形边': 0, '退化面': 0, '重复面': 0}
+[8.8] 自交清理: {"对象": "tripo_node_89f96507-4268-42bd-8c27-bf6892366069_QR", "簇": [{"轮": 1, "中心mm": [-87.6, 92.6, 691.4], "自交对": 30, "方式": "微焊接", "焊接mm": 3.0, "残留": 0}, {"轮": 1, "中心mm": [-210.4, 101.1, 1369.5], "自交对": 22, "方式": "微焊接", "焊接mm": 1.5, "残留": 0}, {"轮": 1, "中心mm": [-131.7, 86.0, 692.6], "自交对": 19, "方式": "微焊接", "焊接mm": 1.5, "残留": 0}, {"轮": 1, "中心mm": [192.9, -18.4, 692.5], "自交对": 4, "方式": "微焊接", "焊接mm": 2.0, "残留": 0}, {"轮": 1, "中心mm": [175.3, 38.9, 695.6], "自交对": 2, "方式": "微焊接", "焊接mm": 0.8, "残留": 0}], "残留": 0, "清理前": {"面数": 161817, "顶点数": 161844, "边界边": 81, "非流形边": 1, "退化面": 0, "重复面": 0}, "翻转面数": 0, "绕向报告": {"面数": 161764, "连通块数": 1, "不可定向冲突边": 0, "坏边_修复前": 0, "实际改变面数": 0, "连通块": [{"面数": 161764, "奇偶1面": 0, "整体翻转": false, "依据": "参考", "得分": 2.079181, "参考可信面": 161764}], "参考_可信面": 161764, "参考_不一致_修复前": 67, "参考_模糊_修复前": 26, "坏边_修复后": 0, "参考_不一致_修复后": 67, "参考_模糊_修复后": 26, "坏边残留": 0, "参考不一致残留": 67}, "清理后": {"面数": 161764, "顶点数": 161772, "边界边": 81, "非流形边": 0, "退化面": 0, "重复面": 0}}
+[绕向体检] 面数=161764 坏边=0 不可定向冲突边=0 少数派面数=0 连通块数=1 参考不一致=67 参考模糊=26 参考可信面=161764 参考不一致(宽容)=1
+[8.8b] 面朝向体检✓: 坏边=0 少数派面=0 与参考不一致=1(焊接缝二义, ≤阈值16, 不阻断) (参考可信面=161764 折缝模糊类=26 连通块=1)
+8.9 rim 恢复: 跳过(QR_RIM_RESTORE=0 或无高模 rim 真值)
+[AB18e] 轮次 1/3: 自交残留=0 非流形=0 三角=323,469 边界=81 用时=58s → 合格(采用该轮, 停止重抽)
+[AB18e] 自检摘要: 采用第1轮/共执行1轮 | 自交残留=0 | 非流形边=0 | 三角=323,469 | 边界边=81
+信息: 已另存为 "02_qr_150k.blend"
+9. Saved: E:/WangZhen_Project/AI/ShuZiRen/Hermes/SZRYanJiu/演示版_终端控制端/02QR拓扑/02QR测试_20261012/沙箱/run_20261012_160317\02QR拓扑\_中间\02_qr_150k.blend
+
+FBX export starting... 'E:/WangZhen_Project/AI/ShuZiRen/Hermes/SZRYanJiu/演示版_终端控制端/02QR拓扑/02QR测试_20261012/沙箱/run_20261012_160317\\02QR拓扑\\输出\\02_qr_150k.fbx'
+export finished in 0.1851 sec.
+    Exported: E:/WangZhen_Project/AI/ShuZiRen/Hermes/SZRYanJiu/演示版_终端控制端/02QR拓扑/02QR测试_20261012/沙箱/run_20261012_160317\02QR拓扑\输出\02_qr_150k.fbx
+
+=== Verification ===
+Faces: 161,817
+Quads: 161,705 (99.9%)
+Tris: 59
+  Boundary edges(边界边): 81  —— 眼洞开口属正常; 非流形应看 >2 面边数
+As triangles: 323,469
+✓ 三角面达标: 323,469 ≤ 350,000
+
+DONE
+Unregistered B2RUVL 0.1.6.
+Unregistered MACHIN3tools 1.13.8.DeusEx.
+Zen UV Library: UNREGISTERED.
+Blender 5.1.0 (hash adfe2921d5f3 built 2026-03-17 01:37:32)
+
+Blender quit
