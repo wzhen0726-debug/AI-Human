@@ -43,7 +43,9 @@ PREF = "mixamorig:"
 # ---------- 打开健康骨架(03, 结构不动) ----------
 bpy.ops.wm.open_mainfile(filepath=RIG)
 arm = bpy.data.objects.get('MixamoSkeleton')
-body = next(o for o in bpy.data.objects if o.type=='MESH' and o.name.startswith('tripo'))
+body = max((o for o in bpy.data.objects if o.type=='MESH'
+                and not o.name.startswith(('Eye002', 'cs_'))),
+               key=lambda o: len(o.data.vertices))  # V2.1 P0-2: 取最大网格(不再硬编码'tripo', 兼容混元等)
 eyes = [o for o in bpy.data.objects if o.name.startswith('Eye002')]
 print(f"输入骨架: {len(arm.data.bones)}骨 连接骨={sum(1 for b in arm.data.bones if b.use_connect)} "
       f"身体顶点组={len(body.vertex_groups)} 眼球={[e.name for e in eyes]}")
@@ -314,36 +316,10 @@ for anim_name, fname in ANIMS:
         for side in ('L', 'R'):
             if ankle_x[side]:
                 print(f"   {side}腿着地踝(信息): min={min(ankle_x[side]):.1f}mm 均={sum(ankle_x[side])/len(ankle_x[side]):.1f}mm")
+        # V2.1 性能-05b: 移除二次 FBX 导入 — ref_gap 仅供下方诊断打印"[参考自身=..mm]",
+        #   不参与任何门判据(硬性 amin_gap>=5mm 用我方值; 比例性 ref_ratio 来自首遍 results)。
+        #   原实现每轮重新导入 Standard Walk.fbx + 36帧求值 + 建KDTree, 纯冗余耗时。
         ref_gap = None
-        if foot_gap:
-            try:
-                pre2 = set(bpy.data.objects)
-                bpy.ops.import_scene.fbx(filepath=os.path.join(ANIM_DIR, "Standard Walk.fbx"))
-                new2 = [o for o in bpy.data.objects if o not in pre2]
-                refa2 = max((x for x in new2 if x.type == 'ARMATURE'), key=lambda x: len(x.data.bones))
-                refmesh = max((x for x in new2 if x.type == 'MESH'), key=lambda x: len(x.data.vertices))
-                rlf = {g.index for g in refmesh.vertex_groups if 'LeftFoot' in g.name or 'LeftToe' in g.name}
-                rrf = {g.index for g in refmesh.vertex_groups if 'RightFoot' in g.name or 'RightToe' in g.name}
-                ract = refa2.animation_data.action if refa2.animation_data else None
-                rgaps = []
-                for f in range(fstart, fend + 1):
-                    scn.frame_set(f)
-                    dg2 = bpy.context.evaluated_depsgraph_get()
-                    rme = refmesh.evaluated_get(dg2)
-                    m2 = rme.matrix_world
-                    rvs = rme.data.vertices
-                    rlc = [m2 @ v.co for v in rvs if any(g.group in rlf and g.weight > 0.1 for g in v.groups)]
-                    rrc = [m2 @ v.co for v in rvs if any(g.group in rrf and g.weight > 0.1 for g in v.groups)]
-                    if rlc and rrc:
-                        kdt2 = _kdt.KDTree(len(rrc))
-                        for _i3, _c in enumerate(rrc):
-                            kdt2.insert(_c, _i3)
-                        kdt2.balance()
-                        rgaps.append(min(kdt2.find(_c)[2] for _c in rlc) * 1000)
-                if rgaps: ref_gap = min(rgaps)
-                for o in new2: bpy.data.objects.remove(o, do_unlink=True)
-            except Exception as e:
-                print(f"   (参考脚间隙实测失败: {e})")
         # 猫步判据(2026-09-17 定案, 双口径 — 取代旧版"参考值×骨盆比×0.75硬编码容差"):
         #  a) 硬性: 双脚最近顶点3D间距 ≥ 5mm —— 不得接触/交叉(v2回归的灾难形态)
         #  b) 比例性: 最紧着地踝 / 骨盆半宽 ≥ 参考同比例 × 60% —— 允许体型/蒙皮差异,

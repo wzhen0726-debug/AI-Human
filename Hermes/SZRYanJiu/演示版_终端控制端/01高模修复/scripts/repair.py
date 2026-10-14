@@ -377,7 +377,9 @@ def verify_mesh(obj):
     loose = sum(1 for v in bm.verts if len(v.link_edges) == 0)
     degen = sum(1 for f in bm.faces if f.calc_area() < 1e-10)
     mn, mx, dims = get_bbox(obj)
-    oriented = dims[0] > dims[1] * 1.5
+    # V2.1 P1-7: 站姿判据补 Z(身高)轴校验 — 原仅比 X(臂展)>Y(胸厚), 对窄肩/披风角色易误判。
+    #   站立人形: Z(身高)应为主轴且明显大于 Y(前后厚); 同时 X(臂展)>Y。
+    oriented = (dims[0] > dims[1] * 1.5) and (dims[2] > dims[1] * 1.5)
     bm.free()
     result = {
         "verts": len(mesh.vertices), "faces": len(mesh.polygons),

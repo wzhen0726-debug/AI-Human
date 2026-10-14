@@ -374,6 +374,9 @@ def step_03():
     t0 = time.time()
     if not check("02QR拓扑/输出/02_qr_150k_socket.blend"):
         print(f"{R}✗ 缺少输入, 先运行 02{W}"); return False
+    # V2.1 P1-2: 删陈旧产物(防03失败后04消费旧UV件)
+    if not rm_stale("03自动UV/输出/03_auto_uv.blend"):
+        summary("环节 03", False, t0, []); return False
     if not run_blender(os.path.join(BASE, "03自动UV", "scripts", "03_auto_uv.py"),
                        "03_UV", "UV展开+浪费检测/参数寻优", done_mark="UV_DONE"):
         summary("环节 03", False, t0, []); return False
@@ -395,8 +398,12 @@ def step_04():
     t0 = time.time()
     if not check("03自动UV/输出/03_auto_uv.blend"):
         print(f"{R}✗ 缺少输入, 先运行 03{W}"); return False
+    # V2.1 P1-2: 删陈旧产物(防04失败后05消费旧件) + 补 done_mark(04_bake.py 尾打印 DONE)
+    if not rm_stale("04纹理烘焙/输出/04_bake.blend", "04纹理烘焙/输出/04_diffuse_4k.png",
+                    "04纹理烘焙/输出/04_normal_4k.png", "04纹理烘焙/输出/05_for_mixamo.fbx"):
+        summary("环节 04", False, t0, []); return False
     if not run_blender(os.path.join(BASE, "04纹理烘焙", "scripts", "04_bake.py"),
-                       "04_烘焙", "烘焙 4K Diffuse+Normal + 贴图溢出+异常斑处理"):
+                       "04_烘焙", "烘焙 4K Diffuse+Normal + 贴图溢出+异常斑处理", done_mark="DONE"):
         summary("环节 04", False, t0, []); return False
     o = os.path.join(BASE, "04纹理烘焙", "输出"); outd = o
     ok = all([deliver(os.path.join(o, "04_bake.blend"), outd),
@@ -412,6 +419,13 @@ def step_05():
     t0 = time.time()
     if not check("04纹理烘焙/输出/04_bake.blend"):
         print(f"{R}✗ 缺少输入, 先运行 04{W}"); return False
+    # V2.1 P1-2: 删陈旧运行产物(防中途失败后下游拿旧件)。01_AI打点.blend 承载用户GUI手调,
+    #   不在此删(与01a markers同哲学; step1覆盖前自会做带时间戳备份)。
+    if not rm_stale("05骨骼绑定/ARP新版测试_20260831/02_go_detect骨架.blend",
+                    "05骨骼绑定/ARP新版测试_20260831/03_骨骼绑定.blend",
+                    "05骨骼绑定/ARP新版测试_20260831/03B_骨骼标准化.blend",
+                    "05骨骼绑定/ARP新版测试_20260831/04_动作测试.blend"):
+        summary("环节 05", False, t0, []); return False
     # 1. AI打点
     if not run_blender(os.path.join(S05, "step1_ai_markers.py"), "05_1",
                        "① ARP AI 自动打点(17关节标记)", done_mark="STEP1_DONE"):
@@ -457,6 +471,9 @@ def step_06():
     t0 = time.time()
     if not check("05骨骼绑定/ARP新版测试_20260831/04_动作测试.blend"):
         print(f"{R}✗ 缺少输入, 先运行 05{W}"); return False
+    # V2.1 P1-2: 删陈旧GLB(防06失败后交付旧件)
+    if not rm_stale("06GLB导出/输出/06_角色_走跑跳.glb"):
+        summary("环节 06", False, t0, []); return False
     script = os.path.join(BASE, "06GLB导出", "scripts", "06_output_glb.py")
     if not run_blender(script, "06", "导出GLB(走/跑/跳三动画+自查)", done_mark="06_DONE"):
         summary("环节 06", False, t0, []); return False
@@ -525,6 +542,14 @@ def clean_output(target=None):
         n += _wipe(targets[t])                                              # ① 输出/ 递归清空(保留手调文件)
         n += _wipe(os.path.join(os.path.dirname(targets[t]), "_中间"))       # ② _中间/ 一并清(防下游读旧件)
     n += _wipe(os.path.join(BASE, "01a眼窝眼球", "screenshots"))
+    # V2.1 P1-1(用户决定 2026-10-14): clean all 一并清 05 ARP 运行产物(含 01_AI打点.blend) —
+    #   此前只清 输出/ 与 *.blend1, ARP 目录 5 件运行产物残留 → clean 后 status 仍绿灯、06 吃旧件。
+    #   权威备份已在 _备份/正式基线V2_20261012/05骨骼绑定/(含手调 01_AI打点), 完整性已彻查(58件对账通过)。
+    #   保留: scripts/、点位指南.md、*_手调权威备份.blend、历史带时间戳备份(用户数据)。
+    _ARP = os.path.join(BASE, "05骨骼绑定", "ARP新版测试_20260831")
+    for _f in ("01_AI打点.blend", "02_go_detect骨架.blend", "03_骨骼绑定.blend",
+               "03B_骨骼标准化.blend", "04_动作测试.blend"):
+        n += _try_rm(os.path.join(_ARP, _f))
     import glob as _glob, shutil as _sh
     for d in [os.path.join(BASE, "01高模修复"), os.path.join(BASE, "01a眼窝眼球"),
               os.path.join(BASE, "01a眼窝眼球", "_中间"),

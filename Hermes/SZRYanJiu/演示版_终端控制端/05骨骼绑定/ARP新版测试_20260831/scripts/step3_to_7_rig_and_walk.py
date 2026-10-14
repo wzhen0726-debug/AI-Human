@@ -210,7 +210,10 @@ print(f"权重顶点组: {len(body.vertex_groups)}")
 # 2026-09-16 用户要求: 眼球从02起全程连贯(02输出/03UV/04烘焙/导出都含眼球)。
 # 本步骤: 若网格里已带眼球则直接蒙皮Head骨; 若没有(旧文件)才从01_2并入。
 print("\n########## 步骤6.5: 并入眼球 ##########")
-EYE_BLEND = os.path.join(BASE, "..", "01A眼窝与眼球", "models", "01_2_eyeball_placed.blend")
+# V2.1 P1-6: 修死路径(旧目录名 01A眼窝与眼球/models 已废) → 现路径 01a眼窝眼球/输出/
+#   BASE=05骨骼绑定, 单个 .. 即项目根(已验证). 仅在"网格未随02带眼球"的兜底分支使用;
+#   正常流程眼球从02起已随网格连贯(见下方 _eye_existing 分支)。
+EYE_BLEND = os.path.join(BASE, "..", "01a眼窝眼球", "输出", "01_2_eyeball_placed.blend")
 EYE_BLEND = os.path.normpath(EYE_BLEND)
 head_head = None  # Head骨世界位置
 mw_arm = arm.matrix_world
@@ -284,112 +287,10 @@ step06 = os.path.join(OUT, "03_骨骼绑定.blend")
 bpy.ops.wm.save_mainfile(filepath=step06)
 print(f"保存: {step06}")
 
-# ============ 步骤7: 行走动画验证 ============
-print("\n########## 步骤7: 行走动画验证 ##########")
-for b in arm.data.bones:
-    if not b.name.startswith("mixamorig:"):
-        b.name = "mixamorig:" + b.name
-for vg in body.vertex_groups:
-    if not vg.name.startswith("mixamorig:"):
-        vg.name = "mixamorig:" + vg.name
-
-bpy.ops.import_scene.fbx(filepath=WALK_FBX)
-walk_arm = None
-for o in bpy.data.objects:
-    if o.type == 'ARMATURE' and o.name != 'MixamoSkeleton' and o.animation_data and o.animation_data.action:
-        walk_arm = o
-assert walk_arm, "行走FBX导入失败"
-action = walk_arm.animation_data.action
-rig_action = action.copy()
-rig_action.name = "Walk_noroot"
-
-data_slot = None
-removed = 0
-remapped = 0
-# Hips垂直起伏恢复: 从参考骨架逐帧实测, 不写死任何绝对值。
-# 参考骨架与我们的局部轴向不同(实测: 参考Hips局部y=世界垂直, 我们Hips局部y=世界垂直, 已验证),
-# 但单位不同(参考cm scale0.01, 我们m scale1)。所以读参考的"世界z起伏"(已含单位换算), 按腿长比缩放。
-# 腿长比 leg_ratio 由两边实测腿长得出, 不写死。
-wm_ref = walk_arm.matrix_world
-ref_hips_z = (wm_ref @ walk_arm.data.bones['mixamorig:Hips'].head_local).z
-ref_foot_z = (wm_ref @ walk_arm.data.bones['mixamorig:LeftFoot'].head_local).z
-our_hips_z = (arm.matrix_world @ arm.data.bones['mixamorig:Hips'].head_local).z
-our_foot_z = (arm.matrix_world @ arm.data.bones['mixamorig:LeftFoot'].head_local).z
-leg_ratio = (our_hips_z - our_foot_z) / (ref_hips_z - ref_foot_z)
-print(f"腿长比: 我们{our_hips_z-our_foot_z:.3f}/参考{ref_hips_z-ref_foot_z:.3f} = {leg_ratio:.4f}")
-
-for layer in rig_action.layers:
-    for strip in layer.strips:
-        for bag in strip.channelbags:
-            if len(bag.fcurves) > 0:
-                data_slot = next((s for s in rig_action.slots if s.handle == bag.slot_handle), None)
-                for fc in list(bag.fcurves):
-                    if 'mixamorig:Hips' in fc.data_path and 'location' in fc.data_path:
-                        if fc.array_index == 2:  # 我们局部z=垂直 → 用参考局部y换算
-                            for kp in fc.keyframe_points:
-                                pass  # 这条曲线值是参考z(前后),无垂直意义,下面统一重建
-                        bag.fcurves.remove(fc); removed += 1
-                break
-assert data_slot
-print(f"删Hips原location {removed}条")
-
-# Hips的location三轴从参考动画删除(参考骨架局部轴和我们不同, 直接搬会错)。
-# 但Hips垂直起伏(正常行走重心上下2-5cm)必须恢复, 否则滑步僵硬。
-# 方法: 逐帧读参考骨架Hips世界z, 按腿长比缩放到我们身高, 写入我们Hips局部y(=世界垂直,已实测)。
-# 水平(前进/左右)删除=原地走(walk in place)。
-if arm.animation_data is None:
-    arm.animation_data_create()
-arm.animation_data.action = rig_action
-arm.animation_data.action_slot = data_slot
-
-# 逐帧读参考Hips世界z → 我们Hips局部y补偿
-# 参考静止世界z=ref_hips_z, 我们静止our_hips_z。每帧: 参考起伏=ref_z-ref_hips_z, 按腿长比缩, 加到我们的基准。
-# 我们Hips局部y=世界z偏移(局部y+0.1→世界z+0.1已实测), 所以 location.y = (目标世界z - 静止世界z)
-print("恢复Hips垂直起伏:")
-dg_tmp = bpy.context.evaluated_depsgraph_get()
-hips_pb = arm.pose.bones['mixamorig:Hips']
-n_kp = 0
-fstart = int(action.frame_range[0]); fend = int(action.frame_range[1])
-for f in range(fstart, fend + 1):
-    bpy.context.scene.frame_set(f)
-    bpy.context.view_layer.update()
-    wa_ev = walk_arm.evaluated_get(dg_tmp)
-    ref_z = (wm_ref @ wa_ev.pose.bones['mixamorig:Hips'].head).z
-    # 参考起伏(世界,米) → 按腿长比缩 → 我们的目标世界z → 局部y偏移
-    ref_delta = (ref_z - ref_hips_z) * leg_ratio
-    hips_pb.location.y = ref_delta  # 局部y即世界z偏移
-    hips_pb.keyframe_insert('location', index=1, frame=f)
-    n_kp += 1
-print(f"  写入{n_kp}帧, 起伏范围参考实测")
-
-del_names = [o.name for o in bpy.data.objects if o.name != 'MixamoSkeleton' and o.name != body.name and 'Eye' not in o.name]
-for nm in del_names:
-    o = bpy.data.objects.get(nm)
-    if o and o.type in ('ARMATURE', 'MESH'):
-        bpy.data.objects.remove(o, do_unlink=True)
-
-scn = bpy.context.scene
-scn.frame_start = int(action.frame_range[0])
-scn.frame_end = int(action.frame_range[1])
-
-# (已撤销逐帧贴地补偿——那是邪修, 导致身体晃动且无法程序化。贴地问题留待从源头解决)
-
-dg = bpy.context.evaluated_depsgraph_get()
-body_ev = body.evaluated_get(dg)
-scn.frame_set(1); bpy.context.view_layer.update()
-base_v = [v.co.copy() for v in body_ev.data.vertices[:3000]]
-lh1 = (arm.matrix_world @ arm.pose.bones['mixamorig:LeftHand'].matrix).translation.copy()
-scn.frame_set(18); bpy.context.view_layer.update()
-moved = sum(1 for i, v in enumerate(body_ev.data.vertices[:3000]) if (v.co - base_v[i]).length > 0.01)
-lh18 = (arm.matrix_world @ arm.pose.bones['mixamorig:LeftHand'].matrix).translation.copy()
-rf18 = (arm.matrix_world @ arm.pose.bones['mixamorig:RightFoot'].matrix).translation.copy()
-print(f"mesh变形: {moved}/3000")
-print(f"帧18左手: z={lh18.z:.3f}, 摆臂{(lh18-lh1).length*100:.1f}cm")
-print(f"帧18右脚: z={rf18.z:.3f}")
-ok = moved > 500 and lh18.z < 1.8 and (lh18-lh1).length > 0.02
-print(f"行走验证: {'PASS 通过' if ok else 'FAIL 失败'}")
-
-step07 = os.path.join(OUT, "04_动作测试.blend")
-bpy.ops.wm.save_mainfile(filepath=step07)
-print(f"保存: {step07}")
+# ============ (V2.1 L-05) 原"步骤7: 行走动画验证"已移除 ============
+#   移除依据(全部核实): ①03_骨骼绑定.blend 在步骤7之前已保存(=③B/④的唯一输入, 骨名无前缀,
+#   与 normalize_to_tpose 的预期一致); ②步骤7给骨/顶点组加的 mixamorig: 前缀只作用于本文件
+#   会话内的 04_动作测试.blend, 而该文件被 05④ retarget_mixamo.py 完全覆盖(其输入=03B);
+#   ③retarget 自己统一加前缀。故步骤7(FBX导入+36帧求值+存盘)为纯冗余死代码。
+#   done_mark 保留原字符串 STEPS_3_TO_7_DONE(控制台校验用, 不改名以免动总控口径)。
 print("\n========== STEPS_3_TO_7_DONE ==========")

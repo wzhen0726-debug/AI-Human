@@ -229,7 +229,10 @@ def main():
         else:
             print(f"碗输出不存在({os.path.basename(_sock)}), 仅产出 01_2 (独立运行模式)")
     except Exception as _e:
-        print(f"眼球并入碗输出失败: {_e}")
+        # V2.1 P1-3: 并入失败=硬阻断(原吞异常仍打 Done → 下游03~06无眼球空跑到05才断言报错)
+        import traceback; traceback.print_exc()
+        print(f"[FATAL] 眼球并入碗输出失败: {_e}")
+        sys.exit(1)
     print("=== Done ===")
 
 def render_verification(cL, cR):

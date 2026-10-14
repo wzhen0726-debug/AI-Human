@@ -39,7 +39,11 @@ if not obj:
 # 3. 网格修复
 print("\n[0] 开始网格修复...")
 t0 = __import__('time').time()
-repair_result = repair.repair_pipeline(obj, smooth_iter=2, smooth_factor=0.3)
+# V2.1 L-04: weld_for_qr=False — repair_pipeline 在[3]已做 remove_doubles(965K verts),
+#   其内部[11]终焊对已焊网格是冗余的(实测仅焊8顶点/补0孔); 黏连修复后第54行的终焊才是
+#   QR-ready 权威焊。等价实证: 沙箱B版 vs 正式A版 顶点/面心/loop/世界矩阵 max|Δ|=0
+#   (logs/_v21/sbox_01/, l04_equiv.py EQUIV_IDENTICAL), 01环节耗时约省一半。
+repair_result = repair.repair_pipeline(obj, smooth_iter=2, smooth_factor=0.3, weld_for_qr=False)
 print(f"[0] 网格修复完成 ({__import__('time').time()-t0:.1f}s)")
 
 # 4. 黏连修复
