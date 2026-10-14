@@ -180,21 +180,22 @@ def fix_adhesion(obj, adhesion_pairs, push_step_mm=0.3, smooth_iter=3,
     bm.faces.ensure_lookup_table()
     bm.verts.ensure_lookup_table()
 
-    # 用检测时的法线(未变形)计算推开方向
+    # 用检测时的几何关系计算推开方向
+    # V2.1 P0-3(用户拍板只上C, 2026-10-14): 推开方向=【背离对方】(面i沿-dir, 面j沿+dir)。
+    #   旧版沿 +n_i/+n_j 推 —— 检测判据是"两面法线相对", 故 +n_i 正指向对方 = 往一起推(制造穿插自交)。
+    #   沙箱C版实测: 01产物自交对 503→72、绕向坏边 49→22 (logs/_v21/sbox_p034/ab_C.json)。
     affected = {}
     for (fi, fj, dist) in adhesion_pairs:
         f_i, f_j = bm.faces[fi], bm.faces[fj]
-        n_i = f_i.normal.normalized()
-        n_j = f_j.normal.normalized()
-        # 每个面的顶点沿该面法线推开
+        dirv = (f_j.calc_center_median() - f_i.calc_center_median()).normalized()
         for v in f_i.verts:
             if v.index not in affected:
                 affected[v.index] = Vector((0, 0, 0))
-            affected[v.index] += n_i * push_step
+            affected[v.index] += -dirv * push_step
         for v in f_j.verts:
             if v.index not in affected:
                 affected[v.index] = Vector((0, 0, 0))
-            affected[v.index] += n_j * push_step
+            affected[v.index] += dirv * push_step
 
     # 推开前: 保存受影响面的原始法线
     face_normals_before = {}
@@ -231,27 +232,9 @@ def fix_adhesion(obj, adhesion_pairs, push_step_mm=0.3, smooth_iter=3,
     bm.to_mesh(mesh)
     bm.free()
 
-    # 推开后: 根据位移方向修正法线
-    # 如果面被推开了, 新法线应该与位移方向一致 (朝外)
-    print("  Correcting normals by displacement direction...")
-    bm2 = bmesh.new()
-    bm2.from_mesh(mesh)
-    bm2.faces.ensure_lookup_table()
-    corrected = 0
-    for fi, disp in face_displacement.items():
-        if fi < len(bm2.faces) and disp.length > 0.0001:
-            f = bm2.faces[fi]
-            curr_n = f.normal.normalized()
-            disp_dir = disp.normalized()
-            # 如果当前法线与位移方向相反, 翻转
-            # 位移方向 = 推开方向 = 应该朝外
-            if curr_n.dot(disp_dir) < 0:
-                f.normal_flip()
-                corrected += 1
-    bm2.to_mesh(mesh)
-    bm2.free()
+    # V2.1 P0-3: 删除逐面 normal_flip "修正" —— 推开不改变法线正确性, 逐面独立翻转
+    #   会在连续网格上制造"邻面绕向相反"的坏边(沙箱实测绕向坏边 49→22)。
     mesh.update()
-    print(f"  Corrected {corrected} face normals")
     
     # 渐进式平滑: 0.35→0.10, 保护推开后的几何
     bpy.context.view_layer.objects.active = obj
