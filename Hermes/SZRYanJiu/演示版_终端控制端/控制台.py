@@ -329,6 +329,7 @@ def step_01a(rebuild_only=False):
         import shutil as _shutil
         _src = os.path.join(M01A, "01_1_eye_socket.blend")
         _dst = os.path.join(BASE, "01a眼窝眼球", "_中间", "01_1_eye_socket_qr.blend")
+        os.makedirs(os.path.dirname(_dst), exist_ok=True)   # V2.1修: clean all 会删掉 _中间/ 目录本体
         _shutil.copy2(_src, _dst)
         print(f"  {G}✓{W} ⑤ 空腔模式: 材质分区为no-op → 直接复制 _qr.blend (L-01, 省Blender重开重存)")
     else:
