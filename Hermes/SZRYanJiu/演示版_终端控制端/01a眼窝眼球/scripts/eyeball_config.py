@@ -10,9 +10,10 @@ S01A = os.path.join(ROOT, "01a眼窝眼球")
 
 WORK = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端\01a眼窝眼球\输出"
 os.makedirs(WORK, exist_ok=True)
-IN_BLEND = os.path.join(S01A, "输出", "01_1_eye_socket.blend")
-OUT_BLEND = os.path.join(S01A, "输出", "01_2_eyeball_placed.blend")
-SHOT_DIR = os.path.join(WORK, "screenshots")
+# V2.1 L-03: env 重定向支持(沙箱验证不动正式产物; 默认值与历史完全一致)
+IN_BLEND = os.environ.get("EYE_BALL_IN_BLEND") or os.path.join(S01A, "输出", "01_1_eye_socket.blend")
+OUT_BLEND = os.environ.get("EYE_BALL_OUT_BLEND") or os.path.join(S01A, "输出", "01_2_eyeball_placed.blend")
+SHOT_DIR = os.environ.get("EYE_SHOT_DIR") or os.path.join(WORK, "screenshots")
 
 # 眼球GLB路径
 EYE_GLB = r"E:\WangZhen_Project\AI\ShuZiRen\Hermes\SZRYanJiu\演示版_终端控制端\原始文件\eye_01.glb"

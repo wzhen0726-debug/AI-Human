@@ -129,17 +129,28 @@ else:
 
 # ---- v89(2026-09-30, E3 上正式): 眼区镜像轴 env 覆盖 ----
 # 背景(logs/_ab10~_ab12 沙箱已验): 两眼相对脸面本底不对称(特征级 ~1.1mm), 纯镜像无法同时对齐
-#   "眼区表面"与"眼睛自身特征"。E3 定案: 左轮廓按【眼区镜像轴 -0.67mm】重生(等效左轮廓整体
-#   x 平移 -1.2mm), 让左轮廓落到左眼自身几何上(解剖相对失配 1.138→0.165mm)。
-# 用法: 设 EYE_EYE_AXIS_MM=-0.67 → 本步镜像轴固定为该值(mm, 跳过活性自算); 默认不设 = 现行
-#   活性自算(历史行为不变)。与 read_eyelid_markers.py 的同名 env 配对(打点链↔读点链同一机制)。
+#   "眼区表面"与"眼睛自身特征"。E3 定案: 左轮廓按【眼区镜像轴】重生(等效左轮廓整体
+#   x 平移), 让左轮廓落到左眼自身几何上(解剖相对失配 1.138→0.165mm)。
+# V2.1 L-02(用户拍板 2026-10-14): 轴来源改三级 —
+#   ① env EYE_EYE_AXIS_MM 显式覆盖(实验用, 最高优先);
+#   ② 3DDFA 双眼中心活性推导 (cL.x+cR.x)/2 (默认路径; 当前模型 -0.7237mm, 换头自动适配);
+#   ③ 3DDFA json 缺失 → 保持上面网格活性自算 _mirror_axis_x 结果(历史行为)。
+#   旧控制台写死 -0.67mm 的 setdefault 已删除(那是特定角色的补偿值)。
 _AA = os.environ.get("EYE_EYE_AXIS_MM")
 if _AA not in (None, ""):
     try:
         AXIS_X = float(_AA) / 1000.0
         print(f"镜像轴(env 覆盖): EYE_EYE_AXIS_MM={float(_AA):+.4f}mm → x={AXIS_X*1000:+.4f}mm (跳过活性自算)")
     except ValueError:
-        print(f"镜像轴(env 覆盖)无效: {_AA!r} → 忽略, 保持活性自算")
+        print(f"镜像轴(env 覆盖)无效: {_AA!r} → 忽略, 走 3DDFA/活性自算")
+        _AA = None
+if _AA in (None, ""):
+    _ax3 = ddfa_mirror_axis()
+    if _ax3 is not None:
+        print(f"镜像轴(3DDFA活性): x={_ax3*1000:+.4f}mm ((cL.x+cR.x)/2; 网格自算值 {AXIS_X*1000:+.4f}mm 弃用)")
+        AXIS_X = _ax3
+    else:
+        print(f"镜像轴(3DDFA缺失): 保持网格活性自算 x={AXIS_X*1000:+.4f}mm")
 l_objs = []
 for o in r_objs:
     rx, ry, rz = o.location

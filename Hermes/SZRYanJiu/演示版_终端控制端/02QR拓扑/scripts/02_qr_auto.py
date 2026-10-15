@@ -40,12 +40,19 @@ bpy.ops.wm.open_mainfile(filepath=blend_path)
 
 # 1.5 另存QR前高模分区检查副本到输出目录(2026-09-09 用户要求: 输出目录需含高模眼窝分区检查文件)
 #     这是QR的输入高模(带EyeSocket分区), 供用户核验"送进QR的分区对不对".
+# V2.1 L-01(用户拍板 2026-10-14): 改条件保存 — 仅当输入高模确实有 >=2 材质槽(存在 EyeSocket 分区)
+#   时才另存检查副本; 空腔模式(仅1槽)下副本与输入逐位同, 纯浪费数百MB+1-2min I/O → 直接跳过。
 os.makedirs(os.path.join(W_02O, "_中间"), exist_ok=True)
-hi_check = os.path.join(W_02O, "_中间", "02QR输入_眼窝材质分区_高模.blend")
-bpy.ops.wm.save_as_mainfile(filepath=hi_check)
-print(f"1.5 高模分区检查副本: {hi_check}")
-# 另存后重新打开原始高模, 保证后续在正确上下文操作(save_as会切换当前文件路径)
-bpy.ops.wm.open_mainfile(filepath=blend_path)
+_mesh0 = [o for o in bpy.data.objects if o.type == "MESH"][0]
+_n_mats = len([m for m in _mesh0.data.materials if m is not None])
+if _n_mats >= 2:
+    hi_check = os.path.join(W_02O, "_中间", "02QR输入_眼窝材质分区_高模.blend")
+    bpy.ops.wm.save_as_mainfile(filepath=hi_check)
+    print(f"1.5 高模分区检查副本: {hi_check} (材质槽={_n_mats})")
+    # 另存后重新打开原始高模, 保证后续在正确上下文操作(save_as会切换当前文件路径)
+    bpy.ops.wm.open_mainfile(filepath=blend_path)
+else:
+    print(f"1.5 高模分区检查副本: 跳过 (材质槽={_n_mats}<2, 空腔型无分区, 副本与输入同 — L-01)")
 
 # 2. 选中网格
 mesh = [o for o in bpy.data.objects if o.type == "MESH"][0]

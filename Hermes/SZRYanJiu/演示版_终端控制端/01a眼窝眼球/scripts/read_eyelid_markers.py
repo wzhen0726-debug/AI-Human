@@ -46,11 +46,12 @@ def surface_y(x, y_hint, z):
     return float(y_hint)
 
 result = {}
-# ---- v89(2026-09-30, E3 上正式): 眼区镜像轴 env 覆盖(与 mirror_markers.py 同名 env 配对) ----
-# 设 EYE_EYE_AXIS_MM=-0.67 → L 侧不再读文件里的 LM_L 标记, 直接用 LM_R(手描权威点)绕该轴
-#   镜像生成: x' = 2a - x_R, z 不变, y 投到表面 → 等效 L 轮廓 x 平移 -1.2mm(轴差 0.6mm×2)。
-#   好处: 不重写 01A_markers_eyelid.blend(LM_R 手调数据只读), 修正轮廓仍可由本步一步复现。
-# 默认不设 = 读 LM_L(历史行为不变)。
+# ---- v89(2026-09-30, E3 上正式): 眼区镜像轴覆盖(与 mirror_markers.py 同机制配对) ----
+# 设轴后 L 侧不再读文件里的 LM_L 标记, 直接用 LM_R(手描权威点)绕该轴镜像生成:
+#   x' = 2a - x_R, z 不变, y 投到表面。好处: 不重写 01A_markers_eyelid.blend(LM_R 手调数据只读)。
+# V2.1 L-02(用户拍板 2026-10-14): 轴来源三级 —
+#   ① env EYE_EYE_AXIS_MM 显式覆盖(实验用); ② 3DDFA 双眼中心活性轴 (cL.x+cR.x)/2 (默认);
+#   ③ 3DDFA json 缺失 → 读 LM_L(历史行为)。旧控制台写死 -0.67mm 已删除。
 _AA = os.environ.get("EYE_EYE_AXIS_MM")
 _AXIS_OVR = None
 if _AA not in (None, ""):
@@ -58,7 +59,14 @@ if _AA not in (None, ""):
         _AXIS_OVR = float(_AA) / 1000.0
         print(f"眼区镜像轴 env 覆盖: EYE_EYE_AXIS_MM={_AXIS_OVR*1000:+.4f}mm (L 侧由 LM_R 镜像生成)")
     except ValueError:
-        print(f"EYE_EYE_AXIS_MM 无效: {_AA!r} → 忽略(按 LM_L 读)")
+        print(f"EYE_EYE_AXIS_MM 无效: {_AA!r} → 走 3DDFA/LM_L")
+if _AXIS_OVR is None:
+    _ax3 = ddfa_mirror_axis()
+    if _ax3 is not None:
+        _AXIS_OVR = _ax3
+        print(f"眼区镜像轴(3DDFA活性): {_AXIS_OVR*1000:+.4f}mm ((cL.x+cR.x)/2; L 侧由 LM_R 镜像生成)")
+    else:
+        print(f"眼区镜像轴(3DDFA缺失): 按 LM_L 读(历史行为)")
 for side in ['L', 'R']:
     coll = bpy.data.collections.get(f"LM_{side}")
     if not coll:

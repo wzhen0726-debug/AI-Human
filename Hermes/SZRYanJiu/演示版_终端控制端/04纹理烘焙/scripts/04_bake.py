@@ -166,7 +166,10 @@ bpy.context.scene.render.bake.max_ray_distance = 0.0
 bpy.ops.object.bake(type='DIFFUSE')
 pA = _px(img)
 
-# 眼窝碗区mask: 眼球球心0.95r内的低模面 → UV三角形光栅(+2px膨胀盖缝)
+# 眼窝碗区mask: UV三角形光栅(+2px膨胀盖缝)
+# V2.1 性能-04(用户拍板 2026-10-14): 碗面身份优先读 02qr_socket_cup 打的 qrbowl==1 属性(100%精确,
+#   实测从02存活到03/04: 774面); 属性缺失才回退 0.95r 球心距离猜测。两者当前差29面(球心距猜测
+#   在碗缘/眼球边缘会漏判或误判非碗面), qrbowl 是建碗时逐面打的权威 tag。
 eye_objs = [o for o in bpy.data.objects if o.type == 'MESH' and 'Eye' in o.name]
 bowl_mask = np.zeros((4096, 4096), bool)
 if eye_objs:
@@ -179,12 +182,20 @@ if eye_objs:
     _ctr = np.empty(len(_lme.polygons) * 3); _lme.polygons.foreach_get("center", _ctr)
     _Ml = np.array(low_poly.matrix_world)
     _CEN = _ctr.reshape(-1, 3) @ _Ml[:3, :3].T + _Ml[:3, 3]
-    _bowl = np.zeros(len(_lme.polygons), bool)
-    for eo in eye_objs:
-        _cs = np.empty(len(eo.data.vertices) * 3); eo.data.vertices.foreach_get("co", _cs)
-        _Mw = np.array(eo.matrix_world); _cs = _cs.reshape(-1, 3) @ _Mw[:3, :3].T + _Mw[:3, 3]
-        _c = _cs.mean(axis=0); _r = float(np.abs(_cs - _c).max())
-        _bowl |= (np.linalg.norm(_CEN - _c, axis=1) < 0.95 * _r)
+    # 碗面掩码: qrbowl 属性优先, 缺失回退 0.95r 球心距离
+    _qb_attr = _lme.attributes.get("qrbowl")
+    if _qb_attr is not None and _qb_attr.domain == 'FACE' and len(_qb_attr.data) == len(_lme.polygons):
+        _qv = np.empty(len(_qb_attr.data), np.int32); _qb_attr.data.foreach_get("value", _qv)
+        _bowl = (_qv == 1)
+        print(f'碗区掩码: qrbowl 属性(权威) → {int(_bowl.sum())}面')
+    else:
+        _bowl = np.zeros(len(_lme.polygons), bool)
+        for eo in eye_objs:
+            _cs = np.empty(len(eo.data.vertices) * 3); eo.data.vertices.foreach_get("co", _cs)
+            _Mw = np.array(eo.matrix_world); _cs = _cs.reshape(-1, 3) @ _Mw[:3, :3].T + _Mw[:3, 3]
+            _c = _cs.mean(axis=0); _r = float(np.abs(_cs - _c).max())
+            _bowl |= (np.linalg.norm(_CEN - _c, axis=1) < 0.95 * _r)
+        print(f'碗区掩码: qrbowl 属性缺失 → 回退 0.95r 球心距离 {int(_bowl.sum())}面')
     _bt = set(np.where(_bowl)[0].tolist())
     G = 4096
     for t in range(len(_lme.loop_triangles)):

@@ -23,11 +23,12 @@ SKIP_GUI = bool(os.environ.get("DEMO_SKIP_GUI"))
 
 # ============ E3 定案配置 (2026-09-30 上正式, 控制台内置) ============
 # 背景: 脸的左右本底不对称(几何中位 0.49mm / 眼睛特征级 ~1.1mm), 右手点严格镜像会把
-#       左眼轮廓装错位 1.1~1.3mm(左外眼角偏内/偏软的真因)。改用"眼睛特征最佳镜像轴"
-#       -0.67mm: 左轮廓由右手描点(LM_R)绕该轴镜像生成, 解剖相对失配 1.14→0.17mm。
+#       左眼轮廓装错位 1.1~1.3mm(左外眼角偏内/偏软的真因)。改用"眼睛特征最佳镜像轴":
+#       左轮廓由右手描点(LM_R)绕该轴镜像生成, 解剖相对失配 1.138→0.165mm。
 # 依据: logs/_ab10/AB10_REPORT.txt(机制排查) + logs/_ab13_E3正式/AB13_REPORT.txt(上正式验收)
-# 注: 后续可改为按虹膜/瞳孔特征自动估计(待定); 外部如需实验可先 set 覆盖(setdefault 不覆盖已有值)
-os.environ.setdefault("EYE_EYE_AXIS_MM", "-0.67")          # ①左轮廓镜像轴覆盖(mm); 不设=历史活性自算
+# V2.1 L-02(用户拍板 2026-10-14): 镜像轴不再写死 -0.67mm(那是当前测试角色的补偿值) —
+#   mirror/read 脚本默认从 3DDFA 双眼中心活性推导 axis=(cL.x+cR.x)/2 (换头自动适配);
+#   如需实验特定轴, 外部 set EYE_EYE_AXIS_MM=<mm> 显式覆盖(env 优先级最高)。
 os.environ.setdefault("EYE_EYEBALL_ANCHOR", "e3")          # ②眼球每侧锚定: e3=左眼按本侧3DDFA虹膜锚;
                                                            #    symmetric=历史严格对称(回退用)
 # ============ AB17 rim 根治 (2026-09-30 上正式, 控制台内置) ============
@@ -311,9 +312,29 @@ def step_01a(rebuild_only=False):
         summary("环节 01a", False, t0, []); return False
     # 2026-09-17 用户新流程: 01a 不加眼球 — 眼球摆入在02的【碗之后】(QR→碗→眼球)
     # 6. 眼窝独立材质(2026-09-08): 供02 QR沿材质边界布线保住眼窝结构; 输出_qr.blend, 不动烘焙源文件
-    if not run_blender(os.path.join(S01A, "assign_socket_material.py"), "01a_6", "⑤ 眼窝碗面赋独立材质(供QR沿rim布线)",
-                       done_mark="SOCKET_MAT_DONE"):
-        summary("环节 01a", False, t0, []); return False
+    # V2.1 L-01(用户拍板 2026-10-14): 空腔模式(SOCKET_EMPTY_INTERIOR=True, 当前定案)下⑤是 no-op
+    #   (无碗面无tag → "跳过材质分区, 直接保存副本"), 却要用 Blender 重开重存 ~1.9GB 高模(2-4min I/O)。
+    #   改为: 空腔模式直接 copy2 出 _qr.blend(几何逐位同已实证: co/loop/matrix md5 全同, 材质槽同为1个
+    #   tripo_mat, 属性集同 → 02 读到的东西与⑤产物完全一致); 非空腔(洪泛模式)仍走⑤建材质分区。
+    _empty_int = True
+    try:
+        _cfg = os.path.join(S01A, "eye_socket_config.py")
+        import re as _re
+        _m = _re.search(r"^SOCKET_EMPTY_INTERIOR\s*=\s*(\w+)",
+                        io.open(_cfg, encoding="utf-8").read(), _re.M)
+        _empty_int = (_m.group(1) == "True") if _m else True
+    except Exception:
+        pass
+    if _empty_int:
+        import shutil as _shutil
+        _src = os.path.join(M01A, "01_1_eye_socket.blend")
+        _dst = os.path.join(BASE, "01a眼窝眼球", "_中间", "01_1_eye_socket_qr.blend")
+        _shutil.copy2(_src, _dst)
+        print(f"  {G}✓{W} ⑤ 空腔模式: 材质分区为no-op → 直接复制 _qr.blend (L-01, 省Blender重开重存)")
+    else:
+        if not run_blender(os.path.join(S01A, "assign_socket_material.py"), "01a_6", "⑤ 眼窝碗面赋独立材质(供QR沿rim布线)",
+                           done_mark="SOCKET_MAT_DONE"):
+            summary("环节 01a", False, t0, []); return False
     lines = [f"{D}眼窝{W} inward_fillet 内圆角定案",
              f"{D}材质{W} EyeSocket碗面分区 → QR沿rim布线",
              f"{D}眼球{W} 已按新流程挪到 02 (碗之后摆入并并入输出)"]

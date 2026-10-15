@@ -445,10 +445,29 @@ if final is None:
     P("⚠ 复测均未通过(疑似运行波动): 保留最优一版并告警, 不阻断管线")
 
 # ---------- 折叠修复(仅对最终选定版执行一次, 迭代至清零) ----------
+# V2.1 P1-5(用户拍板判据 2026-10-14): 修复前快照 UV; 修复后重测 —
+#   回滚条件(满足其一): ① 折叠面数反增(f_after > f_before);
+#   ② 折叠面数未减少(f_after >= f_before) 且 废料比或密度CV恶化(相对修复前 final)。
+#   折叠清零/减少 = 净收益(折叠是烘焙脏线硬伤), 即使废料比略升也保留(折叠清零优先)。
+_uvl_bak = mesh.data.uv_layers.active.data
+_uv_bak = np.empty(len(_uvl_bak) * 2); _uvl_bak.foreach_get("uv", _uv_bak)
 f_before, f_after = repair_local_folds(mesh)
 if f_before > 0:
-    final = measure(mesh)
-    P(f"折叠修复: {f_before} → {f_after} 个重叠面 ({'✓ 已清零' if f_after == 0 else '⚠ 仍有残留(不阻断, 下游烘焙+margins) '})")
+    _m_after = measure(mesh)
+    _wr_a, _dr_a, _ = ratios(_m_after, base)
+    _wr_b, _dr_b, _ = ratios(final, base)
+    _worse_layout = (_wr_a > _wr_b) or (_m_after['cv'] > final['cv'])
+    _rollback = (f_after > f_before) or (f_after >= f_before and _worse_layout)
+    if _rollback:
+        _uvl_bak.foreach_set("uv", _uv_bak)
+        mesh.data.update()
+        P(f"折叠修复回滚: {f_before}→{f_after} 面 "
+          f"({'折叠反增' if f_after > f_before else '折叠未减且废料比/CV恶化'}"
+          f"; 废料比 {_wr_b:.3f}→{_wr_a:.3f}, CV {final['cv']:.3f}→{_m_after['cv']:.3f}) → 恢复修复前UV")
+        final = measure(mesh)   # 回滚后复测定状态(应等于修复前)
+    else:
+        final = _m_after
+        P(f"折叠修复: {f_before} → {f_after} 个重叠面 ({'✓ 已清零' if f_after == 0 else '⚠ 仍有残留(不阻断, 下游烘焙+margins) '}; 布局 废料比{_wr_b:.3f}→{_wr_a:.3f} CV{final['cv']:.3f})")
 
 uvl = mesh.data.uv_layers.active.data
 pts_f = np.empty(len(uvl) * 2); uvl.foreach_get("uv", pts_f); pts_f = pts_f.reshape(-1, 2)

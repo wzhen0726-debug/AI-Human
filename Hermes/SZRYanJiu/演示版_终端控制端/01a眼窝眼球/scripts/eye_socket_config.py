@@ -18,6 +18,23 @@ SHOT_DIR = os.environ.get("EYE_SHOT_DIR") or os.path.join(WORK, "screenshots")
 DDFA_JSON = os.environ.get("EYE_DDFA_JSON") or os.path.join(S01A, "3ddfa", "iris_3ddfa.json")
 USE_3DDFA = True   # True=用3DDFA语义定位, False=回退暗像素法(已暂停)
 
+def ddfa_mirror_axis():
+    """V2.1 L-02(用户拍板 2026-10-14): 眼区镜像轴由 3DDFA 双眼 3D 中心活性推导
+    axis_x = (cL.x + cR.x) / 2 —— 换头/换模型自动适配, 不再写死 -0.67mm(特定角色补偿)。
+    当前模型实测 -0.7237mm(与写死值差 0.054mm → L轮廓整体平移 0.107mm, 形状不变;
+    等价性验证 logs/_v21/sbox_b3/ab_axis.py)。
+    json 缺失/异常返回 None → 调用方走各自回退链(env 覆盖 > 本函数 > 网格活性自算/LM_L)。"""
+    try:
+        import json as _json
+        with open(DDFA_JSON, encoding="utf-8") as _f:
+            _d = _json.load(_f)
+        _cl = _d["L"]["center_3d"]; _cr = _d["R"]["center_3d"]
+        _ax = (float(_cl[0]) + float(_cr[0])) / 2.0
+        return _ax
+    except Exception as _e:
+        print(f"[ddfa_mirror_axis] 3DDFA json 读取失败({_e}) → 返回None(走回退)")
+        return None
+
 # 虹膜中心 (实测, 脚本会重新自动检测校正)
 IRIS_L = (-0.0241, -0.1163, 1.6517)
 IRIS_R = (0.0229, -0.1168, 1.6507)
